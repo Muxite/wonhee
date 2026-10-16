@@ -205,6 +205,16 @@ def cmd_dataset(a) -> int:
     return 0
 
 
+def cmd_trace_export(a) -> int:
+    from gauge.trace_export import OUT, export_run
+
+    conn = store.connect(a.db)
+    for rid in a.run_ids:
+        print(export_run(conn, rid))
+    print(OUT)
+    return 0
+
+
 def cmd_export(a) -> int:
     conn = store.connect(a.db)
     out = Path(a.out)
@@ -275,6 +285,9 @@ def main(argv=None) -> int:
     p.add_argument("--session", default=None)
     p.set_defaults(fn=cmd_startbench)
     sub.add_parser("dataset", help="flat documented dataset in data/dataset").set_defaults(fn=cmd_dataset)
+    p = sub.add_parser("trace-export", help="per-node execution trace: node JSON + Perfetto JSON")
+    p.add_argument("run_ids", nargs="+", type=int)
+    p.set_defaults(fn=cmd_trace_export)
     p = sub.add_parser("export")
     p.add_argument("--out", default="data/export")
     p.set_defaults(fn=cmd_export)
