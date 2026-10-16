@@ -1,0 +1,6 @@
+# Same Ollama job with and without the shared CUDA compute cache. jit_cache=none JIT-compiles every time.
+jobs:
+  - workload: llm.generate
+    fixed: {model: "qwen2.5:0.5b", num_ctx: 4096, prompt_tokens: 500, gen_tokens: 100}
+    grid: {jit_cache: [none, shared]}
+    repeats: 4

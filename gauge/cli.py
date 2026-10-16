@@ -172,6 +172,23 @@ def cmd_backtest(a) -> int:
     return 0
 
 
+def cmd_startbench(a) -> int:
+    from gauge import startbench
+    from gauge.runner import gpu_lock
+
+    conn = store.connect(a.db)
+    if not a.analyze_only:
+        with gpu_lock("gauge startbench", not a.no_lock):
+            a.session = startbench.run_bench(conn, a.reps, log=lambda m: print(m, flush=True))
+    for d in startbench.analyze(conn, a.session):
+        ph = lambda k: f"{d[k]['p50'] * 1000:7.0f}" if k in d else "      -"  # noqa: E731
+        print(f"{d['variant']:21} {d['task']:6} n={d['n']:<4} total p50 {d['total']['p50'] * 1000:6.0f}ms"
+              f" (p90 {d['total']['p90'] * 1000:5.0f})  overhead {d['overhead_vs_native_p50'] * 1000:6.0f}ms |"
+              f" create{ph('client_to_created')} start{ph('created_to_started')} first{ph('started_to_first')}"
+              f" task{ph('task_run')} return{ph('end_to_return')}  rm {(d['rm_p50'] or 0) * 1000:.0f}")
+    return 0
+
+
 def cmd_export(a) -> int:
     conn = store.connect(a.db)
     out = Path(a.out)
@@ -233,6 +250,12 @@ def main(argv=None) -> int:
     p.add_argument("--out", default="reports/report.html")
     p.set_defaults(fn=cmd_report)
     sub.add_parser("backtest", help="replay current predictors over recorded runs").set_defaults(fn=cmd_backtest)
+    p = sub.add_parser("startbench", help="container start overhead vs native, phase-decomposed")
+    p.add_argument("--reps", type=int, default=30)
+    p.add_argument("--no-lock", action="store_true")
+    p.add_argument("--analyze-only", action="store_true")
+    p.add_argument("--session", default=None)
+    p.set_defaults(fn=cmd_startbench)
     p = sub.add_parser("export")
     p.add_argument("--out", default="data/export")
     p.set_defaults(fn=cmd_export)
