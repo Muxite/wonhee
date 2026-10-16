@@ -55,15 +55,21 @@ class GenParams(BaseModel):
     prompt_tokens: int = 500
     gen_tokens: int = 200
     requests: int = 1
+    # Ollama 0.35 ships PTX the driver JIT-compiles for this GPU: ~60 s per fresh container unless the
+    # compute cache persists. "shared" mounts one cache volume across jobs (cold on its first use).
+    jit_cache: Literal["none", "shared"] = "shared"
 
 
 def kv_bytes(m: dict, ctx: int) -> float:
     return 2 * m["layers"] * m["kv_heads"] * m["head_dim"] * 2 * ctx  # K and V, f16
 
 
+JIT_S = 60.0  # measured once on this box (run 12); a fact about the stack, so the prior may use it
+
+
 def gen_prior(p) -> dict:
     m = MODELS[p.model]
-    load = 1.5 + m["file_bytes"] / 3e9  # server start + read weights (page-cache speed)
+    load = 1.5 + m["file_bytes"] / 3e9 + (JIT_S if p.jit_cache == "none" else 0.0)
     prefill = p.prompt_tokens * 2 * m["params"] / 30e12 * p.requests
     decode = p.gen_tokens * m["file_bytes"] / 700e9 * p.requests  # memory-bandwidth bound
     runtime = load + prefill + decode
@@ -82,6 +88,7 @@ def gen_features(p) -> dict:
 register(Workload(
     name="llm.generate", family="inference", image=OLLAMA_IMAGE, params=GenParams, gpu=True,
     mounts=(f"{MODEL_VOLUME}:/ollama:ro",),
+    param_mounts=lambda p: ("gauge-cuda-cache:/root/.nv",) if p.jit_cache == "shared" else (),
     command=lambda p: ["bash", "-c", SCRIPT, "gen", p.model, str(p.num_ctx), str(p.prompt_tokens),
                        str(p.gen_tokens), str(p.requests)],
     # everything that scales cost is a size param, so one config pools across models and contexts

@@ -26,8 +26,11 @@ class Workload:
     prior: Callable[[Any], dict]  # -> point estimates keyed by TARGETS (runtime_s, cpu_time_s, ...)
     features: Callable[[Any], dict] = lambda p: p.model_dump()
     build: str | None = None  # images/<dir> holding a Dockerfile for `image`
+    build_context: str | None = None  # context dir when it isn't images/<dir> (e.g. another repo)
     gpu: bool = False
     mounts: tuple[str, ...] = ()  # docker -v specs
+    param_mounts: Callable[[Any], tuple[str, ...]] = lambda p: ()  # mounts that depend on params
+    param_env: Callable[[Any], dict[str, str]] = lambda p: {}  # env that depends on params
     env: dict[str, str] = field(default_factory=dict)
     mem_limit: str = "24g"
     shm_size: str | None = None

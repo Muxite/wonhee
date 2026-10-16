@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -39,8 +40,12 @@ def gpu_lock(what: str, enabled: bool, ttl_s: int = 7200):
     try:
         yield token
     finally:
-        args = [GPU_LOCK, "release"] + (["--token", token] if token else [])
-        subprocess.run(args, capture_output=True, text=True)
+        for _ in range(2):
+            rr = subprocess.run([GPU_LOCK, "release", "--token", token], capture_output=True, text=True)
+            if rr.returncode == 0:
+                break
+        else:
+            print(f"WARNING gpu-lock release failed: {(rr.stdout + rr.stderr).strip()[:300]}", file=sys.stderr)
 
 
 class Job:
@@ -96,7 +101,7 @@ class Job:
                          status="running")
         name = f"gauge-{self.run_id}-{uuid.uuid4().hex[:6]}"
         argv_fn = lambda cid: docker_argv(name, w.image, w.command(self.p), cidfile=cid, gpu=w.gpu,  # noqa: E731
-                                          mem_limit=spec.mem_limit or w.mem_limit, mounts=w.mounts, env=w.env,
+                                          mem_limit=spec.mem_limit or w.mem_limit, mounts=w.mounts + w.param_mounts(self.p), env={**w.env, **w.param_env(self.p)},
                                           shm_size=w.shm_size)
         self.c = Container(name, argv_fn, self._on_line)
         self.energy0 = self.gpu.energy_mj()
@@ -143,6 +148,7 @@ class Job:
                             wall_s=t_fin - self.t_req, energy_j=energy_j, sampler=self.sampler,
                             gpu_caps=dict(self.gpu.capabilities), failure_class=fclass)
         summary["marks"] = [{"mark": m["mark"], "t": m["at"] - started} for m in self.marks]
+        summary["log_tail"] = [l[:300] for _, l in c.lines[-12:]]
         store.insert_samples(self.conn, self.run_id, rows)
         store.update_run(self.conn, self.run_id, container_started=started, workload_finished=workload_end,
                          container_finished=t_fin, marks_json=summary["marks"], outcome_json=self.outcome,
@@ -151,7 +157,6 @@ class Job:
                          failure_source=fsrc, status="done")
         store.put_summary(self.conn, self.run_id, summary)
         evaluate.evaluate_run(self.conn, self.run_id, summary)
-        self.tail = [l for _, l in c.lines[-15:]]
         return summary
 
 
@@ -169,8 +174,6 @@ def run(conn, spec: JobSpec, *, interval_s=0.1, lock=True) -> tuple[int, dict]:
                 job.c.kill()
                 job.c.remove()
             raise
-    if summary["failure_class"] != "success":
-        summary["log_tail"] = job.tail
     return job.run_id, summary
 
 

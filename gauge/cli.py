@@ -68,7 +68,9 @@ def cmd_build(a) -> int:
         if w.build and w.build not in done:
             done.add(w.build)
             print(f"building {w.image} from images/{w.build}")
-            subprocess.run(["docker", "build", "-t", w.image, str(ROOT / "images" / w.build)], check=True)
+            ctx = w.build_context or str(ROOT / "images" / w.build)
+            subprocess.run(["docker", "build", "-t", w.image, "-f", str(ROOT / "images" / w.build / "Dockerfile"), ctx],
+                           check=True)
     return 0
 
 
@@ -92,7 +94,7 @@ def cmd_run(a) -> int:
     conn = store.connect(a.db)
     rid, s = runner.run(conn, _spec(a.workload, _kv(a.param), a), interval_s=a.interval, lock=not a.no_lock)
     print(f"run {rid}: {_fmt(s)}")
-    if s.get("log_tail"):
+    if s.get("failure_class") != "success" and s.get("log_tail"):
         print("\n".join(s["log_tail"]))
     if a.json:
         print(json.dumps(s, indent=2))
@@ -126,16 +128,21 @@ def cmd_sweep(a) -> int:
     return 0
 
 
+def _job_arg(item: str, a):
+    """'workload:k=v,k=v' (a value may itself contain ':', e.g. model=qwen2.5:3b)."""
+    wl, _, rest = item.partition(":")
+    return _spec(wl, _kv(rest.split(",")) if rest else {}, a)
+
+
 def cmd_corun(a) -> int:
     from gauge import runner
 
     conn = store.connect(a.db)
-    specs = []
-    for item in a.job:
-        wl, _, rest = item.partition(":")
-        specs.append(_spec(wl, _kv(rest.split(",")) if rest else {}, a))
-    for rid, s in runner.corun(conn, specs, interval_s=a.interval, lock=not a.no_lock):
-        print(f"run {rid}: {_fmt(s)}")
+    groups = [a.job] if a.job else yaml.safe_load(Path(a.pairs).read_text())["pairs"]
+    for g in groups:
+        for _ in range(a.repeats):
+            for rid, s in runner.corun(conn, [_job_arg(i, a) for i in g], interval_s=a.interval, lock=not a.no_lock):
+                print(f"run {rid}: {_fmt(s)}", flush=True)
     return 0
 
 
@@ -202,7 +209,9 @@ def main(argv=None) -> int:
     runopts(p)
     p.set_defaults(fn=cmd_sweep)
     p = sub.add_parser("corun", help="gauge corun 'train.small:batch=64' 'llm.generate:model=qwen2.5:3b'")
-    p.add_argument("job", nargs="+")
+    p.add_argument("job", nargs="*")
+    p.add_argument("--pairs", help="yaml with pairs: [[job, job], ...]")
+    p.add_argument("--repeats", type=int, default=1)
     runopts(p)
     p.set_defaults(fn=cmd_corun)
     p = sub.add_parser("preflight")

@@ -1,0 +1,12 @@
+jobs:
+  - workload: wonhee.speech_subs
+    fixed: {whisper_model: turbo}
+    grid: {clip_s: [20, 60, 10, 100, 40]}
+    repeats: 2
+  - workload: wonhee.speech_subs
+    fixed: {clip_s: 40}
+    grid: {whisper_model: [tiny, base, small]}
+    repeats: 2
+  - workload: wonhee.burn_subtitles
+    grid: {clip_s: [20, 60, 10, 100, 40]}
+    repeats: 2

@@ -1,0 +1,11 @@
+# CPU vs GPU encode of the same source. Sizes are interleaved, not ascending, so the online
+# calibrated predictor faces interpolation and extrapolation, not just "one step bigger".
+jobs:
+  - workload: ffmpeg.transcode
+    fixed: {codec: libx264, preset: medium}
+    grid: {seconds: [10, 40, 5, 20], height: [1080, 540, 1440]}
+    repeats: 2
+  - workload: ffmpeg.transcode
+    fixed: {codec: h264_nvenc, preset: p4}
+    grid: {seconds: [10, 40, 5, 20], height: [1080, 540, 1440]}
+    repeats: 2
