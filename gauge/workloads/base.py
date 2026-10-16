@@ -78,10 +78,13 @@ CUDA_OOM_RE = re.compile(r"CUDA out of memory|CUDA_ERROR_OUT_OF_MEMORY|cudaError
 
 
 def parse_outcome_line(line: str) -> dict | None:
+    """GAUGE_OUTCOME {json}, or a bare JSON-object line (llama-bench / batched-bench jsonl output)."""
     m = OUTCOME_RE.match(line)
-    if not m:
+    text = m.group(1) if m else (line.strip() if line.lstrip().startswith("{") else None)
+    if text is None:
         return None
     try:
-        return json.loads(m.group(1))
+        v = json.loads(text)
     except json.JSONDecodeError:
         return None
+    return v if isinstance(v, dict) else None

@@ -100,6 +100,7 @@ def summarize(*, rows: list[dict], end: dict | None, end_is_final: bool, workloa
         "dev_energy_j": energy_j, "dev_energy_j_integrated": power_j,
         "dev_energy_source": "nvml_counter" if energy_j is not None else ("integrated_power" if power_j else None),
         "dev_temp_peak_c": _max(rows, "dev_temp_c"),
+        "dev_enc_util_mean": _mean(rows, "dev_enc_util"), "dev_dec_util_mean": _mean(rows, "dev_dec_util"),
         "dev_throttle_any": any(r.get("dev_throttle") for r in rows) if rows else None,
         "device_scope_note": "device-level readings; attributable only if no other GPU work overlapped",
         # measurement quality

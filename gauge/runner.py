@@ -11,7 +11,7 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
-from gauge import evaluate, host, predict, store
+from gauge import evaluate, host, nsight, predict, store
 from gauge.docker_run import Container, docker_argv, image_digest, inspect
 from gauge.probe.cgroup import Cgroup
 from gauge.probe.gpu import Gpu
@@ -59,6 +59,7 @@ class Job:
         self.host_fp = host_fp
         self.marks: list[dict] = []
         self.outcome: dict = {}
+        self.outcomes: list[dict] = []
         self.cuda_oom_reported = False
         self.log_cuda_oom = False
         self.run_id: int | None = None
@@ -89,7 +90,11 @@ class Job:
             return
         o = parse_outcome_line(line)
         if o is not None:
-            self.outcome.update(o)
+            self.outcomes.append(o)
+            if len(self.outcomes) == 1:
+                self.outcome.update(o)  # first response's fields at top level; all of them under "responses"
+            else:
+                self.outcome["responses"] = self.outcomes
             return
         if CUDA_OOM_RE.search(line):
             self.log_cuda_oom = True
@@ -100,9 +105,13 @@ class Job:
         store.update_run(self.conn, self.run_id, initial_json=host.initial_state(self.gpu, overlapping),
                          status="running")
         name = f"gauge-{self.run_id}-{uuid.uuid4().hex[:6]}"
-        argv_fn = lambda cid: docker_argv(name, w.image, w.command(self.p), cidfile=cid, gpu=w.gpu,  # noqa: E731
-                                          mem_limit=spec.mem_limit or w.mem_limit, mounts=w.mounts + w.param_mounts(self.p), env={**w.env, **w.param_env(self.p)},
-                                          shm_size=w.shm_size)
+        cmd, mounts, caps = w.command(self.p), w.mounts + w.param_mounts(self.p), ()
+        if spec.profile != "none":
+            cmd, extra, caps = nsight.wrap(cmd, self.run_id, spec.profile)
+            mounts = mounts + extra
+        argv_fn = lambda cid: docker_argv(name, w.image, cmd, cidfile=cid, gpu=w.gpu,  # noqa: E731
+                                          mem_limit=spec.mem_limit or w.mem_limit, mounts=mounts,
+                                          env={**w.env, **w.param_env(self.p)}, shm_size=w.shm_size, cap_add=caps)
         self.c = Container(name, argv_fn, self._on_line)
         self.energy0 = self.gpu.energy_mj()
         self.t_req = time.time()
@@ -157,6 +166,12 @@ class Job:
                          failure_source=fsrc, status="done")
         store.put_summary(self.conn, self.run_id, summary)
         evaluate.evaluate_run(self.conn, self.run_id, summary)
+        if spec.profile != "none":
+            db = nsight.export(self.run_id)
+            if db:
+                prof = nsight.summarize(db)
+                nsight.store_profile(self.conn, self.run_id, prof)
+                summary["gpu_profile"] = prof
         return summary
 
 

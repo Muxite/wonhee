@@ -1,0 +1,7 @@
+# X6 serving cold-start ladder (Ollama, the API a cloud agent would call). Request 1 loads the model:
+# from disk (page cache evicted) or from RAM (page cache warm). Request 2 hits the model already in VRAM.
+jobs:
+  - workload: llm.generate
+    fixed: {model: "qwen2.5:7b", num_ctx: 4096, prompt_tokens: 500, gen_tokens: 64, requests: 2}
+    grid: {evict_page_cache: [true, false]}
+    repeats: 3

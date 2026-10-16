@@ -32,6 +32,9 @@ class JobSpec(BaseModel):
     mem_limit: str | None = None  # docker --memory; None = workload default
     timeout_s: float = 1800
     provenance: dict[str, Any] = Field(default_factory=dict)  # wonhee run/node/attempt, moeka task id
+    # Nsight Systems inside the container. "trace": this process tree's CUDA kernels/copies (process scope).
+    # "metrics": trace + GPU hardware counters at 10 kHz (device scope; only one job at a time can hold them).
+    profile: Literal["none", "trace", "metrics"] = "none"
 
     def spec_hash(self, validated_params: dict | None = None) -> str:
         """Hash of the job as run. Pass the validated params (defaults filled in) so `batch=128` and

@@ -20,7 +20,7 @@ WRAPPER = '"$@" </dev/null; rc=$?; echo "GAUGE_DONE rc=$rc"; read _ ; exit $rc'
 
 
 def docker_argv(name: str, image: str, cmd: list[str], *, cidfile: Path, gpu: bool, mem_limit: str,
-                mounts=(), env=None, shm_size=None) -> list[str]:
+                mounts=(), env=None, shm_size=None, cap_add=()) -> list[str]:
     argv = ["docker", "run", "-i", "--rm=false", "--name", name, "--cidfile", str(cidfile),
             "--memory", mem_limit, "--memory-swap", mem_limit,  # no swap: a RAM overrun is a clean cgroup OOM
             "--label", "gauge=1", "--entrypoint", "/bin/sh"]
@@ -28,6 +28,8 @@ def docker_argv(name: str, image: str, cmd: list[str], *, cidfile: Path, gpu: bo
         argv += ["--gpus", "all"]
     if shm_size:
         argv += ["--shm-size", shm_size]
+    for cap in cap_add:
+        argv += ["--cap-add", cap]
     for m in mounts:
         argv += ["-v", m]
     for k, v in (env or {}).items():

@@ -1,0 +1,5 @@
+# X0 background floor: GPU activity with none of our work running (device scope = everything else on the box).
+# X1 hardware ceilings: peak matmul per format, memory/PCIe bandwidth, kernel launch cost.
+jobs:
+  - {workload: micro.idle, fixed: {seconds: 10}, repeats: 3, profile: metrics}
+  - {workload: micro.ceilings, grid: {rep: [0, 1, 2]}, profile: metrics}

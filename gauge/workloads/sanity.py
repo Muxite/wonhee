@@ -64,3 +64,27 @@ register(Workload(
     prior=lambda p: {"runtime_s": p.hold_s + 4, "vram_peak_bytes": p.gib * 2**30 + 400 * MB,
                      "ram_peak_bytes": 1500 * MB},
     doc="allocate G GiB on the GPU: attributed VRAM should be G GiB + CUDA context"))
+
+
+class CeilParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rep: int = 0  # no knobs: the benchmark is fixed; rep only distinguishes repeats
+
+
+register(Workload(
+    name="micro.ceilings", family="micro", image="gauge/torch:1", build="torch", params=CeilParams, gpu=True,
+    command=lambda p: ["python", "/opt/gauge/ceilings.py"], size_params=("rep",), size=lambda p: 1.0,
+    prior=lambda p: {"runtime_s": 40, "vram_peak_bytes": 2.5 * 2**30, "ram_peak_bytes": 4 * 2**30},
+    doc="peak matmul TFLOPS per format, gemv/device/PCIe bandwidth, kernel launch cost"))
+
+
+class IdleParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    seconds: int = 10
+
+
+register(Workload(
+    name="micro.idle", family="micro", image="gauge/torch:1", build="torch", params=IdleParams, gpu=True,
+    command=lambda p: ["sleep", str(p.seconds)], size_params=("seconds",), size=lambda p: p.seconds,
+    prior=lambda p: {"runtime_s": p.seconds + 0.5, "ram_peak_bytes": 16 * 2**20},
+    doc="does nothing: under --profile metrics it records what the GPU does without our work (background floor)"))

@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS sample (
   io_rbytes INTEGER, io_wbytes INTEGER,
   vram_proc_bytes INTEGER,            -- scope process_sum: NVML process memory mapped to this cgroup
   dev_util REAL, dev_mem_util REAL, dev_mem_used INTEGER, dev_power_w REAL, dev_sm_mhz REAL,
-  dev_temp_c REAL, dev_throttle INTEGER  -- scope device
+  dev_temp_c REAL, dev_throttle INTEGER,  -- scope device
+  dev_enc_util REAL, dev_dec_util REAL, dev_mem_mhz REAL
 );
 CREATE INDEX IF NOT EXISTS sample_run ON sample(run_id, t);
 CREATE TABLE IF NOT EXISTS summary (
@@ -82,7 +83,7 @@ CREATE TABLE IF NOT EXISTS evaluation (
 
 SAMPLE_COLS = ("t", "cpu_usage_usec", "mem_current", "mem_anon", "mem_file", "swap_current", "io_rbytes",
                "io_wbytes", "vram_proc_bytes", "dev_util", "dev_mem_util", "dev_mem_used", "dev_power_w",
-               "dev_sm_mhz", "dev_temp_c", "dev_throttle")
+               "dev_sm_mhz", "dev_temp_c", "dev_throttle", "dev_enc_util", "dev_dec_util", "dev_mem_mhz")
 
 DEFAULT_DB = Path("data/gauge.sqlite")
 
@@ -95,6 +96,10 @@ def connect(path: str | Path = DEFAULT_DB) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
+    have = {r[1] for r in conn.execute("PRAGMA table_info(sample)")}
+    for col in ("dev_enc_util", "dev_dec_util", "dev_mem_mhz"):
+        if col not in have:  # migrate ledgers created before these columns existed
+            conn.execute(f"ALTER TABLE sample ADD COLUMN {col} REAL")
     return conn
 
 

@@ -90,6 +90,15 @@ class Gpu:
         c = self._call("sm_clock", "nvmlDeviceGetClockInfo", h, getattr(nv, "NVML_CLOCK_SM", 1))
         if c is not None:
             out["dev_sm_mhz"] = float(c)
+        enc = self._call("encoder", "nvmlDeviceGetEncoderUtilization", h)
+        if enc is not None:
+            out["dev_enc_util"] = float(enc[0])  # NVENC engine, %
+        dec = self._call("decoder", "nvmlDeviceGetDecoderUtilization", h)
+        if dec is not None:
+            out["dev_dec_util"] = float(dec[0])  # NVDEC engine, %
+        mc = self._call("mem_clock", "nvmlDeviceGetClockInfo", h, getattr(nv, "NVML_CLOCK_MEM", 2))
+        if mc is not None:
+            out["dev_mem_mhz"] = float(mc)
         t = self._call("temperature", "nvmlDeviceGetTemperature", h, getattr(nv, "NVML_TEMPERATURE_GPU", 0))
         if t is not None:
             out["dev_temp_c"] = float(t)

@@ -85,7 +85,8 @@ def _spec(workload: str, params: dict, a):
     from gauge.spec import JobSpec
 
     return JobSpec(workload=workload, params=params, warmness=getattr(a, "warmness", "unknown"),
-                   timeout_s=getattr(a, "timeout", 1800), mem_limit=getattr(a, "mem", None))
+                   timeout_s=getattr(a, "timeout", 1800), mem_limit=getattr(a, "mem", None),
+                   profile=getattr(a, "profile", "none"))
 
 
 def cmd_run(a) -> int:
@@ -109,7 +110,7 @@ def expand(sweep: dict) -> list[tuple[str, dict]]:
         keys = list(grid)
         for combo in itertools.product(*(grid[k] for k in keys)) if keys else [()]:
             params = {**j.get("fixed", {}), **dict(zip(keys, combo))}
-            out += [(j["workload"], params)] * j.get("repeats", 1)
+            out += [(j["workload"], params, j.get("profile"))] * j.get("repeats", 1)
     return out
 
 
@@ -119,9 +120,12 @@ def cmd_sweep(a) -> int:
     conn = store.connect(a.db)
     jobs = expand(yaml.safe_load(Path(a.file).read_text()))
     print(f"{len(jobs)} jobs")
-    for i, (wl, params) in enumerate(jobs, 1):
+    for i, (wl, params, prof) in enumerate(jobs, 1):
         try:
-            rid, s = runner.run(conn, _spec(wl, params, a), interval_s=a.interval, lock=not a.no_lock)
+            spec = _spec(wl, params, a)
+            if prof:
+                spec = spec.model_copy(update={"profile": prof})
+            rid, s = runner.run(conn, spec, interval_s=a.interval, lock=not a.no_lock)
             print(f"[{i}/{len(jobs)}] run {rid} {wl} {params}: {_fmt(s)}", flush=True)
         except Exception as e:  # one broken job must not sink the sweep
             print(f"[{i}/{len(jobs)}] {wl} {params}: ERROR {type(e).__name__}: {e}", flush=True)
@@ -138,10 +142,13 @@ def cmd_corun(a) -> int:
     from gauge import runner
 
     conn = store.connect(a.db)
-    groups = [a.job] if a.job else yaml.safe_load(Path(a.pairs).read_text())["pairs"]
-    for g in groups:
-        for _ in range(a.repeats):
-            for rid, s in runner.corun(conn, [_job_arg(i, a) for i in g], interval_s=a.interval, lock=not a.no_lock):
+    doc = {"pairs": [a.job]} if a.job else yaml.safe_load(Path(a.pairs).read_text())
+    for g in doc["pairs"]:
+        for _ in range(doc.get("repeats", a.repeats)):
+            specs = [_job_arg(i, a) for i in g]
+            if doc.get("profile"):
+                specs = [s.model_copy(update={"profile": doc["profile"]}) for s in specs]
+            for rid, s in runner.corun(conn, specs, interval_s=a.interval, lock=not a.no_lock):
                 print(f"run {rid}: {_fmt(s)}", flush=True)
     return 0
 
@@ -225,6 +232,8 @@ def main(argv=None) -> int:
         p.add_argument("--timeout", type=float, default=1800)
         p.add_argument("--mem", default=None, help="docker --memory override, e.g. 4g")
         p.add_argument("--warmness", default="unknown", choices=["cold", "warm", "unknown"])
+        p.add_argument("--profile", default="none", choices=["none", "trace", "metrics"],
+                       help="Nsight inside the container: trace = this process's kernels; metrics = + GPU counters")
 
     p = sub.add_parser("run")
     p.add_argument("workload")

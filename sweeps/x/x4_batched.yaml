@@ -1,0 +1,4 @@
+# X4a one process decoding 1/2/4/8 sequences at once (batching). Compare with x4_separate (N processes).
+jobs:
+  - {workload: llamacpp.batched, fixed: {model: "qwen2.5:3b", prompt_tokens: 128, gen_tokens: 256, parallel: "1,2,4,8"}, repeats: 2, profile: metrics}
+  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 256, reps: 2}, repeats: 2, profile: trace}
