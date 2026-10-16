@@ -125,6 +125,10 @@ def export(conn) -> dict:
     sb = [dict(r) for r in conn.execute("SELECT * FROM startbench WHERE error IS NULL")] \
         if conn.execute("SELECT 1 FROM sqlite_master WHERE name='startbench'").fetchone() else []
     counts["container_starts"] = _write("container_starts", sb)
+    from gauge.interference import rows as interference_rows
+
+    counts["corun_interference"] = _write("corun_interference",
+                                          [{**r, "params": json.dumps(r["params"], sort_keys=True)} for r in interference_rows(conn)])
     # 10 ms timelines of kernel categories for every profiled run (process scope)
     tl = []
     for rid in profiles:
@@ -132,4 +136,7 @@ def export(conn) -> dict:
         if db.exists():
             tl += [{"run_id": rid, **row} for row in nsight.timeline(db, 10.0)]
     counts["kernel_timeline_10ms"] = _write("kernel_timeline_10ms", tl, gz=True)
+    card = ROOT / "docs" / "DATA_CARD.md"
+    if card.exists():
+        (OUT / "DATA_CARD.md").write_text(card.read_text())
     return counts
