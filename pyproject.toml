@@ -1,0 +1,48 @@
+[project]
+name = "wonhee"
+version = "0.1.0"
+description = "Influencer-side automation: trend scout, editor, prop builder."
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.7",
+  "pydantic-settings>=2.2",
+  "httpx>=0.27",
+  "apify-client>=3.3",
+  "scenedetect[opencv]>=0.7",
+  "faster-whisper>=1.0",
+  "av<17",
+  "nvidia-cublas-cu12; sys_platform == 'linux'",
+  "nvidia-cudnn-cu12>=9,<10; sys_platform == 'linux'",
+  "imagehash>=4.3",
+  "pillow>=10",
+  "pyyaml>=6",
+  "yt-dlp[default,curl-cffi]>=2026.8.19",
+  # tag awr-compat-a4970c6, the same snapshot awork-resume pins
+  "moeka @ git+https://github.com/Muxite/moeka.git@a4970c6169b2dff452a33773747c7376fa3033b0",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.2"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+wonhee = "wonhee.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.uv.extra-build-variables]
+# moeka's build hook bundles a web UI wonhee never uses.
+moeka = { NANOBOT_SKIP_WEBUI_BUILD = "1" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["wonhee"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not live and not gpu'"
+markers = ["live: hits real Apify/Brave/LLM (needs keys, costs money)", "gpu: needs CUDA"]

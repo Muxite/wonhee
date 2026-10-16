@@ -32,9 +32,9 @@ The former `wonhee` (job-application form filler) moved out to its own repo,
 wonhee/
   moeka/                 git submodule — LLM access (nanobot.api.complete), web search, Telegram agent
   creator.yaml           what you can film: on_camera, locations, props, niches, language
-  migrations/            0001_init.sql, 0002_… — plain numbered SQL, applied in order
   wonhee/
     db/                  connection, migration runner, repository (the ONLY write path)
+      migrations/        0001_init.sql, 0002_… — plain numbered SQL, applied in order (package data)
     media.py             content-addressed blob store
     intent/              intent schemas + clarify loop (reused by later tools)
     pipeline/            stage registry, fixed orchestrator, resume
@@ -261,3 +261,18 @@ Run cost is derived (sum of `step.cost_usd`), not stored.
 - Apify actors: Instagram hashtag, reel, and audio scrapers — exact actors and
   their date-filter behaviour verified in the plan's first task.
 - Reference reels per trend: 5. Cost cap per run: $1.
+
+## 11. Adjustments during planning
+
+Made in Task 1 so spec and code agree.
+
+1. `run.intent_id` dropped: it is derivable via `project.intent_id` (BCNF).
+2. New `media_analysis` and `media_shot` tables hold per-video analysis. Cut count, cuts/sec and similar values are derived in `v_media_style`, not stored.
+3. New `trend_rule(trend_id, ord, kind invariant|variation, text)` holds the describe stage's invariants and variations.
+4. `llm_call` gets `step_id NULL, intent_id NULL, CHECK exactly one`, because intent-compiler model calls happen before any run exists.
+5. Migrations live in `wonhee/db/migrations/` (package data), not top-level `migrations/`.
+6. `content_item(account_id, platform)` has a composite FK to `account(id, platform)`, so the duplicated platform column can't disagree.
+7. `v_near_duplicates` uses a `hamming()` SQL function registered by `wonhee.db.connect`. Query it with `wonhee db sql`, not the bare `sqlite3` CLI.
+8. `project_trend` is the *current* choice: re-running pick replaces it. History stays in step artifacts.
+9. `step_artifact.role` adds `error` and `search_result`. `step.status` adds `running`. `run.status` values are `running|done|weak|failed|stopped`.
+10. Flag codes are seeded in `flag_code`: LOW_SAMPLE, WINDOW_WIDENED, SCHEMA_RETRY, SCHEMA_FAIL, UNCITED_CLAIM, COST_CAP, NO_CANDIDATES, DOWNLOAD_FAILED, LENGTH_OVER, EXCEPTION, MISSING_KEY.

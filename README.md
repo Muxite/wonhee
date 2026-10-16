@@ -17,3 +17,55 @@ Sub-projects, in build order:
 4. Director / idea inbox
 
 The job-application form filler that used to live here is now `../awork-fill`.
+
+## Setup
+    uv sync --all-extras          # moeka is a pinned pip dependency; there is no submodule
+    cp creator.example.yaml creator.yaml   # what you can film
+    cp .env.example .env          # then fill in OPENROUTER_API_KEY, BRAVE_API_KEY, APIFY_API_KEY
+    uv run wonhee doctor
+
+Keys come from the process environment only. `wonhee` loads a `KEY=VALUE` file at startup
+(`--env-file PATH`, else `$WONHEE_ENV_FILE`, else `.env` in the repo), and anything you already
+exported in your shell wins over the file. `.env` is gitignored. `wonhee doctor` reports, by name
+only, whether each key came from the shell or the file. wonhee never reads `~/.nanobot` or any
+other user-level moeka state; the LLM runs in-process through the pinned moeka kernel, and
+subprocesses (ffmpeg, yt-dlp) get a minimal environment with no keys.
+
+## Use
+    uv run wonhee scout "gym humor, what was trending a year ago"
+    # asks, confirms, runs (progress on stderr), prints the shot list
+    uv run wonhee ask "gym humor now" [--intent 4]   # one compile turn
+    uv run wonhee go 4                               # run a confirmed intent
+    uv run wonhee show run 3                         # steps: status, flags, cost
+    uv run wonhee show project 2                     # the shot list
+    uv run wonhee resume 3 --from fetch --set cost_cap_usd=3
+    uv run wonhee db sql "SELECT * FROM v_trend_popularity"
+    uv run wonhee account mark some_friend friend
+
+Live smoke test (spends real money, cap $0.75): `uv run pytest -m live -s`.
+
+## Debugging a bad result
+1. `wonhee show run <id>`: which stage is weak/failed, and why (flag codes).
+2. `wonhee db sql "SELECT role, blob_sha256 FROM step_artifact WHERE step_id=<n>"`:
+   raw API replies and model prompts/replies are files under
+   `data/media/<sha[:2]>/<sha>`.
+3. Fix the input and `wonhee resume <id> --from <stage>`; earlier attempts stay
+   in the DB. If a stage found nothing (NO_CANDIDATES), resuming will not help:
+   start a new scout with a wider window or a different niche.
+4. Run stopped on the cost cap? Continue with
+   `wonhee resume <id> --from <stage> --set cost_cap_usd=3`.
+
+Errors: model-call failures print one line plus the log path; every error's
+traceback is appended to `data/logs/wonhee.log` (under `WONHEE_HOME`). Apify
+spend is capped per call by the run's remaining budget, and each actor run
+waits at most 10 minutes before being aborted.
+
+## Known limitations
+- LLM cost uses the provider-reported cost when moeka exposes one, else `WONHEE_LLM_PRICE_*`;
+  `wonhee doctor` warns when prices are unset.
+- Whisper runs on CUDA by default. To use CPU on purpose, set
+  `WONHEE_WHISPER_DEVICE=cpu` and `WONHEE_WHISPER_COMPUTE_TYPE=int8`.
+- A run left `running` after a hard kill is not picked up automatically, and
+  `resume` refuses a running run: take it over with
+  `wonhee resume <id> --from <stage> --set force=true`. Ctrl-C is handled: the
+  run is marked stopped and resumes normally.

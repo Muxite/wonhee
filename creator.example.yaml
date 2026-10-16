@@ -1,0 +1,7 @@
+# Copy to creator.yaml (gitignored). What you can actually film.
+on_camera: true
+niches: ["gym humor"]
+locations: ["bedroom", "home gym", "kitchen"]
+props: ["laptop", "dumbbells"]
+language: en
+max_length_s: 30
