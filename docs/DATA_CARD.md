@@ -23,7 +23,7 @@ Partly. Every column is one of three scopes:
 | `process` | NVML VRAM per pid; Nsight CUDA trace of the job's own process tree: every kernel and copy, with start/end | **Yes, exact.** Under sharing, a kernel's duration also includes time the GPU spent on other contexts (time-slicing) |
 | `device` | NVML utilization, power, energy, clocks, encoder/decoder; Nsight GPU counters at 10 kHz (SM active, tensor active, DRAM read/write bandwidth, PCIe) | **No.** Whole GPU. It equals the job only when the job ran alone. `runs.device_metrics_attributable` = 1 marks those runs |
 
-The GPU is never empty. The display and a game-stream server (Sunshine) are always present: X0 measured the floor at **27 W, 0% SM, ~1% graphics, ~0.8% DRAM**. Each run records the other GPU processes present at start.
+**Measurement floor.** X0 profiles a container that only sleeps: **~27–28 W, 0% SM, ~1% graphics, 0.8–1.8% DRAM, ~1% PCIe TX**. Rerunning it after the display compositor and Sunshine streamer were stopped (X0b, runs 286–288, zero other GPU processes) gave the same floor. It comes from the act of measuring (Nsight's 10 kHz counter sampling plus an open CUDA context keep the GPU out of its low-power state), not from other tenants. The unobserved idle GPU draws 16.8 W in P8. Runs before 2026-10-16 ~18:20 had those two light tenants resident (229 MiB VRAM, no measurable SM load); every run records the other GPU processes present at start.
 
 Profiler cost: Nsight adds ~4 s startup, ~6 CPU-s and ~0.5 GiB RAM inside the container. Use unprofiled runs for container CPU/RAM, and compare profiled runs only with profiled runs (the co-run analysis does this).
 
@@ -31,7 +31,7 @@ Profiler cost: Nsight adds ~4 s startup, ~6 CPU-s and ~0.5 GiB RAM inside the co
 
 | ID | What runs | What is happening, in one line |
 |---|---|---|
-| X0 | `sleep` under the profiler | The background floor of the GPU with none of our work |
+| X0 / X0b | `sleep` under the profiler, with / without display + Sunshine | The floor the measurement itself sees, and proof that the former tenants didn't raise it |
 | X1 | Matmul per number format, gemv, copies, PCIe, launches | The ceilings: bf16 **102 TFLOPS**, fp8 **207**, fp32 35; DRAM ~**770–850 GB/s**; PCIe **28.8 GB/s** pinned; **6.8 µs** per kernel launch |
 | X2 | llama.cpp prefill and decode as separate processes; qwen2.5 0.5B/3B/7B/14B (Q4_K_M), ×2 | **Prefill** = batched matmul on tensor cores (compute-bound). **Decode** = one matrix-vector per weight matrix per token, so every token rereads all weights (bandwidth-bound) |
 | X2b | 7B decode with 99/20/12/4/0 of 28 layers on the GPU | Partial offload: the CPU and host memory become the bottleneck and the GPU sits idle |
