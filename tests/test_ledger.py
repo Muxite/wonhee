@@ -90,3 +90,18 @@ def test_llm_prior_kv_scales_with_ctx():
     assert b - a == 2 * 28 * 4 * 128 * 2 * 4096  # K+V, f16, GQA kv_heads
     # all models share one config, so calibration can pool across sizes
     assert w.config_hash(w.validate({"model": "qwen2.5:0.5b"})) == w.config_hash(w.validate({"model": "qwen2.5:14b"}))
+
+
+def test_fit_affine_never_negative_intercept():
+    # steep line through small sizes would give a < 0 and predict ~0 below the smallest size seen
+    a, b, _ = fit_affine([10, 20, 40], [5, 40, 110])
+    assert a == 0.0 and b > 0
+    assert a + b * 5 > 0
+
+
+def test_history_needs_identical_params():
+    conn = store.connect(":memory:")
+    w = get("wonhee.speech_subs")
+    _fake_run(conn, w, {"clip_s": 40, "whisper_model": "tiny"}, {"vram_peak_bytes": 4e8, "runtime_s": 13})
+    turbo = w.validate({"clip_s": 40, "whisper_model": "turbo"})
+    assert predict.history_predictor(w, turbo, conn, time.time()).status == "insufficient_data"

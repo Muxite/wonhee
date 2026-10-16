@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 
 from gauge.evaluate import aggregate
+from gauge.workloads.base import get
 
 COLORS = {"prior": "#c2410c", "history": "#2563eb", "calibrated": "#059669"}
 UNITS = {"runtime_s": (1, "s"), "cpu_time_s": (1, "s"), "ram_peak_bytes": (2**30, "GiB"),
@@ -42,6 +43,50 @@ def scatter(points: list[tuple[float, float, str, bool]], unit: str, size=300) -
     return "".join(out) + "</svg>"
 
 
+def corun_slowdowns(conn) -> list[dict]:
+    """Each co-run job vs the median of isolated successful runs with the identical spec."""
+    import statistics
+
+    out = []
+    rows = conn.execute("SELECT r.id, r.corun_group, r.workload, r.spec_hash, r.spec_json, r.failure_class, s.json"
+                        " FROM run r JOIN summary s ON s.run_id=r.id WHERE r.corun_group IS NOT NULL"
+                        " ORDER BY r.corun_group, r.id").fetchall()
+    for r in rows:
+        s = json.loads(r["json"])
+        w = get(r["workload"])
+        norm = lambda spec: w.validate(json.loads(spec)["params"]).model_dump()  # noqa: E731  defaults filled in
+        mine = norm(r["spec_json"])
+        iso = [json.loads(x["json"]) for x in conn.execute(
+            "SELECT r.spec_json, s.json FROM run r JOIN summary s ON s.run_id=r.id WHERE r.workload=?"
+            " AND r.corun_group IS NULL AND r.failure_class='success'", (r["workload"],)) if norm(x["spec_json"]) == mine]
+        med = lambda k: statistics.median([x[k] for x in iso if x.get(k)]) if any(x.get(k) for x in iso) else None  # noqa: E731
+        base_rt, base_vram = med("runtime_s"), med("vram_peak_bytes")
+        out.append({"group": r["corun_group"], "run": r["id"], "workload": r["workload"],
+                    "params": json.loads(r["spec_json"])["params"], "outcome": r["failure_class"],
+                    "runtime_s": s.get("runtime_s"), "isolated_runtime_s": base_rt, "n_isolated": len(iso),
+                    "slowdown": s["runtime_s"] / base_rt if base_rt and s.get("runtime_s") else None,
+                    "vram_peak_bytes": s.get("vram_peak_bytes"), "isolated_vram_bytes": base_vram})
+    return out
+
+
+def corun_section(conn) -> list[str]:
+    rows = corun_slowdowns(conn)
+    if not rows:
+        return []
+    parts = ["<h2>Co-run trials</h2><p class=muted>slowdown = co-run runtime / median isolated runtime of the "
+             "identical spec. Device-scope GPU metrics in these runs are shared, so they are not per-job.</p>",
+             "<table><tr><th>group</th><th>run</th><th>workload</th><th>params</th><th>outcome</th><th>runtime s</th>"
+             "<th>isolated s (n)</th><th>slowdown</th><th>vram GiB</th><th>isolated vram GiB</th></tr>"]
+    gib = lambda v: _num(v / 2**30, 3) if v else "–"  # noqa: E731
+    for r in rows:
+        parts.append(f"<tr><td>{r['group']}</td><td>{r['run']}</td><td>{r['workload']}</td>"
+                     f"<td><code>{html.escape(json.dumps(r['params']))}</code></td><td>{r['outcome']}</td>"
+                     f"<td>{_num(r['runtime_s'])}</td><td>{_num(r['isolated_runtime_s'])} ({r['n_isolated']})</td>"
+                     f"<td>{_num(r['slowdown'], 3)}</td><td>{gib(r['vram_peak_bytes'])}</td>"
+                     f"<td>{gib(r['isolated_vram_bytes'])}</td></tr>")
+    return parts + ["</table>"]
+
+
 def write_report(conn, out: Path) -> Path:
     agg = aggregate(conn)
     ev = conn.execute(
@@ -74,6 +119,7 @@ def write_report(conn, out: Path) -> Path:
             if pts:
                 parts.append(f"<figure><figcaption>{target}</figcaption>{scatter(pts, unit)}</figure>")
         parts.append("</div>")
+    parts += corun_section(conn)
     parts.append("<h2>Runs</h2><table><tr><th>id</th><th>workload</th><th>params</th><th>outcome</th>"
                  "<th>runtime s</th><th>cpu s</th><th>ram peak GiB</th><th>vram peak GiB</th><th>dev util</th>"
                  "<th>samples</th><th>corun</th></tr>")

@@ -33,8 +33,10 @@ class JobSpec(BaseModel):
     timeout_s: float = 1800
     provenance: dict[str, Any] = Field(default_factory=dict)  # wonhee run/node/attempt, moeka task id
 
-    def spec_hash(self) -> str:
-        return digest({"workload": self.workload, "params": self.params,
+    def spec_hash(self, validated_params: dict | None = None) -> str:
+        """Hash of the job as run. Pass the validated params (defaults filled in) so `batch=128` and
+        `{model: resnet18, steps: 30, batch: 128}` hash the same."""
+        return digest({"workload": self.workload, "params": validated_params if validated_params is not None else self.params,
                        "mode": self.execution_mode, "mem_limit": self.mem_limit})
 
 

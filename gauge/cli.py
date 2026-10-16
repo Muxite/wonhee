@@ -161,6 +161,17 @@ def cmd_report(a) -> int:
     return 0
 
 
+def cmd_backtest(a) -> int:
+    from gauge.backtest import backtest
+
+    f = lambda v: "-" if v is None else f"{v:.2f}"  # noqa: E731
+    print(f"{'workload':22} {'target':16} {'predictor':10} {'n':>4} {'cens':>4} {'no_act':>6} {'cover':>5} {'mape':>6} {'med a/p':>7}")
+    for r in backtest(store.connect(a.db)):
+        print(f"{r['workload']:22} {r['target']:16} {r['predictor']:10} {r['n']:>4} {r['censored']:>4}"
+              f" {f(r['coverage']):>5} {f(r['mape']):>6} {f(r['median_ratio']):>7}")
+    return 0
+
+
 def cmd_export(a) -> int:
     conn = store.connect(a.db)
     out = Path(a.out)
@@ -221,6 +232,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("report")
     p.add_argument("--out", default="reports/report.html")
     p.set_defaults(fn=cmd_report)
+    sub.add_parser("backtest", help="replay current predictors over recorded runs").set_defaults(fn=cmd_backtest)
     p = sub.add_parser("export")
     p.add_argument("--out", default="data/export")
     p.set_defaults(fn=cmd_export)

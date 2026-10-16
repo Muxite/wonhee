@@ -41,7 +41,7 @@ def gpu_lock(what: str, enabled: bool, ttl_s: int = 7200):
         yield token
     finally:
         for _ in range(2):
-            rr = subprocess.run([GPU_LOCK, "release", "--token", token], capture_output=True, text=True)
+            rr = subprocess.run([GPU_LOCK, "release", f"--token={token}"], capture_output=True, text=True)
             if rr.returncode == 0:
                 break
         else:
@@ -70,7 +70,7 @@ class Job:
     def commit(self) -> int:
         w, p, spec = self.w, self.p, self.spec
         self.run_id = store.insert_run(
-            self.conn, workload=w.name, family=w.family, spec_hash=spec.spec_hash(), config_hash=w.config_hash(p),
+            self.conn, workload=w.name, family=w.family, spec_hash=spec.spec_hash(p.model_dump()), config_hash=w.config_hash(p),
             spec_json=spec.model_dump(), features_json=w.features(p), size=w.size(p), image=w.image,
             image_digest=image_digest(w.image), execution_mode=spec.execution_mode, warmness=spec.warmness,
             corun_group=self.corun_group, provenance_json=spec.provenance, host_json=self.host_fp)

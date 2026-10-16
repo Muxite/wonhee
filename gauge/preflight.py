@@ -17,14 +17,17 @@ def estimate(conn, spec: JobSpec):
 
 
 def coexecution(conn, a: JobSpec, b: JobSpec) -> str:
-    """measured_pair if these two configs were ever deliberately co-run; never inferred from fit alone."""
-    wa, wb = get(a.workload), get(b.workload)
-    ha, hb = wa.config_hash(wa.validate(a.params)), wb.config_hash(wb.validate(b.params))
-    row = conn.execute(
-        "SELECT 1 FROM run x JOIN run y ON x.corun_group = y.corun_group AND x.id != y.id"
-        " WHERE x.config_hash=? AND y.config_hash=? AND x.status='done' AND y.status='done' LIMIT 1",
-        (ha, hb)).fetchone()
-    return "measured_pair" if row else "untested"
+    """measured_pair only if these exact jobs (defaults filled in) were deliberately co-run together."""
+    import json
+
+    norm = lambda spec: (spec.workload, get(spec.workload).validate(spec.params).model_dump())  # noqa: E731
+    want = sorted([norm(a), norm(b)], key=str)
+    groups: dict[str, list] = {}
+    for r in conn.execute("SELECT corun_group, workload, spec_json FROM run WHERE corun_group IS NOT NULL"
+                          " AND status='done'"):
+        params = get(r["workload"]).validate(json.loads(r["spec_json"])["params"]).model_dump()
+        groups.setdefault(r["corun_group"], []).append((r["workload"], params))
+    return "measured_pair" if any(sorted(g, key=str) == want for g in groups.values()) else "untested"
 
 
 def preflight(conn, spec: JobSpec, alongside: JobSpec | None = None, gpu: Gpu | None = None) -> dict:

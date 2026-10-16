@@ -1,14 +1,13 @@
 """Predictors. Each returns a Prediction from facts known before launch plus finished history.
 
 - prior:      the workload's analytic formula (weights + KV cache, frames*pixels/throughput, load + RTF*audio...)
-- history:    same workload+config, same log2 size bucket: median estimate, max*margin upper bound
+- history:    identical params seen before: median estimate, max*margin upper bound
 - calibrated: per target, actual = a + b * prior_estimate fitted on history. `a` absorbs fixed costs the
               formula misses (CUDA context, server start), `b` rescales its rate constants. Because the
               prior already encodes size, one config can pool across sizes and extrapolate to unseen ones.
 """
 from __future__ import annotations
 
-import math
 import statistics
 
 from gauge import store
@@ -30,13 +29,14 @@ def _usable(runs: list[dict]) -> list[dict]:
 
 
 def history_predictor(w: Workload, p, conn, now: float) -> Prediction:
-    size = w.size(p)
+    """Identical validated params seen before (defaults filled in). Generalizing across sizes is calibrated's job:
+    a size bucket would pool e.g. whisper tiny with turbo, since the model is a size param there."""
+    mine = p.model_dump()
     runs = _usable(store.history(conn, w.family, w.config_hash(p), now, w.name))
-    bucket = lambda s: round(math.log2(s)) if s and s > 0 else None  # noqa: E731
-    same = [r for r in runs if bucket(r["size"]) == bucket(size)]
+    same = [r for r in runs if w.validate(r["params"]).model_dump() == mine]
     if not same:
-        return Prediction(predictor="history", predictor_version=1, status="insufficient_data",
-                          history_cutoff=now, note=f"{len(runs)} runs of this config, none in size bucket")
+        return Prediction(predictor="history", predictor_version=2, status="insufficient_data",
+                          history_cutoff=now, note=f"{len(runs)} runs of this config, none identical")
     out: dict = {}
     for key, (est, up) in FIELDS.items():
         vals = [r["summary"].get(key) for r in same if r["summary"].get(key) is not None]
@@ -46,17 +46,20 @@ def history_predictor(w: Workload, p, conn, now: float) -> Prediction:
             out[est] = statistics.median(vals)
         if up:
             out[up] = max(vals) * (1 + MARGIN)
-    return Prediction(predictor="history", predictor_version=1, status="supported", history_cutoff=now,
+    return Prediction(predictor="history", predictor_version=2, status="supported", history_cutoff=now,
                       evidence_run_ids=[r["id"] for r in same], **out)
 
 
 def fit_affine(xs: list[float], ys: list[float]) -> tuple[float, float, float]:
-    """Least squares y = a + b*x. Returns (a, b, max positive residual)."""
+    """Least squares y = a + b*x, with a >= 0: no cost here is negative at size zero, and a negative
+    intercept collapses predictions below the smallest size seen. Returns (a, b, max positive residual)."""
     n = len(xs)
     mx, my = sum(xs) / n, sum(ys) / n
     sxx = sum((x - mx) ** 2 for x in xs)
     b = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sxx if sxx else 0.0
     a = my - b * mx
+    if a < 0:  # refit through the origin
+        a, b = 0.0, sum(x * y for x, y in zip(xs, ys)) / sum(x * x for x in xs)
     worst = max(0.0, *(y - (a + b * x) for x, y in zip(xs, ys)))
     return a, b, worst
 
@@ -85,9 +88,9 @@ def calibrated_predictor(w: Workload, p, conn, now: float) -> Prediction:
         used.update(i for _, _, i in pts)
         notes.append(f"{key}: a={a:.4g} b={b:.4g} n={len(pts)}")
     if not out:
-        return Prediction(predictor="calibrated", predictor_version=2, status="insufficient_data",
+        return Prediction(predictor="calibrated", predictor_version=3, status="insufficient_data",
                           history_cutoff=now, note=f"need runs at >=2 distinct prior values; have {len(runs)} runs")
-    return Prediction(predictor="calibrated", predictor_version=2, status="supported", history_cutoff=now,
+    return Prediction(predictor="calibrated", predictor_version=3, status="supported", history_cutoff=now,
                       evidence_run_ids=sorted(used), note="; ".join(notes), **out)
 
 
