@@ -1,0 +1,13 @@
+# X7 idle -> A -> idle -> B -> idle -> A+B -> idle, one continuous GPU-counter observer.
+idle_s: 5
+repeats: 2
+pairs:
+  - label: "LLM decode + CNN training"
+    a: "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=512,reps=3"
+    b: "train.small:model=resnet50,batch=64,steps=150"
+  - label: "LLM decode + NVENC encode"
+    a: "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=512,reps=3"
+    b: "ffmpeg.transcode:seconds=100,height=1080,codec=h264_nvenc,preset=p4"
+  - label: "LLM decode + LLM decode"
+    a: "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=512,reps=3"
+    b: "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=512,reps=3"

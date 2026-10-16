@@ -68,6 +68,16 @@ def export(run_id: int) -> Path | None:
     return out if out.exists() else None
 
 
+def export_name(name: str) -> Path | None:
+    rep = OUT_DIR / f"{name}.nsys-rep"
+    if not rep.exists():
+        return None
+    out = OUT_DIR / f"{name}.sqlite"
+    subprocess.run([str(NSYS_HOST), "export", "--type", "sqlite", "-o", str(out), "--force-overwrite", "true",
+                    str(rep)], capture_output=True, timeout=900)
+    return out if out.exists() else None
+
+
 def _union_ns(intervals: list[tuple[int, int]]) -> int:
     total, cur_s, cur_e = 0, None, None
     for s, e in sorted(intervals):

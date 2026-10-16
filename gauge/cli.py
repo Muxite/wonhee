@@ -215,6 +215,24 @@ def cmd_trace_export(a) -> int:
     return 0
 
 
+def cmd_sequence(a) -> int:
+    from gauge import sequence
+
+    conn = store.connect(a.db)
+    doc = yaml.safe_load(Path(a.file).read_text())
+    for pair in doc["pairs"]:
+        for _ in range(doc.get("repeats", 1)):
+            r = sequence.run_sequence(conn, _job_arg(pair["a"], a), _job_arg(pair["b"], a),
+                                      idle_s=doc.get("idle_s", 5), label=pair.get("label", ""))
+            res = sequence.analyze(conn, r["id"])
+            print(f"== {r['id']} {pair.get('label', '')}", flush=True)
+            for w in res["windows"]:
+                print(f"  {w['step']:5} {w['seconds']:5.1f}s  SM {w.get('SMs Active') or 0:5.1f}  tensor {w.get('Tensor Active') or 0:5.1f}"
+                      f"  DRAMr {w.get('DRAM Read Bandwidth') or 0:5.1f}  DRAMw {w.get('DRAM Write Bandwidth') or 0:5.1f}"
+                      f"  issue {w.get('SM Issue') or 0:5.1f}  runs {w['run_ids']}", flush=True)
+    return 0
+
+
 def cmd_export(a) -> int:
     conn = store.connect(a.db)
     out = Path(a.out)
@@ -288,6 +306,9 @@ def main(argv=None) -> int:
     p = sub.add_parser("trace-export", help="per-node execution trace: node JSON + Perfetto JSON")
     p.add_argument("run_ids", nargs="+", type=int)
     p.set_defaults(fn=cmd_trace_export)
+    p = sub.add_parser("sequence", help="idle -> A -> B -> A+B under one GPU-counter observer")
+    p.add_argument("file")
+    p.set_defaults(fn=cmd_sequence)
     p = sub.add_parser("export")
     p.add_argument("--out", default="data/export")
     p.set_defaults(fn=cmd_export)
