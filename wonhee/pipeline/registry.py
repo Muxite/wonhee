@@ -27,3 +27,15 @@ def stages_for(kind: str) -> list[Stage]:
     if kind not in STAGES_BY_KIND:
         raise ValueError(f"project kind {kind!r} has no pipeline")
     return STAGES_BY_KIND[kind]
+
+
+def stages_for_run(conn, run_id: int) -> list[Stage]:
+    from wonhee.db import queries
+
+    kind = queries.project_of_run(conn, run_id)["kind"]
+    if kind == "chain":
+        from wonhee.nodes.runner import stages_for_chain
+        from wonhee.pipeline.orchestrator import load_request
+
+        return stages_for_chain(load_request(conn, run_id)[1])
+    return stages_for(kind)

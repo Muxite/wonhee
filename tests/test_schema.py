@@ -6,7 +6,7 @@ from wonhee.db.migrate import migrate
 
 def test_migrate_fresh_and_idempotent(tmp_path):
     c = connect(tmp_path / "a.db")
-    assert migrate(c) == [1, 2, 3, 4, 5]
+    assert migrate(c) == [1, 2, 3, 4, 5, 6]
     assert migrate(c) == []
 
 
@@ -86,7 +86,7 @@ def test_project_rebuild_keeps_rows_and_references(tmp_path):
       INSERT INTO project(id, title, kind, status, intent_id, created_at) VALUES (7,'p','scout','open',1,'now');
       INSERT INTO run(id, project_id, orchestrator, status, cost_cap_usd, started_at) VALUES (1,7,'fixed','done',1,'now');
     """)
-    assert migrate(c) == [5]
+    assert migrate(c) == [5, 6]
     assert c.execute("SELECT title FROM project WHERE id=7").fetchone()[0] == "p"
     assert c.execute("SELECT count(*) FROM pragma_foreign_key_check").fetchone()[0] == 0
     assert c.execute("PRAGMA foreign_keys").fetchone()[0] == 1
@@ -94,3 +94,29 @@ def test_project_rebuild_keeps_rows_and_references(tmp_path):
     c.execute("SELECT * FROM v_project_overview").fetchall()
     with pytest.raises(sqlite3.IntegrityError):
         c.execute("DELETE FROM project WHERE id=7")  # run still references it: FKs enforced on the new table
+
+
+def test_0006_rebuild_keeps_projects_and_accepts_chain(tmp_path):
+    import shutil
+    from wonhee.db.migrate import MIGRATIONS
+    old = tmp_path / "old"
+    old.mkdir()
+    for f in MIGRATIONS.iterdir():
+        if f.name[:4] in ("0001", "0002", "0003", "0004", "0005"):
+            shutil.copy(f, old / f.name)
+    c = connect(tmp_path / "c.db")
+    migrate(c, old)
+    c.executescript("""
+      INSERT INTO project(id, title, kind, created_at) VALUES (1,'s','scout','now');
+      INSERT INTO project(id, title, kind, created_at) VALUES (2,'l','library','now');
+    """)
+    assert migrate(c) == [6]
+    assert [r[0] for r in c.execute("SELECT title FROM project ORDER BY id")] == ["s", "l"]
+    assert c.execute("SELECT count(*) FROM pragma_foreign_key_check").fetchone()[0] == 0
+    assert c.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    c.execute("INSERT INTO project(title, kind, created_at) VALUES ('c','chain','now')")
+    c.execute("SELECT * FROM v_project_overview").fetchall()
+    with pytest.raises(sqlite3.IntegrityError):
+        c.execute("INSERT INTO project(title, kind, created_at) VALUES ('x','bogus','now')")
+    codes = {r[0] for r in c.execute("SELECT code FROM flag_code")}
+    assert {"CACHED", "TRANSLATION_GAP", "NO_TEXT"} <= codes

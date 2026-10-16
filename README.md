@@ -69,3 +69,18 @@ waits at most 10 minutes before being aborted.
   `resume` refuses a running run: take it over with
   `wonhee resume <id> --from <stage> --set force=true`. Ctrl-C is handled: the
   run is marked stopped and resumes normally.
+
+## Nodes and chains
+Every tool is a typed node; a chain wires nodes together and wonhee pipes each result into the next.
+
+    uv run wonhee node list                                   # what exists: ports in -> out, one-line doc
+    uv run wonhee node show translate                         # params (JSON schema)
+    uv run wonhee node run to_srt --in subtitles=subs.json    # one node; inputs are refs, content:<id>, or local files
+    uv run wonhee chain run docs/chains/translate_reel.json --detach   # returns a run id at once
+    uv run wonhee chain show 7                                # per-node status, cost, final outputs with file paths
+    uv run wonhee resume 7 --from t --set no_cache=true       # redo from a node id (cache skipped)
+
+`docs/chains/translate_reel.json` grabs a reel, reads speech and on-screen text, merges them, translates to English,
+and writes an `.srt` plus a subtitled video. Change the `url` param to use it on another reel. Results are cached per
+(node, version, inputs, params): rerunning an unchanged node costs nothing and shows `CACHED`.
+Agents use the same through MCP: `nodes_list`, `node_run`, `chain_run(chain, wait=False)`, `chain_show`.

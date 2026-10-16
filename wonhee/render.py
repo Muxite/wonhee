@@ -105,6 +105,75 @@ def render_run(conn, run_id: int, media_dir: Path) -> str:
     return "\n".join(out)
 
 
+def _as_media_dir(x) -> Path:
+    return x if isinstance(x, Path) else x.media_dir
+
+
+def _preview(conn, media_dir: Path, type_: str, ref: str) -> list[str]:
+    try:
+        return _preview_unsafe(conn, media_dir, type_, ref)
+    except Exception:  # noqa: BLE001 - a preview must never break the render
+        return [f"    {path_for(media_dir, ref) if type_ != 'content' else ref}"]
+
+
+def _preview_unsafe(conn, media_dir: Path, type_: str, ref: str) -> list[str]:
+    ind = "    "
+    if type_ == "subtitles":
+        from wonhee.nodes.subtitles import load_subs
+        subs = load_subs(media_dir, ref)
+        out = [f"{ind}language {subs.language or '-'}, {len(subs.lines)} line(s)"]
+        out += [f"{ind}[{ln.start_ms / 1000:.1f}s] {ln.text}" for ln in subs.lines[:3]]
+        return out
+    path = path_for(media_dir, ref)
+    if type_ == "video":
+        m = conn.execute("SELECT * FROM media WHERE blob_sha256=?", (ref,)).fetchone()
+        try:
+            from wonhee.media import has_audio
+            audio = "yes" if has_audio(path) else "no"
+        except Exception:  # noqa: BLE001 - a preview must never break the render
+            audio = "?"
+        dur = f"{m['duration_ms'] / 1000:.1f}s" if m and m["duration_ms"] is not None else "?s"
+        size = f"{m['width']}x{m['height']}" if m and m["width"] else "?x?"
+        return [f"{ind}{path}", f"{ind}{size}, {dur}, audio {audio}"]
+    if type_ == "content":
+        cid = int(ref.split(":", 1)[1])
+        r = conn.execute("SELECT handle, url FROM v_content_latest WHERE content_id=?", (cid,)).fetchone()
+        return [f"{ind}{r['url']}  @{r['handle']}"] if r else [f"{ind}content {cid}"]
+    out = [f"{ind}{path}"]
+    if type_ == "text":
+        try:
+            out += _wrap(path.read_text(encoding="utf-8")[:300], ind)
+        except OSError:
+            pass
+    return out
+
+
+def render_chain(conn, settings_or_media_dir, run_id: int) -> str:
+    """render_run's step table, then the chain's final outputs (output ports nothing else consumes), with previews."""
+    from wonhee.nodes.chain import WIRE_RE
+    from wonhee.nodes.types import is_literal
+    from wonhee.pipeline.orchestrator import load_request
+
+    media_dir = _as_media_dir(settings_or_media_dir)
+    _, chain = load_request(conn, run_id)
+    out = [render_run(conn, run_id, media_dir)]
+    consumed = {WIRE_RE.match(v).groups() for cn in chain.nodes for v in cn.in_.values()
+                if not is_literal(v) and WIRE_RE.match(v)}  # (node id, port) pairs something reads
+    lines: list[str] = []
+    for cn in chain.nodes:
+        step = queries.current_step(conn, run_id, cn.id)
+        if step is None or step["status"] not in ("ok", "weak"):
+            continue
+        for port, o in queries.step_outputs(conn, step["id"]).items():
+            if (cn.id, port) in consumed:
+                continue
+            lines.append(f"  {cn.id}.{port} {o['type']}")
+            lines += _preview(conn, media_dir, o["type"], o["ref"])
+    if lines:
+        out += ["", "outputs:", *lines]
+    return "\n".join(out)
+
+
 def render_library(conn, project_id: int, media_dir: Path) -> str:
     """What a grab stored: one block per reel (metrics, file, cuts, speech, on-screen text)."""
     import json

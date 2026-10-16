@@ -7,8 +7,8 @@ from wonhee.db import queries, repo
 from wonhee.intent.compiler import CompileResult, compile_message
 from wonhee.intent.schemas import ScoutRequest
 from wonhee.pipeline.orchestrator import run_stages
-from wonhee.pipeline.registry import GRAB_STAGES, SCOUT_STAGES, stages_for
-from wonhee.render import render_library, render_run, render_shotlist
+from wonhee.pipeline.registry import GRAB_STAGES, SCOUT_STAGES, stages_for_run
+from wonhee.render import render_chain, render_library, render_run, render_shotlist
 
 RELATIONS = ("ours", "friend", "external")
 
@@ -22,7 +22,7 @@ def _title(request: ScoutRequest) -> str:
 
 
 def _stages_of_run(conn, run_id: int):
-    return stages_for(queries.project_of_run(conn, run_id)["kind"])
+    return stages_for_run(conn, run_id)
 
 
 def _next_stage(conn, run_id: int) -> str:
@@ -37,6 +37,8 @@ def _next_stage(conn, run_id: int) -> str:
 def _outcome(conn, settings, run_id: int, status: str) -> str:
     project = queries.project_of_run(conn, run_id)
     if status in ("done", "weak"):
+        if project["kind"] == "chain":
+            return render_chain(conn, settings, run_id)
         if project["kind"] == "library":
             return render_library(conn, project["id"], settings.media_dir)
         return render_shotlist(conn, project["id"])
@@ -100,7 +102,8 @@ def go(conn, settings, deps, intent_id: int, progress=None) -> tuple[int, str]:
     return run_id, _outcome(conn, settings, run_id, status)
 
 
-OVERRIDE_KEYS = ("count", "today", "cost_cap_usd", "force", "relation", "refetch")
+CHAIN_OVERRIDE_KEYS = ("no_cache", "cost_cap_usd", "force")
+OVERRIDE_KEYS = ("count", "today", "cost_cap_usd", "force", "relation", "refetch", "no_cache")
 
 
 def grab(conn, settings, deps, urls: list[str], relation: str = "external", progress=None,
@@ -143,9 +146,10 @@ def resume(conn, settings, deps, run_id: int, from_stage: str, overrides: dict |
     names = [s.name for s in stages]
     if from_stage not in names:
         raise ValueError(f"unknown stage {from_stage!r}; stages are {names}")
-    unknown = sorted(set(overrides) - set(OVERRIDE_KEYS))
+    valid = CHAIN_OVERRIDE_KEYS if queries.project_of_run(conn, run_id)["kind"] == "chain" else OVERRIDE_KEYS
+    unknown = sorted(set(overrides) - set(valid))
     if unknown:
-        raise ValueError(f"unknown --set key(s) {', '.join(unknown)}; valid keys: {', '.join(OVERRIDE_KEYS)}")
+        raise ValueError(f"unknown --set key(s) {', '.join(unknown)}; valid keys: {', '.join(valid)}")
     if "cost_cap_usd" in overrides:
         raw = overrides.pop("cost_cap_usd")
         try:
@@ -177,3 +181,134 @@ def mark_account(conn, handle: str, relation: str) -> str:
     handle = handle.strip().lstrip("@")
     repo.set_relation(conn, "instagram", handle, relation)
     return f"@{handle} marked {relation}"
+
+
+# ---- nodes and chains ------------------------------------------------------------------------------------------
+
+def _mime(path: Path) -> str:
+    import mimetypes
+    return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+
+
+def _literal_ref(conn, settings, base: str, path: Path) -> str:
+    """Store a local file for a port of type `base` and return its sha."""
+    from pydantic import ValidationError
+
+    from wonhee.nodes.chain import ChainError
+    from wonhee.nodes.subtitles import Subtitles, save_subs
+
+    if base == "subtitles":
+        try:
+            subs = Subtitles.model_validate_json(path.read_bytes())
+        except ValidationError as e:
+            raise ChainError([f"{path}: not a valid subtitles JSON file ({e.error_count()} problem(s); "
+                              f"want {{\"language\": ..., \"lines\": [{{id, start_ms, end_ms, text, source}}]}})"]) from None
+        return save_subs(conn, settings.media_dir, subs)
+    if base in ("video", "image"):
+        return repo.save_file(conn, settings.media_dir, path, base, _mime(path))
+    return repo.save_bytes(conn, settings.media_dir, path.read_bytes(), _mime(path))
+
+
+def _resolve_paths(conn, settings, chain):
+    """Replace local-file literals with stored refs (a copy). Anything else is left for validate to report."""
+    from wonhee.nodes import registry
+    from wonhee.nodes.chain import WIRE_RE
+    from wonhee.nodes.types import is_literal, parse_type
+
+    ids = {cn.id for cn in chain.nodes}
+    out = chain.model_copy(deep=True)
+    for cn in out.nodes:
+        try:
+            node = registry.get(cn.node)
+        except KeyError:
+            continue  # validate reports it
+        for port, value in list(cn.in_.items()):
+            m = WIRE_RE.match(value)
+            if is_literal(value) or (m and m.group(1) in ids) or port not in node.inputs:
+                continue
+            path = Path(value).expanduser()
+            if path.is_file():
+                cn.in_[port] = _literal_ref(conn, settings, parse_type(node.inputs[port])[0], path)
+    return out
+
+
+def _missing_refs(conn, chain) -> list[str]:
+    """Literal refs that point at nothing: a sha not in blob, a content id not in content_item."""
+    from wonhee.nodes.types import CONTENT, SHA
+
+    problems = []
+    for cn in chain.nodes:
+        for port, v in cn.in_.items():
+            if SHA.match(v):
+                if conn.execute("SELECT 1 FROM blob WHERE sha256=?", (v,)).fetchone() is None:
+                    problems.append(f"{cn.id}: input '{port}': no such blob {v[:12]}…")
+            elif (m := CONTENT.match(v)):
+                if conn.execute("SELECT 1 FROM content_item WHERE id=?", (int(m.group(1)),)).fetchone() is None:
+                    problems.append(f"{cn.id}: input '{port}': no content {m.group(1)}")
+    return problems
+
+
+def chain_run(conn, settings, deps, chain_obj, *, wait: bool = True, progress=None,
+              no_cache: bool = False) -> tuple[int, str]:
+    """Validate, record and run a chain. wait=False starts a detached child and returns at once."""
+    from wonhee.nodes import detach, registry
+    from wonhee.nodes.chain import Chain, ChainError, parse_chain, validate
+    from wonhee.nodes.runner import stages_for_chain
+
+    chain = chain_obj if isinstance(chain_obj, Chain) else parse_chain(chain_obj)
+    if no_cache:
+        chain = chain.model_copy(update={"no_cache": True})
+    chain = _resolve_paths(conn, settings, chain)
+    problems: list[str] = []
+    try:
+        validate(chain, registry.all_nodes())
+    except ChainError as e:
+        problems = list(e.problems)
+    problems += _missing_refs(conn, chain)
+    if problems:
+        raise ChainError(problems)
+    title = "→".join(cn.node for cn in chain.nodes)
+    intent_id = repo.create_intent(conn, "chain " + title, "chain", 1, chain.model_dump(by_alias=True, mode="json"))
+    repo.confirm_intent(conn, intent_id)
+    project_id = repo.create_project(conn, title, "chain", intent_id)
+    run_id = repo.start_run(conn, project_id, chain.cost_cap_usd if chain.cost_cap_usd is not None else settings.cost_cap_usd)
+    if not wait:
+        log = detach.spawn(settings, run_id)
+        return run_id, (f"run {run_id} started in the background; check with: wonhee chain show {run_id} "
+                        f"(log: {log})")
+    status = run_stages(conn, settings, deps, run_id, stages_for_chain(chain), progress=progress)
+    return run_id, _outcome(conn, settings, run_id, status)
+
+
+def node_run(conn, settings, deps, node: str, inputs: dict | None = None, params: dict | None = None,
+             wait: bool = True, progress=None, no_cache: bool = False) -> tuple[int, str]:
+    """One node as a one-node chain."""
+    from wonhee.nodes import registry
+    from wonhee.nodes.chain import parse_chain
+
+    registry.get(node)  # KeyError listing the known nodes
+    chain = parse_chain([{"id": node, "node": node, "in": dict(inputs or {}), "params": dict(params or {})}])
+    return chain_run(conn, settings, deps, chain, wait=wait, progress=progress, no_cache=no_cache)
+
+
+def chain_exec(conn, settings, deps, run_id: int, progress=None) -> str:
+    """The detached child's entry: finish a chain run. No-op when done; ignores the 'running' guard (the
+    run was created as running by the parent, and this process is the one meant to execute it)."""
+    row = queries.run_row(conn, run_id)
+    if queries.project_of_run(conn, run_id)["kind"] != "chain":
+        raise ValueError(f"run {run_id} is not a chain run")
+    if row["status"] in ("done", "weak"):
+        return _outcome(conn, settings, run_id, row["status"])
+    if conn.execute("SELECT 1 FROM step WHERE run_id=? AND status='running' LIMIT 1", (run_id,)).fetchone():
+        raise ValueError(f"run {run_id} has a step in progress; another process may be executing it")
+    stages = _stages_of_run(conn, run_id)
+    start = _next_stage(conn, run_id)
+    status = run_stages(conn, settings, deps, run_id, stages, start_at=start, progress=progress)
+    return _outcome(conn, settings, run_id, status)
+
+
+def chain_show(conn, settings, run_id: int) -> str:
+    queries.run_row(conn, run_id)
+    if queries.project_of_run(conn, run_id)["kind"] != "chain":
+        raise ValueError(f"run {run_id} is not a chain run; use: wonhee show run {run_id}")
+    return render_chain(conn, settings, run_id)

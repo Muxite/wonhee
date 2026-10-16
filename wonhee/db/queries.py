@@ -142,3 +142,13 @@ def media_shots(conn, sha: str, analyzer_version: int):
 def flag_meaning(conn, code: str) -> str:
     row = conn.execute("SELECT meaning FROM flag_code WHERE code=?", (code,)).fetchone()
     return row[0] if row else code
+
+
+def step_outputs(conn: sqlite3.Connection, step_id: int) -> dict[str, sqlite3.Row]:
+    rows = conn.execute("SELECT port, type, ref FROM step_output WHERE step_id=? ORDER BY port", (step_id,))
+    return {r["port"]: r for r in rows}
+
+
+def cache_get(conn: sqlite3.Connection, key: str) -> dict[str, tuple[str, str]] | None:
+    rows = conn.execute("SELECT port, type, ref FROM node_cache WHERE key_sha256=?", (key,)).fetchall()
+    return {r["port"]: (r["type"], r["ref"]) for r in rows} or None

@@ -27,9 +27,19 @@ def project_content_ids(conn, project_id: int) -> list[int]:
 
 def grab(ctx: Ctx) -> str:
     urls = list(ctx.request.reference_urls)
+    ids = grab_urls(ctx, urls, ctx.param("relation", "external"), ctx.param("refetch", False))
+    return "weak" if ids.failed else "ok"
+
+
+class GrabResult(dict):
+    """external_id -> content_id, plus how many downloads failed in this call."""
+    failed: int = 0
+
+
+def grab_urls(ctx: Ctx, urls: list[str], relation: str, refetch: bool) -> GrabResult:
+    """Fetch, ingest and download the given reels under ctx.project_id; returns external_id -> content_id."""
     if not urls:
         raise StageFailed("NO_CANDIDATES", "no URLs to grab")
-    relation = ctx.param("relation", "external")
     run_input = urls_input(urls)
     items = ctx.apify(ACTOR_SCRAPER, run_input)
     ctx.save_json({"actor": ACTOR_SCRAPER, "input": run_input, "items": items}, "api_response")
@@ -52,7 +62,7 @@ def grab(ctx: Ctx) -> str:
     for r in recs:
         cid = ids[r.external_id]
         row = ctx.conn.execute("SELECT media_sha256 FROM content_item WHERE id=?", (cid,)).fetchone()
-        if row["media_sha256"] and not ctx.param("refetch", False):
+        if row["media_sha256"] and not refetch:
             got += 1
             continue
         with tempfile.TemporaryDirectory() as tmp:
@@ -67,7 +77,9 @@ def grab(ctx: Ctx) -> str:
         got += 1
     if got == 0:
         raise StageFailed("DOWNLOAD_FAILED", "no video could be downloaded (see DOWNLOAD_FAILED flags)")
-    return "ok" if got == len(recs) else "weak"
+    result = GrabResult(ids)
+    result.failed = len(recs) - got
+    return result
 
 
 def analyze(ctx: Ctx) -> str:

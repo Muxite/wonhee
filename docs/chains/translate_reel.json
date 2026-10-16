@@ -1,0 +1,9 @@
+[
+  {"id": "g", "node": "grab", "params": {"url": "https://www.instagram.com/reel/DcSv-shxIDR/"}},
+  {"id": "s", "node": "speech_subs", "in": {"video": "g.video"}},
+  {"id": "o", "node": "screen_text", "in": {"video": "g.video", "context": "s.subtitles"}},
+  {"id": "m", "node": "merge_subs", "in": {"a": "s.subtitles", "b": "o.subtitles"}},
+  {"id": "t", "node": "translate", "in": {"subs": "m.subtitles", "caption": "g.content"}, "params": {"to": "en"}},
+  {"id": "srt", "node": "to_srt", "in": {"subtitles": "t.subs"}},
+  {"id": "b", "node": "burn_subtitles", "in": {"video": "g.video", "subtitles": "t.subs"}}
+]

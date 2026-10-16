@@ -4,10 +4,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from wonhee import envfile, errlog, llm, service
 from wonhee.config import Settings, get_settings
 from wonhee.db.connect import open_db
+from wonhee.nodes.chain import ChainError
 
 READ_ONLY_PREFIXES = ("select", "with", "pragma")
 
@@ -47,7 +49,7 @@ def _cmd_doctor(a, settings) -> int:
     failed = 0
     for c in doctor.checks(settings):
         mark = "✓" if c.ok else ("✗" if c.severity == "required" else "!")
-        print(f"{mark} {c.name}: {c.detail}")
+        print(f"{mark} {c.name}: {c.detail}" + (f" ({c.hint})" if c.hint else ""))
         failed += (not c.ok) and c.severity == "required"
     print("all required checks pass" if not failed else f"{failed} required check(s) failed")
     return 1 if failed else 0
@@ -113,6 +115,52 @@ def _cmd_grab(a, settings) -> int:
     return 0
 
 
+def _cmd_node(a, settings) -> int:
+    from wonhee.nodes import registry
+    if a.sub == "list":
+        for n in registry.all_nodes().values():
+            ins = ", ".join(f"{k}:{v}" for k, v in n.inputs.items()) or "-"
+            outs = ", ".join(f"{k}:{v}" for k, v in n.outputs.items())
+            print(f"{n.name}  [{ins} -> {outs}]  {n.doc}")
+    elif a.sub == "show":
+        n = registry.get(a.name)
+        print(f"{n.name} (v{n.version}): {n.doc}")
+        print("inputs:  " + (", ".join(f"{k}:{v}" for k, v in n.inputs.items()) or "-"))
+        print("outputs: " + ", ".join(f"{k}:{v}" for k, v in n.outputs.items()))
+        print("params (JSON schema):")
+        print(json.dumps(n.params.model_json_schema(), indent=2))
+    else:
+        inputs = {}
+        for item in a.inputs:
+            if "=" not in item:
+                raise ValueError(f"expected port=ref|path, got {item!r}")
+            k, v = item.split("=", 1)
+            inputs[k.strip()] = v
+        conn = open_db(settings)
+        _, text = service.node_run(conn, settings, build_deps(settings), a.name, inputs, parse_sets(a.set),
+                                   wait=not a.detach, progress=_progress, no_cache=a.no_cache)
+        print(text)
+    return 0
+
+
+def _cmd_chain(a, settings) -> int:
+    conn = open_db(settings)
+    if a.sub == "run":
+        raw = sys.stdin.read() if a.file == "-" else Path(a.file).read_text()
+        try:
+            obj = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise ChainError([f"chain file is not valid JSON: {e}"]) from None
+        _, text = service.chain_run(conn, settings, build_deps(settings), obj, wait=not a.detach,
+                                    progress=_progress, no_cache=a.no_cache)
+        print(text)
+    elif a.sub == "show":
+        print(service.chain_show(conn, settings, a.run_id))
+    else:
+        print(service.chain_exec(conn, settings, build_deps(settings), a.run_id, progress=_progress))
+    return 0
+
+
 def _cmd_account(a, settings) -> int:
     print(service.mark_account(open_db(settings), a.handle, a.relation))
     return 0
@@ -159,6 +207,21 @@ def _parser() -> argparse.ArgumentParser:
     who.add_argument("--friend", action="store_true", help="the post is a friend's")
     s.add_argument("--refetch", action="store_true", help="download the video again even if one is stored")
     s.set_defaults(fn=_cmd_grab)
+    s = sub.add_parser("node", help="list, inspect and run single nodes").add_subparsers(dest="sub", required=True)
+    s.add_parser("list", help="all nodes").set_defaults(fn=_cmd_node)
+    n = s.add_parser("show", help="one node, with its params schema"); n.add_argument("name"); n.set_defaults(fn=_cmd_node)
+    n = s.add_parser("run", help="run one node: --in port=ref|path --set k=v")
+    n.add_argument("name"); n.add_argument("--in", dest="inputs", action="append", default=[], metavar="port=ref|path")
+    n.add_argument("--set", action="append", default=[], metavar="k=v")
+    n.add_argument("--no-cache", action="store_true", help="do not reuse cached results")
+    n.add_argument("--detach", action="store_true", help="run in the background, print the run id"); n.set_defaults(fn=_cmd_node)
+    s = sub.add_parser("chain", help="run and inspect chains of nodes").add_subparsers(dest="sub", required=True)
+    n = s.add_parser("run", help="run a chain JSON file (or - for stdin)"); n.add_argument("file")
+    n.add_argument("--no-cache", action="store_true", help="do not reuse cached results")
+    n.add_argument("--detach", action="store_true", help="run in the background, print the run id"); n.set_defaults(fn=_cmd_chain)
+    n = s.add_parser("show", help="steps and final outputs of a chain run"); n.add_argument("run_id", type=int)
+    n.set_defaults(fn=_cmd_chain)
+    n = s.add_parser("exec", help=argparse.SUPPRESS); n.add_argument("run_id", type=int); n.set_defaults(fn=_cmd_chain)
     s = sub.add_parser("account", help="account bookkeeping").add_subparsers(dest="sub", required=True).add_parser("mark")
     s.add_argument("handle"); s.add_argument("relation", choices=list(service.RELATIONS)); s.set_defaults(fn=_cmd_account)
     s = sub.add_parser("db", help="database helpers").add_subparsers(dest="sub", required=True).add_parser("sql")
@@ -180,6 +243,10 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("interrupted", file=sys.stderr)
         return 130
+    except ChainError as e:
+        errlog.log_traceback(settings.home if settings else None, f"wonhee {_argv(argv)} (expected)")
+        print(e, file=sys.stderr)
+        return 2
     except (KeyError, ValueError) as e:
         errlog.log_traceback(settings.home if settings else None, f"wonhee {_argv(argv)} (expected)")
         print(e.args[0] if e.args else e, file=sys.stderr)

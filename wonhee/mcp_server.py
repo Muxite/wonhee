@@ -100,6 +100,55 @@ def scout_show_run(run_id: int) -> str:
         conn.close()
 
 
+@mcp.tool()
+@_guard
+def nodes_list() -> str:
+    """The building blocks of a chain: each node's name, input and output ports (with types) and what it does."""
+    from wonhee.nodes import registry
+    lines = []
+    for n in registry.all_nodes().values():
+        ins = ", ".join(f"{k}:{v}" for k, v in n.inputs.items()) or "-"
+        outs = ", ".join(f"{k}:{v}" for k, v in n.outputs.items())
+        lines.append(f"{n.name}  [{ins} -> {outs}]  {n.doc}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+@_guard
+def node_run(node: str, inputs: dict, params: dict | None = None, wait: bool = True) -> str:
+    """Run one node. inputs: port -> content:<id> | blob sha | local file path. wait=False returns a run id at once
+    (check with chain_show)."""
+    conn, settings = _open()
+    try:
+        return service.node_run(conn, settings, _deps(settings), node, inputs, params or {}, wait)[1]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def chain_run(chain: list | dict, wait: bool = True) -> str:
+    """Run a chain: a list of {id, node, in: {port: "<id>.<port>" | ref | path}, params, cache}, or
+    {nodes: [...], cost_cap_usd, no_cache}. The whole chain is validated first and nothing runs if it is invalid.
+    wait=False returns a run id at once (check with chain_show)."""
+    conn, settings = _open()
+    try:
+        return service.chain_run(conn, settings, _deps(settings), chain, wait=wait)[1]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def chain_show(run_id: int) -> str:
+    """Status, steps and final outputs (full file paths) of a chain run."""
+    conn, settings = _open()
+    try:
+        return service.chain_show(conn, settings, run_id)
+    finally:
+        conn.close()
+
+
 def main() -> None:
     envfile.load_entry_env()
     mcp.run()

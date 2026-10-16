@@ -4,9 +4,9 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 
-from wonhee.config import Settings, secret
+from wonhee.config import KEY_NAMES, Settings, secret
 
-KEYS = ("OPENROUTER_API_KEY", "BRAVE_API_KEY", "APIFY_API_KEY")
+KEYS = KEY_NAMES
 
 
 @dataclass
@@ -15,6 +15,7 @@ class Check:
     ok: bool
     detail: str
     severity: str = "required"  # "required" | "warning"
+    hint: str = ""  # hard-coded literal advice, never scrubbed (may contain "=")
 
     def __post_init__(self):
         self.detail = self.detail.replace("=", ":")
@@ -56,6 +57,34 @@ def _cuda_check(settings: Settings) -> Check:
     return Check("cuda", True, f"{n} CUDA device(s); cuBLAS and cuDNN load")
 
 
+def _stale_runs_check(settings: Settings) -> Check:
+    """Chain runs stuck in 'running' whose last step started over 30 minutes ago (their process likely died)."""
+    from datetime import UTC, datetime, timedelta
+
+    try:
+        from wonhee.db.connect import open_db
+        conn = open_db(settings)
+        rows = conn.execute(
+            """SELECT r.id, coalesce((SELECT max(s.started_at) FROM step s WHERE s.run_id = r.id), r.started_at) AS last
+               FROM run r JOIN project p ON p.id = r.project_id
+               WHERE p.kind = 'chain' AND r.status = 'running'""").fetchall()
+        conn.close()
+    except Exception as e:  # noqa: BLE001
+        return Check("stale chain runs", True, f"not checked: {e}", "warning")
+    cutoff = datetime.now(UTC) - timedelta(minutes=30)
+    def _utc(ts: str):
+        d = datetime.fromisoformat(ts)
+        return d if d.tzinfo else d.replace(tzinfo=UTC)
+
+    stale = [r["id"] for r in rows if _utc(r["last"]) < cutoff]
+    if not stale:
+        return Check("stale chain runs", True, "none", "warning")
+    ids = ", ".join(str(i) for i in stale)
+    return Check("stale chain runs", False,
+                 f"run(s) {ids} still 'running' with no step started in 30 min; stale.", "warning",
+                 hint="resume with: wonhee resume RUN --from STAGE --set force=true")
+
+
 def checks(settings: Settings) -> list[Check]:
     out: list[Check] = []
     for tool in ("ffmpeg", "ffprobe"):
@@ -72,6 +101,7 @@ def checks(settings: Settings) -> list[Check]:
         out.append(Check("database", True, f"{settings.db_path} migrated ({n} tables)"))
     except Exception as e:  # noqa: BLE001
         out.append(Check("database", False, f"{settings.db_path}: {e}"))
+    out.append(_stale_runs_check(settings))
     has_creator = settings.creator_path.is_file()
     out.append(Check("creator.yaml", has_creator,
                      str(settings.creator_path) if has_creator else

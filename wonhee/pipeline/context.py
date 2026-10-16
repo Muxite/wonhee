@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Callable
 
@@ -21,6 +21,7 @@ class Stage:
     name: str
     needs: tuple[str, ...]
     fn: Callable[["Ctx"], str]
+    params: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -35,6 +36,7 @@ class Ctx:
     step_id: int
     params: dict
     today: date
+    weak: bool = False
 
     def step_of(self, stage: str) -> int:
         row = queries.current_step(self.conn, self.run_id, stage)

@@ -224,7 +224,9 @@ def test_mcp_server_tools_and_call(settings):
     props = {n: set((getattr(t, "input_schema", None) or t.inputSchema)["properties"]) for n, t in tools.items()}
     assert props == {"scout_ask": {"text", "intent_id"}, "scout_go": {"intent_id"},
                      "scout_resume": {"run_id", "from_stage", "overrides"}, "scout_show_run": {"run_id"},
-                     "library_grab": {"urls", "relation"}}
+                     "library_grab": {"urls", "relation"},
+                     "nodes_list": set(), "node_run": {"node", "inputs", "params", "wait"},
+                     "chain_run": {"chain", "wait"}, "chain_show": {"run_id"}}
     res = asyncio.run(mcp.call_tool("scout_show_run", {"run_id": 99}))
     assert "no run 99" in str(res)
 

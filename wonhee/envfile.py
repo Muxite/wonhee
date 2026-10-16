@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+EXPLICIT: list[str] = []  # the --env-file path this process was started with (for a detached child)
 LOADED: dict[str, str] = {}  # variable name -> file it came from (names only, never values)
 
 
@@ -34,5 +35,7 @@ def load_env_file(path: Path | str) -> list[str]:
 def load_entry_env(explicit: str | Path | None = None) -> list[str]:
     """Entry-point helper: --env-file PATH, else WONHEE_ENV_FILE, else REPO_ROOT/.env."""
     from wonhee.config import REPO_ROOT
+    if explicit:
+        EXPLICIT[:] = [str(Path(explicit).resolve())]
     path = explicit or os.environ.get("WONHEE_ENV_FILE") or REPO_ROOT / ".env"
     return load_env_file(path)

@@ -11,10 +11,14 @@ from wonhee.pipeline.context import Ctx, Stage, StageFailed
 
 
 def load_request(conn, run_id: int):
-    from wonhee.intent.schemas import ScoutRequest
-
     project = queries.project_of_run(conn, run_id)
     intent = queries.intent_row(conn, project["intent_id"])
+    if intent["schema_name"] == "chain":
+        from wonhee.nodes.chain import Chain
+
+        return project, Chain.model_validate_json(intent["compiled_json"])
+    from wonhee.intent.schemas import ScoutRequest
+
     return project, ScoutRequest.model_validate_json(intent["compiled_json"])
 
 
@@ -41,7 +45,7 @@ def run_stages(conn, settings, deps, run_id: int, stages: list[Stage], *, start_
 
     for i, stage in enumerate(stages[begin:], start=begin):
         prev = queries.current_step(conn, run_id, stage.name)
-        step_id = repo.start_step(conn, run_id, stage.name, overrides, prev["id"] if prev else None)
+        step_id = repo.start_step(conn, run_id, stage.name, {**stage.params, **overrides}, prev["id"] if prev else None)
         for need in stage.needs:
             dep = queries.current_step(conn, run_id, need)
             if dep is not None:
@@ -53,6 +57,8 @@ def run_stages(conn, settings, deps, run_id: int, stages: list[Stage], *, start_
             status = stage.fn(ctx)
             if status not in ("ok", "weak"):
                 raise StageFailed("EXCEPTION", f"stage {stage.name} returned {status!r}")
+            if ctx.weak and status == "ok":
+                status = "weak"
         except StageFailed as e:
             repo.add_flag(conn, step_id, e.code, e.detail)
             status = "failed"

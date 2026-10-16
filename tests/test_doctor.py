@@ -76,3 +76,13 @@ def test_exit_code_only_on_required_failures(settings, monkeypatch, capsys):
     monkeypatch.setattr(doctor, "checks", lambda s: [Check("r", False, "bad")])
     assert main(["doctor"]) == 1
     assert "✗" in capsys.readouterr().out
+
+
+def test_stale_chain_run_is_a_warning(settings, conn):
+    from wonhee.db import repo
+    iid = repo.create_intent(conn, "x", "chain", 1, {"nodes": []})
+    rid = repo.start_run(conn, repo.create_project(conn, "x", "chain", iid), 1.0)
+    assert {c.name: c for c in checks(settings)}["stale chain runs"].ok
+    conn.execute("UPDATE run SET started_at='2020-01-01T00:00:00+00:00' WHERE id=?", (rid,))
+    c = {c.name: c for c in checks(settings)}["stale chain runs"]
+    assert not c.ok and c.severity == "warning" and "force=true" in c.hint and "=" not in c.detail and str(rid) in c.detail

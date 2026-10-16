@@ -87,3 +87,20 @@ def fake_llm(tmp_path, monkeypatch):
 
     monkeypatch.setattr(llm, "_backend", backend)
     return f
+
+
+@pytest.fixture
+def toy_registry():
+    """Register toy nodes in the node registry; removed again afterwards."""
+    from wonhee.nodes import registry
+
+    added: list[str] = []
+
+    def add(node):
+        registry.register(node)
+        added.append(node.name)
+        return node
+
+    yield add
+    for name in added:
+        registry.unregister(name)
