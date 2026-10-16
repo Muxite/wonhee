@@ -92,7 +92,7 @@ def connect(path: str | Path = DEFAULT_DB) -> sqlite3.Connection:
     path = Path(path)
     if str(path) != ":memory:":
         path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
+    conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)

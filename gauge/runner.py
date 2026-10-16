@@ -197,7 +197,10 @@ def corun(conn, specs: list[JobSpec], *, interval_s=0.1, lock=True) -> list[tupl
     gpu = Gpu()
     fp = host.fingerprint(gpu)
     group = uuid.uuid4().hex[:10]
-    jobs = [Job(conn, s, gpu, interval_s=interval_s, corun_group=group, host_fp=fp) for s in specs]
+    # one sqlite connection per job: the jobs finish on separate threads, and a connection is not thread-safe
+    path = conn.execute("PRAGMA database_list").fetchone()[2]
+    jobs = [Job(store.connect(path) if path else conn, s, gpu, interval_s=interval_s, corun_group=group,
+                host_fp=fp) for s in specs]
     ids = [j.commit() for j in jobs]
     with gpu_lock(f"gauge corun {group}", lock):
         for j in jobs:

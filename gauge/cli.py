@@ -196,6 +196,15 @@ def cmd_startbench(a) -> int:
     return 0
 
 
+def cmd_dataset(a) -> int:
+    from gauge.dataset import OUT, export
+
+    for k, v in export(store.connect(a.db)).items():
+        print(f"{k}: {v} rows")
+    print(OUT)
+    return 0
+
+
 def cmd_export(a) -> int:
     conn = store.connect(a.db)
     out = Path(a.out)
@@ -265,6 +274,7 @@ def main(argv=None) -> int:
     p.add_argument("--analyze-only", action="store_true")
     p.add_argument("--session", default=None)
     p.set_defaults(fn=cmd_startbench)
+    sub.add_parser("dataset", help="flat documented dataset in data/dataset").set_defaults(fn=cmd_dataset)
     p = sub.add_parser("export")
     p.add_argument("--out", default="data/export")
     p.set_defaults(fn=cmd_export)
