@@ -11,6 +11,7 @@ Written 2026-10-17. Every number here was measured on this box (Ryzen 7 3700X, 1
 | [benchmarks.md](benchmarks.md) | you want the numbers behind the rules |
 | [references.md](references.md) | what our posts and the reference reels look like, and what that means for what to build |
 | [insights-2026-10-17.md](insights-2026-10-17.md) | what to record (B-roll shoot list), which formats fit, and what that means for what to build |
+| [idea-bank.md](idea-bank.md) | the @frictionlessmuk niche: ideas grouped into shoot days, each with a capture, a line and a look |
 
 ## The rules on one screen
 
