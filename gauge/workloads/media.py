@@ -8,10 +8,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from gauge.workloads.base import Workload, register
+from gauge import paths
 
 MB = 2**20
 FFMPEG_IMAGE = "linuxserver/ffmpeg:7.1.1"
-MEDIA_DIR = Path(__file__).resolve().parents[2] / "data" / "media"
+MEDIA_DIR = paths.DATA / "media"
 SOURCE = "src_1080p30_120s.mp4"  # noisy test pattern, so encoders can't cheat on flat frames
 
 

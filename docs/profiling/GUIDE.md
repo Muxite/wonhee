@@ -1,4 +1,4 @@
-# gauge
+# gauge (workload profiling inside wonhee)
 
 A workload profiler with a prediction ledger. For each job, gauge freezes a resource prediction, runs the job in its own Docker container, measures it from the host, and scores the prediction.
 It is **not a scheduler**. It produces data, plus two advisory calls (`estimate`, `preflight`) for wonhee and the moeka/agentic-node side.
@@ -9,15 +9,28 @@ JobSpec → predict (prior, history, calibrated) → immutable prediction rows
         → final cgroup read → release → classify outcome → summary → evaluation
 ```
 
+Later additions (Nsight traces via `profile: trace|metrics`, `startbench`, `sequence`, `trace-export`, `dataset`) are described step by step in the appendix of `profiling/report/shared-gpu-node.html`. That appendix is the full how-it-works reference, including setup on another machine.
+
+## Where things live
+
+| Path | What |
+|---|---|
+| `gauge/` | the profiler package |
+| `profiling/images/` | workload Dockerfiles (`gauge build`); `wonhee/` builds from this repo |
+| `profiling/sweeps/` | job grids; `x/` holds the experiment files behind the report |
+| `profiling/report/` | the report page, its template and `build_report.py` |
+| `data/gauge/` | ledger `gauge.sqlite`, `nsys/`, `traces/`, `dataset/`, `media/` (gitignored; override with `GAUGE_HOME`) |
+
 ## Use
 
 ```bash
 uv sync --extra dev
+# `uv run wonhee profile <cmd>` is the same as `uv run gauge <cmd>`
 uv run gauge doctor                       # cgroup v2, docker, nvidia runtime, NVML capabilities, gpu-lock
-uv run gauge build && uv run gauge prepare  # workload images, ffmpeg source clip
+uv run gauge build && uv run gauge prepare  # workload images (profiling/images), ffmpeg source clip
 uv run gauge run train.small batch=64     # one job
-uv run gauge sweep sweeps/train.yaml      # a grid, in file order (predictions use only earlier runs)
-uv run gauge corun --pairs sweeps/corun.yaml --repeats 3
+uv run gauge sweep profiling/sweeps/train.yaml   # a grid, in file order (predictions use only earlier runs)
+uv run gauge corun --pairs profiling/sweeps/corun.yaml --repeats 3
 uv run gauge preflight llm.generate model=qwen2.5:14b num_ctx=16384
 uv run gauge report && uv run gauge export
 ```

@@ -14,10 +14,11 @@ from pydantic import BaseModel, ConfigDict
 
 from gauge.workloads.base import Workload, register
 from gauge.workloads.media import MEDIA_DIR
+from gauge import paths
 
 MB = 2**20
 IMAGE = "gauge/wonhee:1"
-WONHEE_REPO = Path("/home/muk/projects/wonhee")
+WONHEE_REPO = paths.REPO
 HF_CACHE = Path.home() / ".cache" / "huggingface"
 CLIP_SECONDS = (10, 20, 40, 60, 100)
 MANIFEST = MEDIA_DIR / "wonhee_clips.json"

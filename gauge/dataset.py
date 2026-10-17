@@ -13,9 +13,9 @@ import json
 from pathlib import Path
 
 from gauge import nsight
+from gauge import paths
 
-ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "data" / "dataset"
+OUT = paths.DATA / "dataset"
 GIB = 2**30
 
 
@@ -136,7 +136,7 @@ def export(conn) -> dict:
         if db.exists():
             tl += [{"run_id": rid, **row} for row in nsight.timeline(db, 10.0)]
     counts["kernel_timeline_10ms"] = _write("kernel_timeline_10ms", tl, gz=True)
-    card = ROOT / "docs" / "DATA_CARD.md"
+    card = paths.DOCS / "DATA_CARD.md"
     if card.exists():
         (OUT / "DATA_CARD.md").write_text(card.read_text())
     return counts

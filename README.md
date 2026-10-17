@@ -84,3 +84,18 @@ Every tool is a typed node; a chain wires nodes together and wonhee pipes each r
 and writes an `.srt` plus a subtitled video. Change the `url` param to use it on another reel. Results are cached per
 (node, version, inputs, params): rerunning an unchanged node costs nothing and shows `CACHED`.
 Agents use the same through MCP: `nodes_list`, `node_run`, `chain_run(chain, wait=False)`, `chain_show`.
+
+## Workload profiling (optional)
+
+The repo also carries **gauge**, a profiler that runs one job per Docker container and measures it from the host:
+CPU and RAM from cgroup v2, VRAM per process from NVML, and, optionally, kernel-level GPU traces from Nsight Systems.
+Day-to-day wonhee use never touches it. Use it to find out what a node (or any GPU task) actually costs, alone or next to another job.
+
+```bash
+uv run wonhee profile doctor                          # same as: uv run gauge doctor
+uv run wonhee profile build                           # workload images in profiling/images
+uv run wonhee profile run wonhee.speech_subs clip_s=30
+```
+
+How it works, and the results so far: `docs/profiling/GUIDE.md` and `profiling/report/shared-gpu-node.html`.
+Data goes to `data/gauge/` (gitignored).

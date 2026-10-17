@@ -12,8 +12,8 @@ from pathlib import Path
 import yaml
 
 from gauge import store
+from gauge import paths
 
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def _kv(pairs: list[str]) -> dict:
@@ -67,9 +67,9 @@ def cmd_build(a) -> int:
     for w in REGISTRY.values():
         if w.build and w.build not in done:
             done.add(w.build)
-            print(f"building {w.image} from images/{w.build}")
-            ctx = w.build_context or str(ROOT / "images" / w.build)
-            subprocess.run(["docker", "build", "-t", w.image, "-f", str(ROOT / "images" / w.build / "Dockerfile"), ctx],
+            print(f"building {w.image} from profiling/images/{w.build}")
+            ctx = w.build_context or str(paths.IMAGES / w.build)
+            subprocess.run(["docker", "build", "-t", w.image, "-f", str(paths.IMAGES / w.build / "Dockerfile"), ctx],
                            check=True)
     return 0
 
@@ -293,7 +293,7 @@ def main(argv=None) -> int:
     p.add_argument("param", nargs="*")
     p.set_defaults(fn=cmd_preflight)
     p = sub.add_parser("report")
-    p.add_argument("--out", default="reports/report.html")
+    p.add_argument("--out", default=str(paths.DATA / "reports" / "report.html"))
     p.set_defaults(fn=cmd_report)
     sub.add_parser("backtest", help="replay current predictors over recorded runs").set_defaults(fn=cmd_backtest)
     p = sub.add_parser("startbench", help="container start overhead vs native, phase-decomposed")
@@ -302,7 +302,7 @@ def main(argv=None) -> int:
     p.add_argument("--analyze-only", action="store_true")
     p.add_argument("--session", default=None)
     p.set_defaults(fn=cmd_startbench)
-    sub.add_parser("dataset", help="flat documented dataset in data/dataset").set_defaults(fn=cmd_dataset)
+    sub.add_parser("dataset", help="flat documented dataset in data/gauge/dataset").set_defaults(fn=cmd_dataset)
     p = sub.add_parser("trace-export", help="per-node execution trace: node JSON + Perfetto JSON")
     p.add_argument("run_ids", nargs="+", type=int)
     p.set_defaults(fn=cmd_trace_export)
@@ -310,7 +310,7 @@ def main(argv=None) -> int:
     p.add_argument("file")
     p.set_defaults(fn=cmd_sequence)
     p = sub.add_parser("export")
-    p.add_argument("--out", default="data/export")
+    p.add_argument("--out", default=str(paths.DATA / "export"))
     p.set_defaults(fn=cmd_export)
     a = ap.parse_args(argv)
     return a.fn(a)

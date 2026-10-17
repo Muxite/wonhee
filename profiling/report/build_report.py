@@ -3,18 +3,20 @@ import html
 import json
 import statistics as st
 import sys
+from pathlib import Path
 
-sys.path.insert(0, "/home/muk/projects/gauge")
-from gauge import store  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from gauge import paths, store  # noqa: E402
 
-B = "/tmp/claude-1000/-home-muk-projects/e493e385-1fad-4299-8fdf-a250aa45730a/scratchpad/brief"
-old = open(f"{B}/shared-gpu-node.html").read()
+# Chart data is carried over from the current page; tables below are rebuilt from the ledger.
+B = Path(__file__).resolve().parent
+old = open(B / "shared-gpu-node.html").read()
 DATA = json.loads(old[old.index("const DATA = ") + 13: old.index(";\nconst css")])
-tmpl = open(f"{B}/template.html").read()
+tmpl = open(B / "template.html").read()
 STYLE = tmpl[tmpl.index("<style>"): tmpl.index("</style>") + 8]
 SCRIPT = tmpl[tmpl.index("<script>"): tmpl.rindex("</script>") + 9]
 HEAD = tmpl[: tmpl.index("<style>")]
-c = store.connect("/home/muk/projects/gauge/data/gauge.sqlite")
+c = store.connect(paths.DATA / "gauge.sqlite")
 E = html.escape
 
 
@@ -291,7 +293,7 @@ BODY = f'''<div class="wrap">
         ["Training", "PyTorch 2.8.0, CUDA 12.8, torchvision ResNet18/50, synthetic 224×224 data"],
         ["Video", "linuxserver/ffmpeg 7.1.1 (libx264 and h264_nvenc)"],
         ["Speech", "faster-whisper via wonhee's node runner (tiny / base / small / turbo)"],
-        ["Measurement tool", "gauge (Python 3.13, local git repo /home/muk/projects/gauge)"],
+        ["Measurement tool", "gauge (Python 3.13), part of the wonhee repo: gauge/ and profiling/"],
         ["Background", "Measured idle floor under the profiler: ~27 W, 0% SM. The display server and game-stream server were stopped for the later runs."],
     ])}
 
@@ -312,17 +314,17 @@ BODY = f'''<div class="wrap">
     <p>The GPU lock: a machine-wide advisory lock (<code>gpu-lock</code>) is held for every measured run, so other agents' GPU work does not land inside a measurement.</p>
 
     <h3 id="a4">A.4 Experiments and how to rerun them</h3>
-    {table(["ID", "What", "Repeats", "Runs", "Command (in the gauge repo)"], [
-        ["X0", "Idle floor under the profiler (before and after stopping display/streaming)", "3 + 3", "185–187, 286–288", "<code>gauge sweep sweeps/x/x0_idle_ceilings.yaml</code>"],
+    {table(["ID", "What", "Repeats", "Runs", "Command (in the wonhee repo)"], [
+        ["X0", "Idle floor under the profiler (before and after stopping display/streaming)", "3 + 3", "185–187, 286–288", "<code>gauge sweep profiling/sweeps/x/x0_idle_ceilings.yaml</code>"],
         ["X1", "Hardware ceilings: matmul per format, memory and PCIe bandwidth, launch cost", "3", "188–190", "same file"],
-        ["X2", "LLM prefill vs decode per model size; partial offload", "2 (each with 3 inner reps)", "191–211", "<code>gauge sweep sweeps/x/x2_llm_anatomy.yaml</code>"],
-        ["X3", "Training (fp32, mixed precision), speech-to-text, NVENC anatomy", "2", "212–219", "<code>gauge sweep sweeps/x/x3_task_anatomy.yaml</code>"],
+        ["X2", "LLM prefill vs decode per model size; partial offload", "2 (each with 3 inner reps)", "191–211", "<code>gauge sweep profiling/sweeps/x/x2_llm_anatomy.yaml</code>"],
+        ["X3", "Training (fp32, mixed precision), speech-to-text, NVENC anatomy", "2", "212–219", "<code>gauge sweep profiling/sweeps/x/x3_task_anatomy.yaml</code>"],
         ["X4", "Batched 1/2/4/8 in one process vs 2/4 separate processes", "2 / 4–8", "220–223, 238–261", "<code>x4_batched.yaml</code> (sweep), <code>x4_separate.yaml</code> (corun)"],
         ["X5", "Every pair of LLM / training / NVENC / speech, plus traced solos", "2", "224–231, 262–285", "<code>x5_solos.yaml</code> (sweep), <code>x5_pairs.yaml</code> (corun)"],
-        ["X6", "Cold start: model on disk, in RAM, in GPU memory", "3", "232–237", "<code>gauge sweep sweeps/x/x6_cold_start.yaml</code>"],
-        ["X7", "idle → A → B → A+B under one counter observer, 3 pairs", "2–3", "289–316", "<code>gauge sequence sweeps/x/x7_sequence.yaml</code>"],
+        ["X6", "Cold start: model on disk, in RAM, in GPU memory", "3", "232–237", "<code>gauge sweep profiling/sweeps/x/x6_cold_start.yaml</code>"],
+        ["X7", "idle → A → B → A+B under one counter observer, 3 pairs", "2–3", "289–316", "<code>gauge sequence profiling/sweeps/x/x7_sequence.yaml</code>"],
         ["Start", "Container start overhead, 9 launch methods + bursts", "40 per method, shuffled", "1,760 starts", "<code>gauge startbench --reps 40</code>"],
-        ["JIT", "Fresh Ollama container with / without shared GPU-code cache", "4 + 4", "171–178", "<code>gauge sweep sweeps/jit.yaml</code>"],
+        ["JIT", "Fresh Ollama container with / without shared GPU-code cache", "4 + 4", "171–178", "<code>gauge sweep profiling/sweeps/jit.yaml</code>"],
     ])}
     <p>Repeat agreement: X7 pair repeats within 0.3 percentage points; X2 throughput within 2%; most co-run slowdowns within about 0.1×, except the LLM beside training, which ranged ×1.7–2.4 over its two runs. Earlier exploratory runs (1–170) are in the ledger, but this report does not rely on them.</p>
 
@@ -339,12 +341,12 @@ BODY = f'''<div class="wrap">
     </dl>
 
     <h3 id="a6">A.6 Data files</h3>
-    {table(["Path (gauge repo)", "Contents"], [
-        ["data/gauge.sqlite (6.9 MB)", "The ledger: run, prediction, sample (100 ms), summary, evaluation, gpu_profile, startbench, sequence"],
-        ["data/dataset/ (2.3 MB)", "Flat CSVs with DATA_CARD.md: runs, workload_outcomes, gpu_process, gpu_kernel_categories, gpu_top_kernels, gpu_device_counters, kernel_timeline_10ms, samples_100ms, corun_interference, container_starts. Rebuild with <code>gauge dataset</code>"],
-        ["data/traces/ (45 MB)", "Per-node traces: run&lt;id&gt;.node.json.gz and run&lt;id&gt;.perfetto.json.gz (open in ui.perfetto.dev). Make more with <code>gauge trace-export &lt;run ids&gt;</code>"],
-        ["data/nsys/ (20 GB)", "Raw Nsight reports and their SQLite exports for every profiled run and sequence"],
-        ["docs/DATA_CARD.md", "Column-level description of the dataset"],
+    {table(["Path (wonhee repo)", "Contents"], [
+        ["data/gauge/gauge.sqlite (6.9 MB)", "The ledger: run, prediction, sample (100 ms), summary, evaluation, gpu_profile, startbench, sequence"],
+        ["data/gauge/dataset/ (2.3 MB)", "Flat CSVs with DATA_CARD.md: runs, workload_outcomes, gpu_process, gpu_kernel_categories, gpu_top_kernels, gpu_device_counters, kernel_timeline_10ms, samples_100ms, corun_interference, container_starts. Rebuild with <code>gauge dataset</code>"],
+        ["data/gauge/traces/ (45 MB)", "Per-node traces: run&lt;id&gt;.node.json.gz and run&lt;id&gt;.perfetto.json.gz (open in ui.perfetto.dev). Make more with <code>gauge trace-export &lt;run ids&gt;</code>"],
+        ["data/gauge/nsys/ (20 GB)", "Raw Nsight reports and their SQLite exports for every profiled run and sequence"],
+        ["docs/profiling/DATA_CARD.md", "Column-level description of the dataset"],
     ])}
 <pre>{{ "schema_version": 1,
   "node":      {{ "run_id": 254, "workload": "llamacpp.phase", "params": {{ "model": "qwen2.5:3b", "phase": "decode", "tokens": 256 }} }},
@@ -360,10 +362,10 @@ BODY = f'''<div class="wrap">
     <h3 id="a7">A.7 Setting this up on another machine</h3>
     <ol class="steps">
       <li>Linux with cgroup v2, Docker, and the NVIDIA container toolkit (<code>docker run --gpus all</code> works).</li>
-      <li>Copy the gauge repo; <code>uv sync --extra dev</code>; <code>uv run gauge doctor</code> checks cgroup v2, Docker, the GPU runtime, NVML capabilities and the GPU lock.</li>
+      <li>Copy the wonhee repo (gauge lives in it); <code>uv sync --extra dev</code>; <code>uv run gauge doctor</code> (same as <code>wonhee profile doctor</code>) checks cgroup v2, Docker, the GPU runtime, NVML capabilities and the GPU lock.</li>
       <li>Nsight Systems: download the <code>nsight-systems</code> .deb for your OS and architecture from NVIDIA's CUDA repository and extract it (<code>dpkg-deb -x</code>); point <code>NSYS_DIR</code> in <code>gauge/nsight.py</code> at it. No system install is needed.</li>
       <li>GPU counters: if the driver restricts profiling to admins (<code>RmProfilingAdminOnly: 1</code> in <code>/proc/driver/nvidia/params</code>), gauge already adds SYS_ADMIN to counter-reading containers.</li>
-      <li>Images: <code>uv run gauge build</code> (stress, torch, wonhee, startbench); pull <code>ghcr.io/ggml-org/llama.cpp:full-cuda</code>, <code>ollama/ollama:0.35.0</code> and <code>linuxserver/ffmpeg:7.1.1</code>. On aarch64, use arm64 builds of each.</li>
+      <li>Images: <code>uv run gauge build</code> (stress, torch, wonhee, startbench, from <code>profiling/images</code>); pull <code>ghcr.io/ggml-org/llama.cpp:full-cuda</code>, <code>ollama/ollama:0.35.0</code> and <code>linuxserver/ffmpeg:7.1.1</code>. On aarch64, use arm64 builds of each.</li>
       <li>Models: pull qwen2.5 into an Ollama volume (<code>ollama pull qwen2.5:3b</code>, etc.) and set <code>MODEL_VOLUME</code> in <code>gauge/workloads/llm.py</code> to that volume.</li>
       <li>Media: <code>uv run gauge prepare</code> makes the video source. The wonhee clips came from a third-party reel and are not included; use any clip with speech.</li>
       <li>Run the experiments in A.4, then <code>gauge dataset</code> and <code>gauge trace-export</code>.</li>
@@ -406,7 +408,7 @@ BODY = f'''<div class="wrap">
     <p>Fresh Ollama container (0.5B job): {DATA["merge"]["jit"]["none"]["median"]:.1f} s without a shared GPU-code cache vs {DATA["merge"]["jit"]["shared"]["median"]:.1f} s with it, {DATA["merge"]["jit"]["none"]["n"]} runs each.</p>
   </section>
 
-  <footer><p>Generated from the gauge ledger on 2026-10-16. Repo: /home/muk/projects/gauge. Raw traces stay on the measuring machine.</p></footer>
+  <footer><p>Generated from the gauge ledger on 2026-10-16. Repo: wonhee (gauge/, profiling/). Data in data/gauge/ (or $GAUGE_HOME). Raw traces stay on the measuring machine.</p></footer>
 </div>
 '''
 
@@ -432,6 +434,5 @@ table.data tr:last-child td { border-bottom: 0; }
 style = STYLE.replace("</style>", EXTRA_CSS + "</style>")
 script = SCRIPT.replace(SCRIPT[SCRIPT.index("const DATA = ") + 13: SCRIPT.index(";\nconst css")], "__DATA__", 1) if "__DATA__" not in SCRIPT else SCRIPT
 page = HEAD + style + "\n\n" + BODY + "\n" + script.replace("__DATA__", json.dumps(DATA))
-open(f"{B}/shared-gpu-node.html", "w").write(page)
-open(f"{B}/report_template_body.html", "w").write(BODY)
+open(B / "shared-gpu-node.html", "w").write(page)
 print(len(page))

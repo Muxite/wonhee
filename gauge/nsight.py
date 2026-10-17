@@ -13,10 +13,11 @@ import re
 import sqlite3
 import subprocess
 from pathlib import Path
+from gauge import paths
 
 NSYS_DIR = Path.home() / "opt/nsys-root/opt/nvidia/nsight-systems/2026.3.2"
 NSYS_HOST = NSYS_DIR / "target-linux-x64" / "nsys"
-OUT_DIR = Path(__file__).resolve().parents[1] / "data" / "nsys"
+OUT_DIR = paths.DATA / "nsys"
 METRICS_HZ = 10000
 # Hardware CUDA trace (default). Ollama SIGKILLs its runner, so its trace is partial; llama.cpp direct is complete.
 TRACE = os.environ.get("GAUGE_NSYS_TRACE", "cuda")

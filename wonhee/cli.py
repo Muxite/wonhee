@@ -226,6 +226,9 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("handle"); s.add_argument("relation", choices=list(service.RELATIONS)); s.set_defaults(fn=_cmd_account)
     s = sub.add_parser("db", help="database helpers").add_subparsers(dest="sub", required=True).add_parser("sql")
     s.add_argument("query"); s.set_defaults(fn=_cmd_sql)
+    s = sub.add_parser("profile", help="workload profiler (gauge): `wonhee profile doctor`, `... run <workload>`; "
+                                       "see docs/profiling/GUIDE.md")
+    s.add_argument("rest", nargs=argparse.REMAINDER)
     return p
 
 
@@ -234,6 +237,10 @@ def _argv(argv) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw = list(argv if argv is not None else sys.argv[1:])
+    if raw[:1] == ["profile"]:  # hand the rest to gauge untouched; wonhee's settings and env are not needed
+        from gauge.cli import main as gauge_main
+        return gauge_main(raw[1:] or ["--help"])
     args = _parser().parse_args(argv)
     settings = None
     try:

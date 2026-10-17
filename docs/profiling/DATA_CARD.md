@@ -89,7 +89,7 @@ Interference is asymmetric. Next to training, the latency-sensitive, bandwidth-b
 - Fresh Ollama container without a shared CUDA JIT cache: **+59 s** (64–68 s vs 5.3 s).
 - 7B time to first token: **6.1–6.5 s** with the model on disk, **2.6–2.7 s** in page cache, **0.05 s** resident.
 
-## Files (`data/dataset/`)
+## Files (`data/gauge/dataset/`)
 
 | File | Rows | What |
 |---|---|---|
@@ -104,7 +104,7 @@ Interference is asymmetric. Next to training, the latency-sensitive, bandwidth-b
 | `corun_interference.csv` | one per co-run job | slowdown, kernel stretch and tokens/s vs identical solo runs |
 | `container_starts.csv` | one per container start | start-overhead phases for 12 launch variants |
 
-Raw Nsight traces (`.nsys-rep` + SQLite export, 6.2 GB) are in `data/nsys/run<id>.*`, for anything not summarized here.
+Raw Nsight traces (`.nsys-rep` + SQLite export, 6.2 GB) are in `data/gauge/nsys/run<id>.*`, for anything not summarized here.
 
 ## Known limits
 - **One machine, one GPU model.** The ratios (bandwidth-bound decode, interference asymmetry, batching vs time-slicing) are expected to generalize. Absolute numbers are this card's.

@@ -15,8 +15,9 @@ from pathlib import Path
 
 from gauge import nsight
 from gauge.interference import rows as interference_rows
+from gauge import paths
 
-OUT = Path(__file__).resolve().parents[1] / "data" / "traces"
+OUT = paths.DATA / "traces"
 SCHEMA_VERSION = 1
 
 

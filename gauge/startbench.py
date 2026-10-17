@@ -27,11 +27,12 @@ from pathlib import Path
 from urllib.parse import quote
 
 from gauge.docker_run import _ts
+from gauge import paths
 
 IMAGE = "gauge/startbench:1"
 BIG_IMAGE = "ollama/ollama:0.35.0"  # 9.3 GB, ubuntu: image size effect
 TORCH_IMAGE = "gauge/torch:1"       # 12 GB, ubuntu + CUDA libs
-ROOTFS = Path(__file__).resolve().parents[1] / "data" / "rootfs" / "startbench"
+ROOTFS = paths.DATA / "rootfs" / "startbench"
 STRESS_OPS = 400  # one matrixprod worker; roughly 1 s on this box
 
 SCHEMA = """

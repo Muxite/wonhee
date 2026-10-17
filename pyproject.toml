@@ -1,7 +1,7 @@
 [project]
 name = "wonhee"
 version = "0.1.0"
-description = "Influencer-side automation: trend scout, editor, prop builder."
+description = "Influencer-side automation: trend scout, editor, prop builder. Optional workload profiler (gauge)."
 requires-python = ">=3.12"
 dependencies = [
   "pydantic>=2.7",
@@ -16,6 +16,7 @@ dependencies = [
   "imagehash>=4.3",
   "pillow>=10",
   "pyyaml>=6",
+  "nvidia-ml-py>=12.560",  # gauge: NVML probe
   "yt-dlp[default,curl-cffi]>=2026.8.19",
   # tag awr-compat-a4970c6, the same snapshot awork-resume pins
   "moeka @ git+https://github.com/Muxite/moeka.git@a4970c6169b2dff452a33773747c7376fa3033b0",
@@ -27,6 +28,7 @@ dev = ["pytest>=8.0"]
 
 [project.scripts]
 wonhee = "wonhee.cli:main"
+gauge = "gauge.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -40,7 +42,7 @@ allow-direct-references = true
 moeka = { NANOBOT_SKIP_WEBUI_BUILD = "1" }
 
 [tool.hatch.build.targets.wheel]
-packages = ["wonhee"]
+packages = ["wonhee", "gauge"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

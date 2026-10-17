@@ -5,6 +5,7 @@ import json
 import sqlite3
 import time
 from pathlib import Path
+from gauge import paths
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS run (
@@ -85,7 +86,7 @@ SAMPLE_COLS = ("t", "cpu_usage_usec", "mem_current", "mem_anon", "mem_file", "sw
                "io_wbytes", "vram_proc_bytes", "dev_util", "dev_mem_util", "dev_mem_used", "dev_power_w",
                "dev_sm_mhz", "dev_temp_c", "dev_throttle", "dev_enc_util", "dev_dec_util", "dev_mem_mhz")
 
-DEFAULT_DB = Path("data/gauge.sqlite")
+DEFAULT_DB = paths.DATA / "gauge.sqlite"
 
 
 def connect(path: str | Path = DEFAULT_DB) -> sqlite3.Connection:
