@@ -195,3 +195,15 @@ def test_muted_audio_id_zero_is_none():
     item = {**FIX[0], "musicInfo": {"audio_id": "0", "song_name": "", "artist_name": "",
                                     "should_mute_audio": True}}
     assert apify.parse_item(item).audio_id is None
+
+
+def test_parse_photo_posts():
+    from tests.fakes import make_photo_item
+    from wonhee.sources.apify import parse_item
+    one = parse_item(make_photo_item("ONE", "x", "2026-10-01", 5))
+    assert one.post_type == "Image" and one.children == [("image", "https://cdn/ONE_0.jpg")] and one.video_url is None
+    mix = parse_item(make_photo_item("MIX", "x", "2026-10-01", 5, slides=3, video_slide=2))
+    assert [k for k, _ in mix.children] == ["image", "image", "video"]
+    item = make_photo_item("NOURL", "x", "2026-10-01", 5)
+    del item["url"]
+    assert parse_item(item).url == "https://www.instagram.com/p/NOURL/"

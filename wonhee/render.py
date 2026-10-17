@@ -174,6 +174,27 @@ def render_chain(conn, settings_or_media_dir, run_id: int) -> str:
     return "\n".join(out)
 
 
+def _photo_post_lines(conn, content_id: int, media_dir: Path) -> list[str]:
+    from wonhee.library.grab import IMAGE_ANALYZER_VERSION
+
+    files = conn.execute(
+        """SELECT m.ord, m.media_sha256, m.kind, a.on_screen_text, a.visual FROM content_media m
+           LEFT JOIN image_analysis a ON a.media_sha256=m.media_sha256 AND a.analyzer_version=?
+           WHERE m.content_id=? ORDER BY m.ord""", (IMAGE_ANALYZER_VERSION, content_id)).fetchall()
+    if not files:
+        return ["  media: not downloaded"]
+    out = [f"  slides: {len(files)} ({', '.join(sorted({f['kind'] for f in files}))})"]
+    for f in files:
+        bits = [f"  slide {f['ord'] + 1} {f['kind']}"]
+        if f["on_screen_text"]:
+            bits.append(f'text "{f["on_screen_text"]}"')
+        if f["visual"]:
+            bits.append(f["visual"])
+        bits.append(str(path_for(media_dir, f["media_sha256"])))
+        out.append(" | ".join(bits))
+    return out
+
+
 def render_library(conn, project_id: int, media_dir: Path) -> str:
     """What a grab stored: one block per reel (metrics, file, cuts, speech, on-screen text)."""
     import json
@@ -200,7 +221,7 @@ def render_library(conn, project_id: int, media_dir: Path) -> str:
         out.append(f"  audio: {r['audio_title'] or '-'} / {r['audio_artist'] or '-'}")
         sha = r["media_sha256"]
         if not sha:
-            out.append("  video: not downloaded")
+            out.extend(_photo_post_lines(conn, r["content_id"], media_dir))
             continue
         m = conn.execute("SELECT * FROM media WHERE blob_sha256=?", (sha,)).fetchone()
         out.append(f"  video: {m['width']}x{m['height']} {round(m['fps'] or 0, 2)}fps {m['duration_ms']}ms  "

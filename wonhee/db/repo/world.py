@@ -57,6 +57,14 @@ def set_content_media(conn: sqlite3.Connection, content_id: int, sha: str) -> No
     conn.execute("UPDATE content_item SET media_sha256=? WHERE id=?", (sha, content_id))
 
 
+def set_content_files(conn: sqlite3.Connection, content_id: int, files: list[tuple[str, str]]) -> None:
+    """Replace a post's ordered files: [(sha, kind 'video'|'image'), ...]."""
+    with tx(conn):
+        conn.execute("DELETE FROM content_media WHERE content_id=?", (content_id,))
+        conn.executemany("INSERT INTO content_media VALUES (?,?,?,?)",
+                         [(content_id, i, sha, kind) for i, (sha, kind) in enumerate(files)])
+
+
 def add_hashtags(conn: sqlite3.Connection, content_id: int, tags: Iterable[str]) -> None:
     with tx(conn):
         for raw in tags:

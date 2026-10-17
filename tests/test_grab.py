@@ -74,3 +74,54 @@ def test_refetch_replaces_stored_video(conn, settings, fake_llm, tiny_video, tmp
     second = conn.execute("SELECT media_sha256 FROM content_item").fetchone()[0]
     assert second != first
     assert conn.execute("SELECT count(*) FROM media_analysis WHERE media_sha256=?", (second,)).fetchone()[0] == 1
+
+
+IMAGE_TEXTS = {"images": [{"n": 1, "on_screen_text": "2025-04-29", "visual": "a park"},
+                          {"n": 2, "on_screen_text": None, "visual": "a lake"},
+                          {"n": 3, "on_screen_text": None, "visual": "trees"}]}
+
+
+def _photo_deps(tiny_video, tiny_jpg, items, fail=frozenset()):
+    from tests.fakes import FakeApify
+    apify = FakeApify({ACTOR_SCRAPER: [items]})
+    return fake_deps(apify=apify, downloader=FakeDownloader(tiny_video, fail=fail, image=tiny_jpg))
+
+
+def test_grab_carousel_stores_every_slide_and_analyses_them(conn, settings, fake_llm, tiny_video, tiny_jpg):
+    from tests.fakes import make_photo_item
+    fake_llm.queue(ImageTexts=[IMAGE_TEXTS])
+    deps = _photo_deps(tiny_video, tiny_jpg, [make_photo_item("PPP", "me", "2025-04-29", 120, slides=3)])
+    run_id, text = service.grab(conn, settings, deps, ["https://www.instagram.com/p/PPP/"], "ours")
+    assert queries.run_row(conn, run_id)["status"] == "done"
+    rows = conn.execute("SELECT ord, kind FROM content_media ORDER BY ord").fetchall()
+    assert [tuple(r) for r in rows] == [(0, "image"), (1, "image"), (2, "image")]
+    assert conn.execute("SELECT media_sha256 FROM content_item").fetchone()[0] is None  # no main video
+    assert conn.execute("SELECT count(*) FROM image_analysis").fetchone()[0] == 1  # identical slides share one sha
+    assert "slides: 3 (image)" in text and 'text "2025-04-29"' in text
+
+
+def test_grab_single_image_and_mixed_sidecar(conn, settings, fake_llm, tiny_video, tiny_jpg):
+    from tests.fakes import make_photo_item
+    fake_llm.queue(ImageTexts=[IMAGE_TEXTS, IMAGE_TEXTS])
+    items = [make_photo_item("ONE", "x", "2026-10-01", 5),
+             make_photo_item("MIX", "x", "2026-10-02", 9, slides=2, video_slide=1)]
+    deps = _photo_deps(tiny_video, tiny_jpg, items)
+    run_id, text = service.grab(conn, settings, deps, ["https://www.instagram.com/p/ONE/",
+                                                      "https://www.instagram.com/p/MIX/"])
+    assert queries.run_row(conn, run_id)["status"] == "done"
+    kinds = conn.execute("""SELECT c.external_id, group_concat(m.kind) FROM content_media m
+                            JOIN content_item c ON c.id=m.content_id GROUP BY 1 ORDER BY 1""").fetchall()
+    assert [tuple(k) for k in kinds] == [("MIX", "image,video"), ("ONE", "image")]
+    assert "slides: 2 (image, video)" in text
+
+
+def test_grab_photo_slide_failure_flags_but_keeps_the_rest(conn, settings, fake_llm, tiny_video, tiny_jpg):
+    from tests.fakes import make_photo_item
+    fake_llm.queue(ImageTexts=[IMAGE_TEXTS])
+    deps = _photo_deps(tiny_video, tiny_jpg, [make_photo_item("PPP", "me", "2025-04-29", 1, slides=3)],
+                       fail={"https://cdn/PPP_1.jpg"})
+    run_id, _ = service.grab(conn, settings, deps, ["https://www.instagram.com/p/PPP/"])
+    assert queries.run_row(conn, run_id)["status"] == "done"
+    assert conn.execute("SELECT count(*) FROM content_media").fetchone()[0] == 2
+    codes = [r[0] for r in conn.execute("SELECT code FROM step_flag")]
+    assert "IMAGE_FAILED" in codes

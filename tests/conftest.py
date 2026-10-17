@@ -104,3 +104,11 @@ def toy_registry():
     yield add
     for name in added:
         registry.unregister(name)
+
+
+@pytest.fixture(scope="session")
+def tiny_jpg(tmp_path_factory):
+    from PIL import Image
+    out = tmp_path_factory.mktemp("img") / "tiny.jpg"
+    Image.new("RGB", (160, 200), (120, 140, 160)).save(out, quality=90)
+    return out

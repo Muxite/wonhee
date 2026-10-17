@@ -25,8 +25,8 @@ class FakeSearch:
 
 
 class FakeDownloader:
-    def __init__(self, src: Path | None = None, fail: set[str] = frozenset()):
-        self.src, self.fail, self.calls = src, set(fail), []
+    def __init__(self, src: Path | None = None, fail: set[str] = frozenset(), image: Path | None = None):
+        self.src, self.fail, self.calls, self.image = src, set(fail), [], image
 
     def download(self, video_url, page_url, dest):
         from wonhee.sources.fetch import DownloadError
@@ -35,6 +35,13 @@ class FakeDownloader:
             raise DownloadError("direct: 403; yt-dlp: exit 1")
         dest.write_bytes(self.src.read_bytes())
         return "direct"
+
+    def fetch(self, url, dest):
+        from wonhee.sources.fetch import DownloadError
+        self.calls.append(url)
+        if url in self.fail:
+            raise DownloadError("direct: 403")
+        dest.write_bytes((self.image or self.src).read_bytes())
 
 
 class FakeTranscriber:
@@ -53,4 +60,20 @@ def make_item(code, owner, day, plays, audio=None, tags=()):
             "hashtags": list(tags), "caption": f"caption {code}", "videoUrl": f"https://cdn/{code}.mp4"}
     if audio:
         item["musicInfo"] = {"audio_id": audio, "song_name": "s", "artist_name": "a"}
+    return item
+
+
+def make_photo_item(code, owner, day, likes, slides=1, video_slide=None):
+    """An Apify 'Image' (slides=1) or 'Sidecar' post, shaped like a real response (no videoUrl, childPosts)."""
+    item = {"shortCode": code, "url": f"https://www.instagram.com/p/{code}/", "ownerUsername": owner,
+            "ownerId": owner, "timestamp": f"{day}T12:00:00.000Z", "likesCount": likes, "hashtags": [],
+            "caption": f"caption {code}", "displayUrl": f"https://cdn/{code}_0.jpg",
+            "type": "Image" if slides == 1 else "Sidecar", "images": [], "childPosts": []}
+    if slides > 1:
+        for i in range(slides):
+            kid = {"type": "Image", "displayUrl": f"https://cdn/{code}_{i}.jpg", "shortCode": f"{code}{i}"}
+            if i == video_slide:
+                kid.update(type="Video", videoUrl=f"https://cdn/{code}_{i}.mp4")
+            item["childPosts"].append(kid)
+        item["images"] = [k["displayUrl"] for k in item["childPosts"]]
     return item

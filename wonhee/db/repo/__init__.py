@@ -5,7 +5,7 @@ from wonhee.db.repo.runs import (  # noqa: F401
     record_llm_call, reopen_run, set_run_cap, start_run, start_step,
 )
 from wonhee.db.repo.world import (  # noqa: F401
-    add_hashtags, add_snapshot, set_content_media, set_relation, upsert_account,
+    add_hashtags, add_snapshot, set_content_files, set_content_media, set_relation, upsert_account,
     upsert_audio, upsert_content, upsert_web_source,
 )
 from wonhee.db.repo.work import (  # noqa: F401

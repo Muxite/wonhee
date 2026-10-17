@@ -38,6 +38,12 @@ SYSTEM_SHOTS_TEXT = (
     "any on-screen text exactly as shown (null if none), and a one-sentence visual description. " + _DATA_RULE
 )
 
+SYSTEM_IMAGE_TEXT = (
+    "You describe the images of one Instagram photo or carousel post, in slide order. For each image, report "
+    "its number, any on-screen or overlaid text exactly as shown (null if none), and a one-sentence visual "
+    "description. " + _DATA_RULE
+)
+
 SYSTEM_DESCRIBE = (
     "You describe a trend from frames, transcripts and on-screen text of its example videos: the beats in "
     "order, the invariants every example keeps, and the variations that differ. Describe only what the "

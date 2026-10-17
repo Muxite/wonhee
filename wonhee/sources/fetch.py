@@ -17,6 +17,8 @@ class DownloadError(Exception):
 class Downloader(Protocol):
     def download(self, video_url: str | None, page_url: str, dest: Path) -> str: ...
 
+    def fetch(self, url: str, dest: Path) -> None: ...
+
 
 class LiveDownloader:
     """Direct GET of Apify's signed videoUrl first; yt-dlp on the page URL as fallback."""
@@ -54,6 +56,12 @@ class LiveDownloader:
         if self._ytdlp(page_url, dest, errors):
             return "yt-dlp"
         raise DownloadError("; ".join(errors))
+
+    def fetch(self, url: str, dest: Path) -> None:
+        """Plain GET of a signed media URL (photo-post images, carousel slides)."""
+        errors: list[str] = []
+        if not self._direct(url, dest, errors):
+            raise DownloadError("; ".join(errors))
 
     def _direct(self, video_url: str, dest: Path, errors: list[str]) -> bool:
         part = dest.with_suffix(dest.suffix + ".part")

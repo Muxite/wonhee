@@ -86,6 +86,24 @@ class ReelRecord:
     comments: int | None = None
     shares: int | None = None
     video_url: str | None = None
+    post_type: str = "Video"  # Apify 'type': Video | Image | Sidecar
+    children: list[tuple[str, str]] = field(default_factory=list)  # (kind 'image'|'video', url) for photo posts
+
+
+def _children(item: dict) -> list[tuple[str, str]]:
+    """The files of a photo post: one image, or each carousel slide (a slide can be a video)."""
+    kids = item.get("childPosts") or []
+    if kids:
+        out = []
+        for k in kids:
+            if k.get("type") == "Video" and k.get("videoUrl"):
+                out.append(("video", k["videoUrl"]))
+            elif k.get("displayUrl"):
+                out.append(("image", k["displayUrl"]))
+        return out
+    if item.get("images"):
+        return [("image", u) for u in item["images"] if u]
+    return [("image", item["displayUrl"])] if item.get("displayUrl") else []
 
 
 def _count(v):
@@ -105,9 +123,11 @@ def parse_item(item: dict) -> ReelRecord | None:
     music = item.get("musicInfo") or {}
     plays = next((c for c in (_count(item.get(k)) for k in ("videoPlayCount", "igPlayCount", "videoViewCount"))
                   if c is not None), None)
+    post_type = item.get("type") or ("Video" if item.get("videoUrl") else "Image")
+    photo = post_type in ("Image", "Sidecar")
     return ReelRecord(
         external_id=code,
-        url=item.get("url") or f"https://www.instagram.com/reel/{code}/",
+        url=item.get("url") or f"https://www.instagram.com/{'p' if photo else 'reel'}/{code}/",
         owner_id=str(item.get("ownerId") or item.get("ownerUsername") or "unknown"),
         owner_handle=item.get("ownerUsername") or "unknown",
         posted_at=_iso(item.get("timestamp")),
@@ -118,7 +138,9 @@ def parse_item(item: dict) -> ReelRecord | None:
         audio_artist=music.get("artist_name"),
         plays=plays, likes=_count(item.get("likesCount")),
         comments=_count(item.get("commentsCount")), shares=_count(item.get("sharesCount")),
-        video_url=item.get("videoUrl"),
+        video_url=item.get("videoUrl") if not photo else None,
+        post_type=post_type,
+        children=_children(item) if photo else [],
     )
 
 
