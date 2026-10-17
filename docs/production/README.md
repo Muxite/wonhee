@@ -9,6 +9,7 @@ Written 2026-10-17. Every number here was measured on this box (Ryzen 7 3700X, 1
 | [workers.md](workers.md) | choosing what to build next; what tools and models are already on this machine |
 | [watchouts.md](watchouts.md) | something looks wrong, or before trusting a new source of footage |
 | [benchmarks.md](benchmarks.md) | you want the numbers behind the rules |
+| [references.md](references.md) | what our posts and the reference reels look like, and what that means for what to build |
 
 ## The rules on one screen
 
