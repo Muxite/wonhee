@@ -99,3 +99,7 @@ uv run wonhee profile run wonhee.speech_subs clip_s=30
 
 How it works, and the results so far: `docs/profiling/GUIDE.md` and `profiling/report/shared-gpu-node.html`.
 Data goes to `data/gauge/` (gitignored).
+
+## Producing reels fast
+
+`docs/production/` has the rules for agent-planned video DAGs. Edit nodes write a timeline and one `render` encodes it. It also covers lanes and concurrency limits, which workers to build next from what's already on this machine, and the pitfalls found so far. All numbers are measured.
