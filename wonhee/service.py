@@ -287,6 +287,99 @@ def chain_run(conn, settings, deps, chain_obj, *, wait: bool = True, progress=No
     return run_id, _outcome(conn, settings, run_id, status)
 
 
+def larp(conn, settings, deps, task: str, *, image: str | None = None, video: str | None = None,
+         pick: int | None = None, engine: str = "remote", registers: list[str] | None = None) -> str:
+    """Frame a mundane task as professional moments; with an image or video, also render the chosen line onto it."""
+    import json
+
+    from wonhee.media import path_for
+
+    params = {"task": task, "engine": engine, **({"registers": registers} if registers else {})}
+    rid, text = node_run(conn, settings, deps, "larp", {}, params)
+    step = queries.current_step(conn, rid, "larp")
+    if step is None or step["status"] not in ("ok", "weak"):
+        return text
+    data = json.loads(path_for(settings.media_dir, queries.step_outputs(conn, step["id"])["lines"]["ref"]).read_text())
+    fr = data["framings"]
+    chosen = pick if pick is not None and 0 <= pick < len(fr) else data["best"]
+    out = [f"task: {data['task']}", ""]
+    for i, f in enumerate(fr):
+        out.append(f"{'*' if i == chosen else ' '}{i} [{f['kind']}] {f['overlay']}")
+        out.append(f"     {f['caption']}")
+    out += ["", f"hashtags: {' '.join(data['hashtags'])}",
+            f"render: preset={data['text_preset']} position={data['text_position']} look={data['look'] or '-'}",
+            f"shot: {data['shot']}"]
+    target = ("text_image", "image", image) if image else ("text_video", "video", video) if video else None
+    if target:
+        node, port, src = target
+        tp = {"text": fr[chosen]["overlay"], "preset": data["text_preset"], "position": data["text_position"]}
+        if data["look"]:
+            tp["look"] = data["look"]
+        _, rendered = node_run(conn, settings, deps, node, {port: src}, tp)
+        out += ["", rendered]
+    return "\n".join(out)
+
+
+def inspire(conn, settings, deps, content_ids: list[int] | None = None, since: str | None = None,
+            relation: str | None = None, progress=None) -> tuple[str, Path | None]:
+    """Tear down stored posts (cached per post) and write one actionable report. Returns (summary, report path).
+
+    With no ids: every post that has media, optionally only those observed since a date / of one relation.
+    A post whose teardown fails is dropped and the rest re-run (finished teardowns come from the cache)."""
+    import json
+    from datetime import date
+
+    from wonhee.inspire import report
+    from wonhee.media import path_for
+
+    if not content_ids:
+        q = ["""SELECT DISTINCT l.content_id FROM v_content_latest l JOIN content_item c ON c.id=l.content_id
+                WHERE (c.media_sha256 IS NOT NULL OR EXISTS (SELECT 1 FROM content_media m WHERE m.content_id=c.id))"""]
+        args: list = []
+        if since:
+            q.append("AND l.observed_at >= ?"); args.append(since)
+        if relation:
+            q.append("AND l.relation = ?"); args.append(relation)
+        content_ids = [r[0] for r in conn.execute(" ".join(q) + " ORDER BY 1", args)]
+    if not content_ids:
+        raise ValueError("no stored posts match; grab some first")
+    remaining, failed, done, last_run = list(dict.fromkeys(content_ids)), [], {}, None
+    while remaining:
+        chain = {"nodes": [{"id": f"t{c}", "node": "teardown", "in": {"content": f"content:{c}"}} for c in remaining],
+                 "cost_cap_usd": max(settings.cost_cap_usd, 0.01 * len(remaining))}
+        last_run, _ = chain_run(conn, settings, deps, chain, progress=progress)
+        bad = None
+        for c in remaining:
+            step = queries.current_step(conn, last_run, f"t{c}")
+            if step is None:
+                continue
+            if step["status"] in ("ok", "weak"):
+                ref = queries.step_outputs(conn, step["id"])["teardown"]["ref"]
+                done[c] = json.loads(path_for(settings.media_dir, ref).read_text())
+            elif step["status"] == "failed":
+                bad = c
+        if bad is None:
+            break  # finished, or stopped at the cost cap (the report says what is missing)
+        failed.append(bad)
+        remaining = [c for c in remaining if c != bad and c not in done]
+    tds = [done[c] for c in content_ids if c in done]
+    if not tds:
+        raise ValueError(f"no teardown succeeded (see wonhee chain show {last_run})")
+    metrics = {r["content_id"]: dict(r) for r in conn.execute(
+        f"SELECT content_id, plays, likes FROM v_content_latest WHERE content_id IN ({','.join('?' * len(tds))})",
+        [t["content_id"] for t in tds])}
+    skipped = [c for c in content_ids if c not in done and c not in failed]
+    md = report.build(tds, metrics, failed + skipped)
+    out_dir = settings.home / "inspire" / f"{date.today().isoformat()}-run{last_run}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "report.md").write_text(md, encoding="utf-8")
+    (out_dir / "teardowns.json").write_text(json.dumps(tds, ensure_ascii=False, indent=1), encoding="utf-8")
+    cost = conn.execute("SELECT coalesce(sum(cost_usd),0) FROM step WHERE run_id=?", (last_run,)).fetchone()[0]
+    head = md.split("## Best to replicate")[0].strip()
+    return (f"{head}\n\n{len(tds)} teardown(s), {len(failed)} failed, {len(skipped)} not reached; last run "
+            f"{last_run} (${cost:.3f}). Full report: {out_dir / 'report.md'}"), out_dir / "report.md"
+
+
 def export(conn, settings, ref: str, dest: Path) -> list[Path]:
     """Copy a stored result into a folder for posting: a video or image as one file, an images manifest or a
     content:<id> photo post as 01.jpg, 02.jpg, ... Returns the written paths."""

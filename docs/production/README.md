@@ -13,6 +13,12 @@ Written 2026-10-17. Every number here was measured on this box (Ryzen 7 3700X, 1
 | [insights-2026-10-17.md](insights-2026-10-17.md) | what to record (B-roll shoot list), which formats fit, and what that means for what to build |
 | [idea-bank.md](idea-bank.md) | the @frictionlessmuk niche: ideas grouped into shoot days, each with a capture, a line and a look |
 
+## Day-to-day commands
+- `wonhee grab <urls>`: store references (reels, photo posts and carousels) with analysis.
+- `wonhee inspire`: turn everything stored into an actionable report (what to film, what to build, lines to use).
+- `wonhee larp "<mundane task>" [--image|--video PATH]`: professional-moment framings, rendered onto your media.
+- `wonhee node run look|look_image|text_image|text_video|carousel ...`, then `wonhee export <ref> <dir>`: produce and save.
+
 ## The rules on one screen
 
 1. **Touch pixels once.** Edit nodes produce a timeline, not a video. Only `render` encodes. A chain should have one final encode, plus at most one preview encode. Three chained re-encodes cost **3–4× the time and CPU** of one filter graph, and lose quality.

@@ -36,6 +36,7 @@ class TranslateParams(BaseModel):
     style: Literal["natural", "literal"] = "natural"
     batch: int = 80
     overlap: int = 10
+    engine: Literal["remote", "local"] = "remote"  # local = the on-box model (settings.local_llm_model), $0
 
 
 def _listing(lines) -> str:
@@ -84,9 +85,12 @@ def translate_fn(ctx, inputs, p: TranslateParams) -> dict[str, str]:
     gaps: list[int] = []
 
     def ask(lines, first: bool, context):
-        return ctx.llm(TranslateReply, schema_name="TranslateReply", system=SYSTEM_TRANSLATE,
-                       prompt=_prompt(p, lines, caption=caption if first else None, context=context,
-                                      glossary=glossary, first=first))
+        prompt = _prompt(p, lines, caption=caption if first else None, context=context, glossary=glossary,
+                         first=first)
+        if p.engine == "local":
+            from wonhee import localllm
+            return localllm.chat_json(ctx.settings, TranslateReply, system=SYSTEM_TRANSLATE, prompt=prompt)
+        return ctx.llm(TranslateReply, schema_name="TranslateReply", system=SYSTEM_TRANSLATE, prompt=prompt)
 
     for start in range(0, len(subs.lines), size):
         batch = subs.lines[start:start + size]
@@ -138,4 +142,4 @@ def translate_fn(ctx, inputs, p: TranslateParams) -> dict[str, str]:
 registry.register(Node("translate", 2, {"subs": "subtitles", "caption": "content?"},
                        {"subs": "subtitles", "notes": "text"}, TranslateParams, translate_fn,
                        "Translate subtitles into natural target-language subtitles with a name glossary and notes.",
-                       salt=lambda s: {"llm_model": s.llm_model}))
+                       salt=lambda s: {"llm_model": s.llm_model, "local_llm_model": s.local_llm_model}))

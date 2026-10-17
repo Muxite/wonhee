@@ -267,7 +267,9 @@ def test_salt_change_misses_cache(conn, settings, toys, toy_registry):
 
 def test_real_nodes_salt_their_models(settings):
     from wonhee.nodes import registry
-    assert registry.get("translate").salt(settings) == {"llm_model": settings.llm_model}
+    both = {"llm_model": settings.llm_model, "local_llm_model": settings.local_llm_model}
+    assert registry.get("translate").salt(settings) == both
+    assert registry.get("teardown").salt(settings) == both
     assert registry.get("screen_text").salt(settings) == {"llm_model": settings.llm_model}
     assert registry.get("speech_subs").salt(settings) == {
         "whisper_model": settings.whisper_model, "compute_type": settings.whisper_compute_type}

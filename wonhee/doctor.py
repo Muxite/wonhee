@@ -112,6 +112,10 @@ def checks(settings: Settings) -> list[Check]:
     out.append(Check("text fonts", not missing, "bundled sans + script, Noto Color Emoji, Noto Sans CJK" if not missing
                      else f"missing: {', '.join(missing)} (emoji and CJK fall back to the base font)", "warning",
                      "" if not missing else "apt install fonts-noto-color-emoji fonts-noto-cjk"))
+    from wonhee.localllm import model_ready
+    ok, detail = model_ready(settings)
+    out.append(Check("local model", ok, detail, "warning",
+                     "" if ok else "used for $0 translation; set WONHEE_LOCAL_LLM_URL / WONHEE_LOCAL_LLM_MODEL"))
     priced = settings.llm_price_in_per_mtok > 0 and settings.llm_price_out_per_mtok > 0
     out.append(Check("llm prices", priced,
                      "configured" if priced else "LLM prices are 0 so LLM spend counts as free; set "

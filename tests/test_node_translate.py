@@ -108,3 +108,18 @@ def test_blank_translation_goes_through_retry(conn, settings, fake_llm):
     rid, status = tr(conn, settings, sha)
     assert status == "done" and len(fake_llm.calls()) == 2
     assert [l.text for l in load_subs(settings.media_dir, out(conn, rid, "t", "subs")).lines] == ["tr0", "tr1"]
+
+
+def test_local_engine_uses_the_on_box_model_and_costs_nothing(conn, settings, fake_llm, monkeypatch):
+    import json
+    from wonhee import localllm
+    sent = []
+
+    def post(s, body):
+        sent.append(body)
+        return {"message": {"content": json.dumps(reply([0, 1]))}}
+    monkeypatch.setattr(localllm, "_post", post)
+    rid, status = tr(conn, settings, mk(conn, settings, 2), {"engine": "local"})
+    assert status == "done" and len(sent) == 1 and fake_llm.calls() == []
+    assert [l.text for l in load_subs(settings.media_dir, out(conn, rid, "t", "subs")).lines] == ["tr0", "tr1"]
+    assert conn.execute("SELECT coalesce(sum(cost_usd),0) FROM step WHERE run_id=?", (rid,)).fetchone()[0] == 0

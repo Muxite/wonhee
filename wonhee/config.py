@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     llm_price_in_per_mtok: float = 0.25  # gpt-6-luna ceiling (awr ledger, 2026-10-12)
     llm_price_out_per_mtok: float = 0.75
 
+    # On-box model (Ollama) for $0 work such as translation. gemma4:e4b tested best for ko/zh/ja captions (2026-10-17).
+    local_llm_url: str = "http://localhost:11440"
+    local_llm_model: str = "gemma4:e4b"
+    local_llm_timeout_s: int = 180
+
     apify_price_per_1k: float = 2.70    # used only when Apify does not report usage
     brave_endpoint: str = "https://api.search.brave.com/res/v1/web/search"
 

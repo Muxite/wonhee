@@ -166,6 +166,19 @@ def _cmd_account(a, settings) -> int:
     return 0
 
 
+def _cmd_larp(a, settings) -> int:
+    print(service.larp(open_db(settings), settings, build_deps(settings), a.task, image=a.image, video=a.video,
+                       pick=a.pick, engine=a.engine, registers=a.register or None))
+    return 0
+
+
+def _cmd_inspire(a, settings) -> int:
+    text, _ = service.inspire(open_db(settings), settings, build_deps(settings), a.ids or None, a.since,
+                              a.relation, progress=_progress)
+    print(text)
+    return 0
+
+
 def _cmd_export(a, settings) -> int:
     for p in service.export(open_db(settings), settings, a.ref, Path(a.dest)):
         print(p)
@@ -232,6 +245,20 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("handle"); s.add_argument("relation", choices=list(service.RELATIONS)); s.set_defaults(fn=_cmd_account)
     s = sub.add_parser("db", help="database helpers").add_subparsers(dest="sub", required=True).add_parser("sql")
     s.add_argument("query"); s.set_defaults(fn=_cmd_sql)
+    s = sub.add_parser("larp", help="frame any mundane task as a professional moment; optionally render it on media")
+    s.add_argument("task", help='e.g. "drank an iced matcha next to nvtop"')
+    media_in = s.add_mutually_exclusive_group()
+    media_in.add_argument("--image", metavar="PATH|SHA", help="render the chosen line on this photo")
+    media_in.add_argument("--video", metavar="PATH|SHA", help="render the chosen line on this clip")
+    s.add_argument("--pick", type=int, help="which framing to render (default: the model's best)")
+    s.add_argument("--engine", choices=["remote", "local"], default="remote", help="local = on-box model, $0")
+    s.add_argument("--register", action="append", metavar="NAME",
+                   help="ask for specific registers (repeatable), e.g. linkedin_announcement, earnings_call")
+    s.set_defaults(fn=_cmd_larp)
+    s = sub.add_parser("inspire", help="tear down stored posts and write an actionable report (what to film/build)")
+    s.add_argument("ids", nargs="*", type=int, metavar="CONTENT_ID", help="default: every stored post with media")
+    s.add_argument("--since", metavar="YYYY-MM-DD", help="only posts observed (grabbed) since this date")
+    s.add_argument("--relation", choices=["ours", "friend", "external"]); s.set_defaults(fn=_cmd_inspire)
     s = sub.add_parser("export", help="copy a result (video, image, images manifest, content:<id>) into a folder")
     s.add_argument("ref", help="64-hex sha or content:<id>"); s.add_argument("dest"); s.set_defaults(fn=_cmd_export)
     s = sub.add_parser("profile", help="workload profiler (gauge): `wonhee profile doctor`, `... run <workload>`; "

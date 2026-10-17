@@ -141,6 +141,32 @@ def chain_run(chain: list | dict, wait: bool = True) -> str:
 
 @mcp.tool()
 @_guard
+def larp(task: str, image: str | None = None, video: str | None = None, pick: int | None = None,
+         engine: str = "remote") -> str:
+    """Frame any mundane task as a professional moment (LinkedIn announcement, founder update, earnings call, ...):
+    on-screen lines, captions, hashtags, the fitting text preset / look, and the shot to capture. With an image or
+    video (path or sha), also render the chosen line onto it. engine="local" uses the on-box model ($0)."""
+    conn, settings = _open()
+    try:
+        return service.larp(conn, settings, _deps(settings), task, image=image, video=video, pick=pick, engine=engine)
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def inspire(content_ids: list[int] | None = None, since: str | None = None, relation: str | None = None) -> str:
+    """Tear down stored inspiration posts (cached per post; ~$0.001 each, translation on-box) and write a report:
+    formats, text/footage coupling, what to build, best to replicate, a shoot list and a line bank."""
+    conn, settings = _open()
+    try:
+        return service.inspire(conn, settings, _deps(settings), content_ids, since, relation)[0]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
 def export(ref: str, dest: str) -> str:
     """Copy a stored result into a local folder for posting: a video or image (one file), an images manifest or
     content:<id> photo post (01.jpg, 02.jpg, ...). Returns the written paths."""
