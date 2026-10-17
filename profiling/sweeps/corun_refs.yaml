@@ -1,0 +1,6 @@
+# Isolated references for the llm halves of sweeps/corun.yaml (same params, defaults included).
+jobs:
+  - workload: llm.generate
+    grid: {model: ["qwen2.5:3b", "qwen2.5:7b"]}
+    fixed: {num_ctx: 8192}
+    repeats: 3

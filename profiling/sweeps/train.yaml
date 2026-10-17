@@ -1,0 +1,10 @@
+# Batch-size ladder up to and past the OOM edge (resnet50 at large batch should cuda_oom: censored rows).
+jobs:
+  - workload: train.small
+    fixed: {model: resnet18, steps: 30}
+    grid: {batch: [32, 128, 16, 64, 256, 384]}
+    repeats: 2
+  - workload: train.small
+    fixed: {model: resnet50, steps: 20}
+    grid: {batch: [16, 64, 32, 128, 192, 256]}
+    repeats: 2

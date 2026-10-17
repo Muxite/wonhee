@@ -1,0 +1,6 @@
+# X3 other GPU task shapes: CNN training (tensor cores), speech-to-text, hardware video encode.
+jobs:
+  - {workload: train.small, fixed: {model: resnet50, batch: 64, steps: 20}, repeats: 2, profile: metrics}
+  - {workload: train.small, fixed: {model: resnet50, batch: 64, steps: 20, amp: true}, repeats: 2, profile: metrics}
+  - {workload: wonhee.speech_subs, fixed: {clip_s: 40, whisper_model: turbo}, repeats: 2, profile: metrics}
+  - {workload: ffmpeg.transcode, fixed: {seconds: 20, height: 1080, codec: h264_nvenc, preset: p4}, repeats: 2, profile: metrics}

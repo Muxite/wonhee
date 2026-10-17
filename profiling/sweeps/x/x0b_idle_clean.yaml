@@ -1,0 +1,2 @@
+jobs:
+  - {workload: micro.idle, fixed: {seconds: 10}, repeats: 3, profile: metrics}

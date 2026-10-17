@@ -1,0 +1,6 @@
+# X4b the same decode job as N separate processes sharing the GPU (N = 2 and 4), traced per process.
+profile: trace
+repeats: 2
+pairs:
+  - ["llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=256,reps=2", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=256,reps=2"]
+  - ["llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=256,reps=2", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=256,reps=2", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=256,reps=2", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=256,reps=2"]

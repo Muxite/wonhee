@@ -1,0 +1,6 @@
+# X5 solo references for the pair matrix, traced the same way as the pairs so profiler overhead cancels.
+jobs:
+  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 512, reps: 2}, repeats: 2, profile: trace}
+  - {workload: train.small, fixed: {model: resnet50, batch: 64, steps: 60}, repeats: 2, profile: trace}
+  - {workload: ffmpeg.transcode, fixed: {seconds: 40, height: 1080, codec: h264_nvenc, preset: p4}, repeats: 2, profile: trace}
+  - {workload: wonhee.speech_subs, fixed: {clip_s: 100, whisper_model: turbo}, repeats: 2, profile: trace}

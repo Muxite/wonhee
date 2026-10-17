@@ -1,0 +1,12 @@
+# X2 small-LLM anatomy, one phase per process: prefill (compute-bound) vs decode (bandwidth-bound), by model size.
+# Then decode with layers moved off the GPU (partial offload: what a too-small GPU costs).
+jobs:
+  - workload: llamacpp.phase
+    grid: {model: ["qwen2.5:0.5b", "qwen2.5:3b", "qwen2.5:7b", "qwen2.5:14b"], phase: [prefill, decode]}
+    fixed: {reps: 3}
+    profile: metrics
+    repeats: 2
+  - workload: llamacpp.phase
+    fixed: {model: "qwen2.5:7b", phase: decode, tokens: 128, reps: 2}
+    grid: {ngl: [99, 20, 12, 4, 0]}
+    profile: metrics

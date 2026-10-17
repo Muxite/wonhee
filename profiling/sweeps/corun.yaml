@@ -1,0 +1,5 @@
+# Not consumed by `gauge sweep`: the three pairs for `gauge corun`, each repeated 3x (see README).
+pairs:
+  - ["train.small:batch=128", "llm.generate:model=qwen2.5:3b,num_ctx=8192"]
+  - ["ffmpeg.transcode:seconds=20,codec=libx264", "wonhee.speech_subs:clip_s=60"]
+  - ["llm.generate:model=qwen2.5:7b,num_ctx=8192", "wonhee.speech_subs:clip_s=60"]

@@ -1,0 +1,7 @@
+# Small -> large, so the 14b runs are predicted from the smaller models only (extrapolation).
+# First run pays the shared CUDA JIT cache warm-up once; it is kept as data, not hidden.
+jobs:
+  - workload: llm.generate
+    fixed: {prompt_tokens: 1000, gen_tokens: 200}
+    grid: {model: ["qwen2.5:0.5b", "qwen2.5:1.5b", "qwen2.5:3b", "qwen2.5:7b", "qwen2.5:14b"], num_ctx: [2048, 8192, 16384]}
+    repeats: 2

@@ -1,0 +1,623 @@
+<meta charset="utf-8">
+<title>Shared GPU, Same Node</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;1,400&display=swap">
+<style>
+/* Layout: one reading column of figures, each a numbered "Fig." with caption, like a short lab brief. */
+:root {
+  --paper: #f6f7f5; --ink: #161a1b; --muted: #5d6567; --rule: #d9ddda; --panel: #ffffff;
+  --batched: #1d5bb8; --separate: #b02f69; --busy: #1d5bb8; --cap: #8a6d00;
+  --heat-lo: #eef1ef; --heat-hi: #b02f69;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+  --f-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #121516; --ink: #e8ecea; --muted: #9aa3a4; --rule: #2c3233; --panel: #191d1e;
+  --batched: #6ea2f2; --separate: #ec6fa5; --busy: #6ea2f2; --cap: #d9b44a; --heat-lo: #1f2425; --heat-hi: #ec6fa5; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --paper: #121516; --ink: #e8ecea; --muted: #9aa3a4; --rule: #2c3233; --panel: #191d1e;
+  --batched: #6ea2f2; --separate: #ec6fa5; --busy: #6ea2f2; --cap: #d9b44a; --heat-lo: #1f2425; --heat-hi: #ec6fa5; color-scheme: dark }
+body { background: var(--paper); color: var(--ink); font: 16px/1.55 var(--f-body); }
+.wrap { max-width: 860px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 64px; display: flex; flex-direction: column; gap: 44px; }
+header { display: flex; flex-direction: column; gap: 14px; }
+.kicker { font: 500 12px/1.2 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 600 clamp(32px, 6vw, 46px)/1.05 var(--f-display); margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font: 600 22px/1.2 var(--f-display); margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 66ch; }
+.lede { font-size: 18px; }
+.lede b, p b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.spec { font: 400 12.5px/1.6 var(--f-mono); color: var(--muted); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding-block: 10px; }
+section { display: flex; flex-direction: column; gap: 14px; }
+figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 28px; }
+.fig-label { font: 500 12px/1.3 var(--f-mono); color: var(--muted); letter-spacing: .04em; }
+figcaption { font-size: 14px; color: var(--muted); max-width: 66ch; }
+figcaption b { color: var(--ink); font-weight: 500; }
+.chart { width: 100%; min-height: 240px; position: relative; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { font-family: var(--f-mono); font-size: 11px; fill: var(--muted); }
+svg .lbl { fill: var(--ink); font-size: 11.5px; }
+svg .grid { stroke: var(--rule); stroke-width: 1; }
+svg .axis { stroke: var(--muted); stroke-width: 1; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font: 12px/1.3 var(--f-mono); color: var(--muted); }
+.legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+.tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--rule); padding: 6px 9px; font: 12px/1.45 var(--f-mono); color: var(--ink); white-space: nowrap; box-shadow: 0 4px 14px rgb(0 0 0 / .12); z-index: 3; }
+.scope { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; font-size: 14px; }
+.scope dt { font: 500 12.5px/1.6 var(--f-mono); }
+.scope dd { margin: 0; color: var(--muted); }
+pre { margin: 0; background: var(--panel); border: 1px solid var(--rule); padding: 14px 16px; overflow-x: auto; font: 12.5px/1.55 var(--f-mono); color: var(--ink); }
+.files { font: 12.5px/1.7 var(--f-mono); color: var(--muted); }
+.files code { color: var(--ink); }
+footer p { font-size: 13.5px; color: var(--muted); }
+:focus-visible { outline: 2px solid var(--batched); outline-offset: 2px; }
+.nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 18px 24px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding-block: 18px; }
+.nums div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.nums b { font: 600 26px/1.15 var(--f-display); font-variant-numeric: tabular-nums; }
+.nums span { font-size: 13.5px; color: var(--muted); }
+.open { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; max-width: 70ch; }
+.open b { font-weight: 500; }
+.note { font-size: 14px; color: var(--muted); }
+svg .d-node { fill: var(--panel); stroke: var(--ink); stroke-width: 1.2; }
+svg .d-sep { fill: var(--panel); stroke: var(--separate); stroke-width: 1.6; }
+svg .d-bat { fill: var(--panel); stroke: var(--batched); stroke-width: 1.6; }
+svg .d-gpu { fill: var(--heat-lo); stroke: var(--muted); stroke-width: 1; }
+svg .d-wire { stroke: var(--muted); stroke-width: 1.2; }
+svg .d-t { fill: var(--ink); font-size: 12px; }
+svg .d-n { fill: var(--muted); font-size: 11px; }
+footer p { font-size: 13.5px; color: var(--muted); }
+.toc { display: flex; flex-wrap: wrap; gap: 6px 16px; font: 13px/1.4 var(--f-mono); }
+.toc a { color: var(--batched); text-decoration: none; border-bottom: 1px solid transparent; }
+.toc a:hover { border-bottom-color: var(--batched); }
+code { font-family: var(--f-mono); font-size: .92em; }
+section { scroll-margin-top: 16px; }
+.carry { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 24px; }
+.carry h3 { font: 600 16px/1.3 var(--f-display); margin: 0 0 8px; }
+.carry ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 14.5px; }
+.carry b { font-weight: 500; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="kicker">GPU workload profiling · 2026-10-16</div>
+    <h1>Shared GPU, same node</h1>
+    <p class="lede">How AI task nodes behave on one GPU: what sharing it does to latency, memory and GPU time, what starting a node costs, and per-node execution traces, all measured per process.</p>
+    <nav class="toc"><a href="#did">What we did</a><a href="#sharing">Sharing</a><a href="#ab">A, B, A+B</a><a href="#starting">Starting a node</a><a href="#wonhee">wonhee nodes</a><a href="#traces">Traces</a><a href="#arm">On ARM</a><a href="#open">Open questions</a></nav>
+    <div class="spec">RTX 5070 Ti 16 GB · 16 CPU cores · Docker + cgroup v2 · llama.cpp CUDA (Q4_K_M) · Nsight Systems 2026.3</div>
+  </header>
+
+  <section id="did">
+    <h2>What we did</h2>
+    <p>Each node runs in its own container. The host reads that container's CPU and memory counters, and Nsight records every GPU kernel the node's own process launches, so a node's data stays its own even when others share the GPU. The test node is an LLM decode step (qwen2.5 3B, 256 tokens), run three ways:</p>
+    <figure><div class="fig-label">Setup</div>
+      <svg viewBox="0 0 780 190" role="img" aria-label="Three setups: one node alone, four separate node processes sharing the GPU, and one process batching four streams">
+        <g font-family="IBM Plex Mono, monospace" font-size="12">
+          <text x="120" y="18" text-anchor="middle" class="lbl">alone</text>
+          <rect x="70" y="32" width="100" height="40" rx="3" class="d-node"/><text x="120" y="56" text-anchor="middle" class="d-t">1 process</text>
+          <line x1="120" y1="72" x2="120" y2="120" class="d-wire"/>
+          <text x="390" y="18" text-anchor="middle" class="lbl">separate processes (2 or 4)</text>
+          <rect x="282" y="32" width="48" height="40" rx="3" class="d-sep"/><rect x="338" y="32" width="48" height="40" rx="3" class="d-sep"/>
+          <rect x="394" y="32" width="48" height="40" rx="3" class="d-sep"/><rect x="450" y="32" width="48" height="40" rx="3" class="d-sep"/>
+          <text x="390" y="88" text-anchor="middle" class="d-n">4 weight copies, take turns</text>
+          <line x1="306" y1="72" x2="390" y2="120" class="d-wire"/><line x1="362" y1="72" x2="390" y2="120" class="d-wire"/>
+          <line x1="418" y1="72" x2="390" y2="120" class="d-wire"/><line x1="474" y1="72" x2="390" y2="120" class="d-wire"/>
+          <text x="660" y="18" text-anchor="middle" class="lbl">batched (2, 4 or 8 streams)</text>
+          <rect x="600" y="32" width="120" height="40" rx="3" class="d-bat"/><text x="660" y="56" text-anchor="middle" class="d-t">1 process, 4 streams</text>
+          <text x="660" y="88" text-anchor="middle" class="d-n">1 weight copy, shared reads</text>
+          <line x1="660" y1="72" x2="660" y2="120" class="d-wire"/>
+          <rect x="40" y="120" width="700" height="46" rx="3" class="d-gpu"/>
+          <text x="390" y="148" text-anchor="middle" class="d-t">one GPU · 16 GB · ~800 GB/s memory bandwidth</text>
+        </g>
+      </svg>
+    </figure>
+    <p>Then every pair of four different node types (LLM decode, CNN training, NVENC video encode, speech-to-text) shared the GPU, each compared with its own solo runs. Every point below is measured, 2 to 12 times.</p>
+  </section>
+
+  <section id="sharing">
+    <h2>What happened when nodes share the GPU</h2>
+    <div class="nums">
+      <div><b>3.5 → 15.8</b><span>ms per token for each stream, alone vs one of four separate processes</span></div>
+      <div><b>284 → 258</b><span>total tokens/s: four separate processes produce less than one alone</span></div>
+      <div><b>614</b><span>tokens/s for the same four streams batched in one process, at 6.5 ms/token</span></div>
+      <div><b>8.9 vs 2.5</b><span>GiB of GPU memory: four separate processes vs one batched process</span></div>
+      <div><b>×2.1</b><span>LLM decode slowdown beside CNN training; training slows only ×1.16</span></div>
+      <div><b>37%</b><span>of the GPU's time one node gets as one of four, from its own kernel trace</span></div>
+      <div><b>A+B ≠ A + B</b><span>two nodes together look like a time-weighted blend of each alone, minus 2–22% lost to switching</span></div>
+    </div>
+    <div class="legend"><span><i style="background:var(--separate)"></i>separate processes</span><span><i style="background:var(--batched)"></i>batched in one process</span></div>
+    <div class="figs">
+      <figure><div class="fig-label">Fig. 1 · per-stream latency</div><div class="chart" id="f-lat"></div>
+        <figcaption>Separate processes take turns on the GPU, so each waits for the others.</figcaption></figure>
+      <figure><div class="fig-label">Fig. 2 · total throughput</div><div class="chart" id="f-tps"></div>
+        <figcaption>Decode is limited by memory bandwidth. Batching reads each weight once for all streams; separate processes read it once each.</figcaption></figure>
+    </div>
+    <figure><div class="fig-label">Fig. 3 · GPU memory</div><div class="chart" id="f-mem" style="min-height:200px"></div>
+      <figcaption>Each separate process loads its own weights. Eight separate copies would not fit this card.</figcaption></figure>
+    <figure><div class="fig-label">Fig. 4 · one node's GPU busy time, 5 ms bins over 600 ms</div><div class="chart" id="f-trace" style="min-height:190px"></div>
+      <figcaption>Alone, its kernels keep the GPU <b id="busy-solo">—</b> busy. As one of four, it gets <b id="busy-four">—</b>: the bursts are its turns, the gaps are the other three.</figcaption></figure>
+    <div class="figs">
+      <figure><div class="fig-label">Fig. 5 · slowdown beside another node</div><div class="chart" id="f-heat" style="min-height:260px"></div>
+        <figcaption>Row node's slowdown with the column node on the same GPU. The memory-bound LLM suffers most; nodes on other engines (NVENC) or mostly on the CPU (speech) barely interact.</figcaption></figure>
+      <figure><div class="fig-label">Fig. 6 · what each node uses</div><div class="chart" id="f-reg" style="min-height:260px"></div>
+        <figcaption>Hardware counters while each node ran alone (hover for the 0.5B points). Decode uses memory bandwidth, prefill and training use tensor cores, speech and video encode use little of either.</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="ab">
+    <h2>A, then B, then A and B together</h2>
+    <p>One observer recorded the whole GPU's hardware counters 10,000 times a second through a fixed sequence: idle, node A alone, idle, node B alone, idle, both together, idle. Each node also kept its own kernel trace, which shows how the GPU split its time between them. Every sequence ran twice and the repeats agree within 0.3 percentage points.</p>
+    <div class="legend"><span><i style="background:var(--separate)"></i>DRAM read bandwidth</span><span><i style="background:var(--batched)"></i>tensor cores active</span><span><i style="background:var(--muted)"></i>SMs active</span></div>
+    <figure><div class="fig-label">Fig. 7 · GPU activity through the sequence, % of peak, 100 ms bins</div><div class="chart" id="f-seq" style="min-height:420px"></div>
+      <figcaption>Shaded bands are the measured windows. When two nodes share the GPU, its activity sits between theirs instead of adding up.</figcaption></figure>
+    <figure><div class="fig-label">Fig. 8 · what A + B looks like, against two simple models</div><div class="chart" id="f-model" style="min-height:300px"></div>
+      <figcaption><b>Sum</b>: A and B run at once and their activity adds up. <b>Time-split</b>: the GPU alternates between them, so A + B is each node's activity weighted by its share of GPU time from its own trace. The time-split model is close for training and video encode. Two identical LLMs land well below it: about a fifth of the GPU's work is lost to switching between them.</figcaption></figure>
+    <div class="nums">
+      <div><b>16% / 84%</b><span>GPU time split, LLM vs CNN training: training's long kernels hold the GPU</span></div>
+      <div><b>51% / 49%</b><span>split between two identical LLMs, yet 22% less DRAM traffic than the time-split predicts</span></div>
+      <div><b>52% vs 62%</b><span>DRAM bandwidth used by two LLMs together vs one alone</span></div>
+    </div>
+  </section>
+
+  <section id="starting">
+    <h2>What starting a node costs</h2>
+    <p>The same tiny command, timed 40 times per launch method in shuffled order (1,760 container starts in all), from request to result.</p>
+    <div class="nums">
+      <div><b>+149 ms</b><span>overhead of a plain <code>docker run</code> over a native process; image size makes no difference once the image is on the machine</span></div>
+      <div><b>49 ms</b><span>handing work to a container that is already running (<code>docker exec</code>)</span></div>
+      <div><b>64 s vs 5.3 s</b><span>a fresh Ollama container without vs with a shared CUDA compute cache (it compiles GPU code on first use)</span></div>
+      <div><b>0.05 s</b><span>first token from a 7B model already in GPU memory, vs 2.7 s from RAM cache and 6.1 s from disk</span></div>
+    </div>
+    <figure><div class="fig-label">Fig. 9 · request to result, by launch method</div><div class="chart" id="f-start" style="min-height:300px"></div>
+      <figcaption>Bar: median of 40. Whisker: 10th to 90th percentile. The number in brackets is the overhead over running the same command as a plain process (3 ms).</figcaption></figure>
+    <div class="legend" id="phase-legend"></div>
+    <figure><div class="fig-label">Fig. 10 · where the overhead goes, median per step</div><div class="chart" id="f-phase" style="min-height:260px"></div>
+      <figcaption>Timestamps from the host, from Docker, and from the container's own first instruction. Most of the time is between Docker reporting the container started and its first instruction running. GPU access adds about 65 ms in that step (NVIDIA's container hook); the default network adds about 30 ms there and about 95 ms more on exit. Removing the container afterwards (about 43 ms, not in the bars) is extra.</figcaption></figure>
+    <figure><div class="fig-label">Fig. 11 · overhead with a no-op vs a 340 ms CPU task</div><div class="chart" id="f-fixed" style="min-height:230px"></div>
+      <figcaption>Overhead over a plain process doing the same work (the identical stress-ng binary). It stays about the same with real work inside, so it is a fixed cost per launch: it matters for short tasks and fades for long ones. The CPU task itself ran at native speed inside the container (339 vs 336 ms).</figcaption></figure>
+    <figure><div class="fig-label">Fig. 12 · starting many at once</div><div class="chart" id="f-burst" style="min-height:220px"></div>
+      <figcaption>Per-container time when several <code>docker run</code>s start together. Launching 16 at once makes each one nearly 3× slower.</figcaption></figure>
+    <figure><div class="fig-label">Fig. 13 · time to first token, qwen2.5 7B, by where the model is</div><div class="chart" id="f-ladder" style="min-height:150px"></div>
+      <figcaption>Three runs each. Keeping a model loaded is about 120× faster than reading it from disk. Container start and server start come on top of the disk and RAM cases.</figcaption></figure>
+  </section>
+
+  <section id="wonhee">
+    <h2>wonhee nodes</h2>
+    <p>Two of wonhee's video nodes, run through wonhee's own node runner inside containers on clips of 10 to 100 seconds.</p>
+    <div class="figs">
+      <figure><div class="fig-label">Fig. 14 · speech-to-text: time vs clip length</div><div class="chart" id="f-speech" style="min-height:220px"></div>
+        <figcaption>Blue: whisper turbo; pink: tiny, base and small at 40 s. About 15 s whatever the clip length, and the small models are barely faster. The time is startup, and the GPU is busy only 3% of it, so a long-running speech worker would beat one container per clip.</figcaption></figure>
+      <figure><div class="fig-label">Fig. 15 · subtitle burn-in: CPU time vs clip length</div><div class="chart" id="f-burn" style="min-height:220px"></div>
+        <figcaption>Grows in a straight line with the clip, about 3.3 CPU-seconds per second of 1080×1920 video, on the CPU encoder. The GPU's video encoder would take most of this off the CPU.</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="traces">
+    <h2>Per-node traces you can reuse</h2>
+    <p>Any profiled run exports as one JSON file per node (parameters, hardware, who else shared the GPU, its slowdown against solo, and every GPU kernel and memory copy with timing and launch shape), plus a Perfetto-viewable trace. Identical runs launch identical kernel sequences, so a node's solo and shared traces line up kernel for kernel, which is useful for checking a simulator's contention model.</p>
+<pre>{ "node":      { "workload": "llamacpp.phase", "params": { "model": "qwen2.5:3b", "phase": "decode", "tokens": 256 } },
+  "isolation": { "concurrent_with_runs": [255, 256, 257], "interference_vs_solo": { "slowdown": 1.72 } },
+  "timing":    { "container_s": 14.31, "gpu_window_s": 7.74 },
+  "kernels":   [ { "name": "mul_mat_vec_q", "category": "gemv (decode matmul)", "start_us": 412833.97,
+                   "dur_us": 6.85, "grid": [2048,1,1], "block": [32,4,1], "regs_per_thread": 52, "shared_mem_bytes": 768 }, … ],
+  "copies":    [ { "kind": "h2d", "start_us": 0.0, "dur_us": 0.61, "bytes": 8192 }, … ] }</pre>
+    <p class="note">Kernels, copies, VRAM, CPU and RAM belong to the node alone. GPU-wide counters (utilization, power, DRAM, tensor) belong to the node only when it ran alone, and each run records whether it did.</p>
+  </section>
+
+  <section id="arm">
+    <h2>Would this hold on a unified-memory ARM system?</h2>
+    <p>Everything here was measured on x86-64 with a discrete GPU: its own 16 GB of memory, joined to the CPU's RAM over PCIe. Unified-memory aarch64 systems (NVIDIA Grace-based machines, Jetson, Apple silicon) give the CPU and GPU one shared memory pool. These are expectations, not measurements.</p>
+    <div class="carry">
+      <div>
+        <h3>Likely to carry over</h3>
+        <ul>
+          <li><b>Decode is memory-bandwidth-bound.</b> It re-reads all weights per token on any hardware; speed scales with that system's memory bandwidth, which on unified LPDDR designs is often lower than this card's.</li>
+          <li><b>Batching beats separate processes.</b> One weight read serving many streams is a property of the workload, not the platform.</li>
+          <li><b>Separate processes take turns on the GPU</b> and lose time switching, wherever the driver time-slices contexts. The size of the switching tax needs remeasuring.</li>
+          <li><b>Container start is a fixed cost per launch.</b> Docker and runc work the same way; the absolute milliseconds depend on the CPU.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Needs remeasuring</h3>
+        <ul>
+          <li><b>Model loading and cold start.</b> No PCIe copy into separate GPU memory, so the gap between "in RAM" and "in GPU memory" (2.7 s vs 0.05 s here) may shrink or vanish.</li>
+          <li><b>Partial offload.</b> The cliff here comes from layers running on the CPU across PCIe. With one pool, the trade-off between CPU and GPU execution looks different.</li>
+          <li><b>CPU jobs competing with GPU jobs.</b> Here CPU work (subtitle encoding, speech startup) barely touched the GPU. On shared memory, CPU and GPU draw on the same bandwidth, so new interference is likely.</li>
+          <li><b>Memory accounting.</b> "GPU memory" and RAM are the same pool: per-process attribution, OOM limits and cgroup numbers can overlap and need re-validating.</li>
+          <li><b>Counters and power.</b> Which hardware counters and per-process readings are available differs by chip, and power is often reported for the whole chip, not the GPU alone.</li>
+          <li><b>Software.</b> Every image needs an arm64 build, and hardware video encoders differ by platform.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="open">
+    <h2>Open questions</h2>
+    <ul class="open">
+      <li><b>Does a smarter GPU sharing mode change the picture?</b> NVIDIA MPS or MIG could let separate processes overlap instead of taking turns. Not tested; MIG is not available on this consumer card.</li>
+      <li><b>Where does batching stop paying off?</b> The jump at 8 streams comes from llama.cpp switching to batched matrix kernels. Larger batches, longer contexts and larger models would locate the limit.</li>
+      <li><b>How general are these numbers?</b> One machine and one GPU. Rerunning the same gauge experiments on a datacenter GPU and on a unified-memory ARM system would test which shapes carry over (see above).</li>
+      <li><b>What is the switching tax made of?</b> Two identical LLMs lose about 22% of the GPU's work when interleaved. Context-switch time, cache and TLB refills, or launch queuing are all candidates; MPS, which removes context switches, would separate them.</li>
+      <li><b>Can a simple model predict Fig. 5?</b> The time-split model in Fig. 8 plus a switching tax is a start. Each node's kernel lengths and position in Fig. 6 might be enough to predict its share of GPU time; the exported traces are the test set.</li>
+      <li><b>Real agent traffic.</b> These are steady runs. Bursty agent calls with gaps, model swaps and cold starts behave differently and are not measured here.</li>
+    </ul>
+  </section>
+
+  <footer><p>2–12 observations per point, 2 per pair. Profiler overhead is equal across compared runs. Data and traces: gauge repo, data/dataset and data/traces.</p></footer>
+</div>
+
+<script>
+const DATA = __DATA__;
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function svgIn(id, h) {
+  const box = document.getElementById(id);
+  box.querySelectorAll("svg").forEach((s) => s.remove());
+  const w = Math.max(300, box.clientWidth);
+  const s = el("svg", { viewBox: `0 0 ${w} ${h}`, role: "img" }, null);
+  box.appendChild(s);
+  return { s, w, box };
+}
+function tipFor(box) {
+  let t = box.querySelector(".tip");
+  if (!t) { t = document.createElement("div"); t.className = "tip"; t.hidden = true; box.appendChild(t); }
+  return {
+    show(ev, lines) {
+      t.replaceChildren(...lines.map((l) => { const d = document.createElement("div"); d.textContent = l; return d; }));
+      t.hidden = false;
+      const r = box.getBoundingClientRect();
+      let x = ev.clientX - r.left + 12, y = ev.clientY - r.top + 12;
+      if (x + t.offsetWidth > box.clientWidth) x = Math.max(0, ev.clientX - r.left - t.offsetWidth - 12);
+      if (y + t.offsetHeight > box.clientHeight) y = Math.max(0, ev.clientY - r.top - t.offsetHeight - 12);
+      t.style.left = x + "px"; t.style.top = y + "px";
+    },
+    hide() { t.hidden = true; },
+  };
+}
+const lin = (d0, d1, r0, r1) => (v) => r0 + (v - d0) / (d1 - d0) * (r1 - r0);
+const fmt = (v, d = 1) => v.toFixed(d);
+function niceMax(v) { const p = 10 ** Math.floor(Math.log10(v)); return Math.ceil(v / p * 1.05) * p; }
+
+function lineChart(id, key, unit, digits) {
+  const { s, w, box } = svgIn(id, 250);
+  const m = { l: 46, r: 92, t: 12, b: 34 }, H = 250;
+  const rows = DATA.concurrency;
+  const xs = [1, 2, 4, 8];
+  const x = (n) => m.l + (Math.log2(n) / 3) * (w - m.l - m.r);
+  const ymax = niceMax(Math.max(...rows.map((r) => r[key])));
+  const y = lin(0, ymax, H - m.b, m.t);
+  for (let i = 0; i <= 4; i++) {
+    const v = ymax * i / 4;
+    el("line", { x1: m.l, x2: w - m.r, y1: y(v), y2: y(v), class: "grid" }, s);
+    el("text", { x: m.l - 6, y: y(v) + 4, "text-anchor": "end" }, s, fmt(v, v < 10 && ymax < 30 ? 0 : 0));
+  }
+  xs.forEach((n) => el("text", { x: x(n), y: H - m.b + 18, "text-anchor": "middle" }, s, n));
+  el("text", { x: (m.l + w - m.r) / 2, y: H - 2, "text-anchor": "middle" }, s, "concurrent streams");
+  el("text", { x: m.l, y: m.t - 2 }, s, unit);
+  const tip = tipFor(box);
+  for (const mode of ["separate", "batched"]) {
+    const pts = rows.filter((r) => r.mode === mode).sort((a, b) => a.n - b.n);
+    const color = css(mode === "batched" ? "--batched" : "--separate");
+    el("polyline", { points: pts.map((p) => `${x(p.n)},${y(p[key])}`).join(" "), fill: "none", stroke: color, "stroke-width": 2.25, "stroke-linejoin": "round", "stroke-linecap": "round" }, s);
+    pts.forEach((p) => {
+      const c = el("circle", { cx: x(p.n), cy: y(p[key]), r: 4, fill: color }, s);
+      c.addEventListener("mousemove", (ev) => tip.show(ev, [`${mode}, ${p.n} stream${p.n > 1 ? "s" : ""}`, `${fmt(p.ms_per_token, 1)} ms/token per stream`, `${Math.round(p.total_tps)} tok/s total`, `${fmt(p.total_vram_gib, 2)} GiB VRAM`, `${p.n_obs} observations`]));
+      c.addEventListener("mouseleave", () => tip.hide());
+    });
+    const last = pts[pts.length - 1];
+    el("text", { x: x(last.n) + 8, y: y(last[key]) + 4, class: "lbl", style: `fill:${color}` }, s, `${fmt(last[key], digits)}`);
+  }
+}
+
+function memChart() {
+  const { s, w } = svgIn("f-mem", 200);
+  const H = 200, m = { l: 46, r: 92, t: 18, b: 34 };
+  const cap = 15.92;
+  const rows = DATA.concurrency;
+  const x = (n) => m.l + (Math.log2(n) / 3) * (w - m.l - m.r);
+  const y = lin(0, 18, H - m.b, m.t);
+  [0, 4, 8, 12, 16].forEach((v) => { el("line", { x1: m.l, x2: w - m.r, y1: y(v), y2: y(v), class: "grid" }, s); el("text", { x: m.l - 6, y: y(v) + 4, "text-anchor": "end" }, s, v); });
+  [1, 2, 4, 8].forEach((n) => el("text", { x: x(n), y: H - m.b + 18, "text-anchor": "middle" }, s, n));
+  el("text", { x: (m.l + w - m.r) / 2, y: H - 2, "text-anchor": "middle" }, s, "concurrent streams");
+  el("text", { x: m.l, y: m.t - 6 }, s, "GiB");
+  el("line", { x1: m.l, x2: w - m.r, y1: y(cap), y2: y(cap), stroke: css("--cap"), "stroke-dasharray": "5 4", "stroke-width": 1.5 }, s);
+  el("text", { x: w - m.r + 6, y: y(cap) + 4, style: `fill:${css("--cap")}` }, s, "card 15.9");
+  for (const mode of ["separate", "batched"]) {
+    const pts = rows.filter((r) => r.mode === mode).sort((a, b) => a.n - b.n);
+    const color = css(mode === "batched" ? "--batched" : "--separate");
+    el("polyline", { points: pts.map((p) => `${x(p.n)},${y(p.total_vram_gib)}`).join(" "), fill: "none", stroke: color, "stroke-width": 2.25, "stroke-linecap": "round" }, s);
+    pts.forEach((p) => el("circle", { cx: x(p.n), cy: y(p.total_vram_gib), r: 4, fill: color }, s));
+    const last = pts[pts.length - 1];
+    el("text", { x: x(last.n) + 8, y: y(last.total_vram_gib) + 4, class: "lbl", style: `fill:${color}` }, s, fmt(last.total_vram_gib, 1));
+    if (mode === "separate") {
+      const per = pts[0].total_vram_gib;
+      el("line", { x1: x(4), y1: y(last.total_vram_gib), x2: x(8), y2: y(per * 8), stroke: color, "stroke-dasharray": "3 4", "stroke-width": 1.5 }, s);
+      el("circle", { cx: x(8), cy: y(per * 8), r: 4, fill: css("--paper"), stroke: color, "stroke-width": 1.5 }, s);
+      el("text", { x: x(8) - 8, y: y(per * 8) - 8, "text-anchor": "end", style: `fill:${color}` }, s, `${fmt(per * 8, 1)} if 8 (not run)`);
+    }
+  }
+}
+
+function traceChart() {
+  const { s, w, box } = svgIn("f-trace", 190);
+  const m = { l: 92, r: 8, t: 8, b: 26 }, rowH = 62, gap = 18;
+  const rows = [["alone", DATA.timeline.solo], ["1 of 4", DATA.timeline.four]];
+  const n = rows[0][1].length, bw = (w - m.l - m.r) / n;
+  const color = css("--busy");
+  const tip = tipFor(box);
+  rows.forEach(([label, bins], i) => {
+    const top = m.t + i * (rowH + gap);
+    el("rect", { x: m.l, y: top, width: w - m.l - m.r, height: rowH, fill: css("--panel"), stroke: css("--rule") }, s);
+    el("text", { x: m.l - 10, y: top + rowH / 2 + 4, "text-anchor": "end", class: "lbl" }, s, label);
+    bins.forEach((b) => {
+      const h = b.busy * rowH;
+      if (h > 0.2) el("rect", { x: m.l + (b.t_ms / 5) * bw, y: top + rowH - h, width: Math.max(0.6, bw - 0.4), height: h, fill: color }, s);
+    });
+    const mean = bins.reduce((a, b) => a + b.busy, 0) / bins.length;
+    document.getElementById(i ? "busy-four" : "busy-solo").textContent = Math.round(mean * 100) + "%";
+    const hit = el("rect", { x: m.l, y: top, width: w - m.l - m.r, height: rowH, fill: "transparent" }, s);
+    hit.addEventListener("mousemove", (ev) => {
+      const r = box.getBoundingClientRect();
+      const k = Math.min(n - 1, Math.max(0, Math.floor((ev.clientX - r.left - m.l) / bw)));
+      tip.show(ev, [`${label}, ${bins[k].t_ms}–${bins[k].t_ms + 5} ms`, `GPU busy with this node: ${Math.round(bins[k].busy * 100)}%`]);
+    });
+    hit.addEventListener("mouseleave", () => tip.hide());
+  });
+  const y0 = m.t + 2 * rowH + gap + 16;
+  [0, 100, 200, 300, 400, 500, 600].forEach((t) => el("text", { x: m.l + (t / 600) * (w - m.l - m.r), y: y0, "text-anchor": t === 0 ? "start" : t === 600 ? "end" : "middle" }, s, t + (t === 600 ? " ms" : "")));
+}
+
+function heatChart() {
+  const names = ["LLM decode", "CNN training", "NVENC encode", "Speech-to-text"];
+  const short = { "LLM decode": "LLM", "CNN training": "Train", "NVENC encode": "NVENC", "Speech-to-text": "Speech" };
+  const cell = {};
+  DATA.matrix.forEach((c) => (cell[c.job + "|" + c.alongside] = c));
+  const { s, w, box } = svgIn("f-heat", 260);
+  const m = { l: 92, t: 30, r: 4, b: 6 };
+  const cw = (w - m.l - m.r) / 4, ch = (260 - m.t - m.b) / 4;
+  const lo = css("--heat-lo"), hi = css("--heat-hi");
+  const mix = (t) => { const a = lo.match(/\w\w/g).map((h) => parseInt(h, 16)), b = hi.match(/\w\w/g).map((h) => parseInt(h, 16)); return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(",")})`; };
+  const tip = tipFor(box);
+  names.forEach((col, j) => el("text", { x: m.l + j * cw + cw / 2, y: m.t - 10, "text-anchor": "middle" }, s, short[col]));
+  el("text", { x: m.l - 8, y: m.t - 10, "text-anchor": "end" }, s, "beside →");
+  names.forEach((row, i) => {
+    el("text", { x: m.l - 8, y: m.t + i * ch + ch / 2 + 4, "text-anchor": "end", class: "lbl" }, s, short[row]);
+    names.forEach((col, j) => {
+      const c = cell[row + "|" + col];
+      const x0 = m.l + j * cw, y0 = m.t + i * ch;
+      if (!c) { el("rect", { x: x0 + 1, y: y0 + 1, width: cw - 2, height: ch - 2, fill: "transparent", stroke: css("--rule"), "stroke-dasharray": "3 3" }, s); el("text", { x: x0 + cw / 2, y: y0 + ch / 2 + 4, "text-anchor": "middle" }, s, "not run"); return; }
+      const t = Math.min(1, Math.max(0, (c.slowdown - 1) / 1.3));
+      const r = el("rect", { x: x0 + 1, y: y0 + 1, width: cw - 2, height: ch - 2, fill: mix(t) }, s);
+      el("text", { x: x0 + cw / 2, y: y0 + ch / 2 + 4, "text-anchor": "middle", style: `fill:${t > 0.55 ? css("--paper") : css("--ink")};font-size:12.5px` }, s, "×" + c.slowdown.toFixed(2));
+      r.addEventListener("mousemove", (ev) => tip.show(ev, [`${row} beside ${col}`, `×${c.slowdown.toFixed(2)} slower than alone`, `${c.n} paired runs`]));
+      r.addEventListener("mouseleave", () => tip.hide());
+    });
+  });
+}
+
+function regimeChart() {
+  const { s, w, box } = svgIn("f-reg", 260);
+  const H = 260, m = { l: 40, r: 14, t: 12, b: 34 };
+  const x = lin(0, 85, m.l, w - m.r), y = lin(0, 25, H - m.b, m.t);
+  [0, 20, 40, 60, 80].forEach((v) => { el("line", { x1: x(v), x2: x(v), y1: m.t, y2: H - m.b, class: "grid" }, s); el("text", { x: x(v), y: H - m.b + 16, "text-anchor": "middle" }, s, v + "%"); });
+  [0, 5, 10, 15, 20, 25].forEach((v) => { el("line", { x1: m.l, x2: w - m.r, y1: y(v), y2: y(v), class: "grid" }, s); el("text", { x: m.l - 6, y: y(v) + 4, "text-anchor": "end" }, s, v); });
+  el("text", { x: (m.l + w - m.r) / 2, y: H - 2, "text-anchor": "middle" }, s, "DRAM read bandwidth, % of peak");
+  el("text", { x: m.l, y: m.t - 2 }, s, "tensor active %");
+  const tip = tipFor(box);
+  const col = (n) => n.startsWith("decode") ? css("--separate") : n.startsWith("prefill") || n.startsWith("CNN") ? css("--batched") : css("--muted");
+  // label offsets chosen per point so the clusters near the origin and at high DRAM stay readable
+  const pos = { "decode 0.5B": [0, 14, "middle"], "decode 3B": [0, -10, "middle"], "decode 7B": [-6, -10, "end"],
+    "decode 14B": [6, -10, "start"], "prefill 0.5B": [8, -2, "start"], "prefill 3B": [8, 4, "start"],
+    "prefill 7B": [8, 4, "start"], "prefill 14B": [8, 4, "start"], "CNN train fp32": [8, 4, "start"],
+    "CNN train AMP": [8, 4, "start"], "speech-to-text": [8, -10, "start"], "NVENC encode": [8, 12, "start"] };
+  DATA.regime.forEach((r) => {
+    const cx = x(r.dram_read_pct), cy = y(r.tensor_pct);
+    const c = el("circle", { cx, cy, r: 5.5, fill: col(r.node), "fill-opacity": 0.85 }, s);
+    c.addEventListener("mousemove", (ev) => tip.show(ev, [r.node + `  (run ${r.run_id})`, `DRAM read ${r.dram_read_pct.toFixed(1)}%`, `tensor active ${r.tensor_pct.toFixed(1)}%`, `SMs active ${r.sm_active_pct.toFixed(1)}%`, `GPU busy ${Math.round(r.busy_frac * 100)}% of its window`]));
+    c.addEventListener("mouseleave", () => tip.hide());
+    const [dx, dy, anchor] = pos[r.node] || [8, 4, "start"];
+    if (r.node === "decode 0.5B" || r.node === "prefill 0.5B") return;  // too close to neighbours; in tooltip
+    el("text", { x: cx + dx, y: cy + dy, "text-anchor": anchor, class: "lbl", style: "font-size:10.5px" }, s, r.node);
+  });
+}
+
+
+function seqChart() {
+  const { s, w, box } = svgIn("f-seq", 420);
+  const labels = Object.keys(DATA.x7.timelines);
+  const panelH = 120, gap = 22, m = { l: 30, r: 8, t: 14 };
+  const series = [["DRAM Read Bandwidth", "--separate"], ["Tensor Active", "--batched"], ["SMs Active", "--muted"]];
+  const tip = tipFor(box);
+  labels.forEach((lab, i) => {
+    const tl = DATA.x7.timelines[lab];
+    const top = m.t + i * (panelH + gap);
+    const tmax = tl.bins[tl.bins.length - 1].t_s;
+    const x = lin(0, tmax, m.l, w - m.r), y = lin(0, 100, top + panelH, top);
+    tl.steps.forEach((st) => {
+      if (st.step === "idle") return;
+      el("rect", { x: x(st.start), y: top, width: Math.max(1, x(st.end) - x(st.start)), height: panelH, fill: css("--heat-lo") }, s);
+      el("text", { x: (x(st.start) + x(st.end)) / 2, y: top + 12, "text-anchor": "middle", class: "lbl" }, s, st.step);
+    });
+    [0, 50, 100].forEach((v) => { el("line", { x1: m.l, x2: w - m.r, y1: y(v), y2: y(v), class: "grid" }, s); el("text", { x: m.l - 4, y: y(v) + 4, "text-anchor": "end" }, s, v); });
+    el("text", { x: m.l, y: top - 3, style: "font-size:11.5px", class: "lbl" }, s, lab);
+    series.forEach(([key, color]) => {
+      const pts = tl.bins.filter((b) => b[key] != null).map((b) => `${x(b.t_s).toFixed(1)},${y(b[key]).toFixed(1)}`).join(" ");
+      el("polyline", { points: pts, fill: "none", stroke: css(color), "stroke-width": key === "SMs Active" ? 1 : 1.6, "stroke-linejoin": "round", opacity: key === "SMs Active" ? 0.7 : 1 }, s);
+    });
+    const hit = el("rect", { x: m.l, y: top, width: w - m.l - m.r, height: panelH, fill: "transparent" }, s);
+    hit.addEventListener("mousemove", (ev) => {
+      const r = box.getBoundingClientRect();
+      const t = (ev.clientX - r.left - m.l) / (w - m.l - m.r) * tmax;
+      const b = tl.bins.reduce((a, c) => Math.abs(c.t_s - t) < Math.abs(a.t_s - t) ? c : a);
+      tip.show(ev, [`${lab}, ${b.t_s.toFixed(1)} s`, `DRAM read ${(b["DRAM Read Bandwidth"] ?? 0).toFixed(0)}%`, `tensor ${(b["Tensor Active"] ?? 0).toFixed(0)}%`, `SMs ${(b["SMs Active"] ?? 0).toFixed(0)}%`]);
+    });
+    hit.addEventListener("mouseleave", () => tip.hide());
+    if (i === labels.length - 1) el("text", { x: w - m.r, y: top + panelH + 16, "text-anchor": "end" }, s, `${Math.round(tmax)} s`);
+  });
+}
+
+function modelChart() {
+  const { s, w, box } = svgIn("f-model", 300);
+  const metrics = [["DRAM Read Bandwidth", "DRAM read"], ["SM Issue", "SM issue"], ["SMs Active", "SMs active"]];
+  const rows = [];
+  DATA.x7.pairs.forEach((p) => metrics.forEach(([k, short]) => { if (p.metrics[k]) rows.push({ pair: p.label, short, ...p.metrics[k] }); }));
+  const m = { l: 236, r: 14, t: 26, b: 24 }, rowH = (300 - m.t - m.b) / rows.length;
+  const x = lin(0, 100, m.l, w - m.r);
+  [0, 25, 50, 75, 100].forEach((v) => { el("line", { x1: x(v), x2: x(v), y1: m.t, y2: 300 - m.b, class: "grid" }, s); el("text", { x: x(v), y: 300 - m.b + 14, "text-anchor": "middle" }, s, v + "%"); });
+  const marks = [["A", "A alone", "circle-hollow", "--muted"], ["B", "B alone", "square-hollow", "--muted"], ["additive", "sum", "x", "--cap"], ["time_sliced", "time-split", "diamond", "--batched"], ["A+B observed", "observed A+B", "circle", "--separate"]];
+  let lx = m.l;
+  const shape = (kind, cx, cy, c) => {
+    if (kind === "circle") el("circle", { cx, cy, r: 5, fill: c }, s);
+    else if (kind === "circle-hollow") el("circle", { cx, cy, r: 4, fill: "none", stroke: c, "stroke-width": 1.4 }, s);
+    else if (kind === "square-hollow") el("rect", { x: cx - 3.5, y: cy - 3.5, width: 7, height: 7, fill: "none", stroke: c, "stroke-width": 1.4 }, s);
+    else if (kind === "diamond") el("path", { d: `M${cx},${cy - 5} L${cx + 5},${cy} L${cx},${cy + 5} L${cx - 5},${cy} Z`, fill: c }, s);
+    else el("path", { d: `M${cx - 4},${cy - 4} L${cx + 4},${cy + 4} M${cx + 4},${cy - 4} L${cx - 4},${cy + 4}`, stroke: c, "stroke-width": 2, fill: "none" }, s);
+  };
+  marks.forEach(([, name, kind, color]) => { shape(kind, lx + 4, 10, css(color)); el("text", { x: lx + 12, y: 14 }, s, name); lx += name.length * 7 + 26; });
+  const tip = tipFor(box);
+  let prev = null;
+  rows.forEach((r, i) => {
+    const cy = m.t + i * rowH + rowH / 2;
+    if (r.pair !== prev) { if (prev) el("line", { x1: 8, x2: w - m.r, y1: cy - rowH / 2, y2: cy - rowH / 2, class: "grid" }, s); el("text", { x: 8, y: cy + 4, class: "lbl" }, s, r.pair.replace("LLM decode", "LLM")); prev = r.pair; }
+    el("text", { x: m.l - 8, y: cy + 4, "text-anchor": "end" }, s, r.short);
+    el("line", { x1: x(Math.min(r["A+B observed"], r.time_sliced)), x2: x(Math.max(r["A+B observed"], r.time_sliced)), y1: cy, y2: cy, stroke: css("--muted"), "stroke-width": 1 }, s);
+    marks.forEach(([key, , kind, color]) => shape(kind, x(Math.min(100, r[key])), cy, css(color)));
+    const hit = el("rect", { x: 0, y: cy - rowH / 2, width: w, height: rowH, fill: "transparent" }, s);
+    hit.addEventListener("mousemove", (ev) => tip.show(ev, [`${r.pair}: ${r.short}`, `A ${r.A.toFixed(1)}  B ${r.B.toFixed(1)}`, `observed A+B ${r["A+B observed"].toFixed(1)}`, `time-split ${r.time_sliced.toFixed(1)}  sum ${r.additive.toFixed(1)}`]));
+    hit.addEventListener("mouseleave", () => tip.hide());
+  });
+}
+
+
+function hbar(id, rows, opts) {
+  const H = opts.top + rows.length * opts.rowH + 24;
+  const { s, w, box } = svgIn(id, H);
+  const lw = opts.labelW, x = opts.log ? ((v) => lw + (Math.log10(v) - Math.log10(opts.min)) / (Math.log10(opts.max) - Math.log10(opts.min)) * (w - lw - 70))
+    : lin(0, opts.max, lw, w - 70);
+  opts.ticks.forEach((v) => { el("line", { x1: x(v), x2: x(v), y1: opts.top - 4, y2: H - 22, class: "grid" }, s); el("text", { x: x(v), y: H - 8, "text-anchor": "middle" }, s, opts.tickFmt(v)); });
+  const tip = tipFor(box);
+  rows.forEach((r, i) => {
+    const cy = opts.top + i * opts.rowH + opts.rowH / 2;
+    el("text", { x: lw - 8, y: cy + 4, "text-anchor": "end", class: "lbl" }, s, r.label);
+    const base = opts.log ? x(opts.min) : x(0);
+    el("rect", { x: base, y: cy - 7, width: Math.max(1, x(r.v) - base), height: 14, fill: css(r.color || "--batched"), rx: 2 }, s);
+    if (r.lo != null) { el("line", { x1: x(r.lo), x2: x(r.hi), y1: cy, y2: cy, stroke: css("--ink"), "stroke-width": 1.2 }, s); el("line", { x1: x(r.hi), x2: x(r.hi), y1: cy - 4, y2: cy + 4, stroke: css("--ink"), "stroke-width": 1.2 }, s); }
+    el("text", { x: x(r.hi ?? r.v) + 6, y: cy + 4 }, s, r.text);
+    const hit = el("rect", { x: 0, y: cy - opts.rowH / 2, width: w, height: opts.rowH, fill: "transparent" }, s);
+    hit.addEventListener("mousemove", (ev) => tip.show(ev, r.tip));
+    hit.addEventListener("mouseleave", () => tip.hide());
+  });
+}
+
+function startCharts() {
+  const rows = DATA.merge.start.slice().sort((a, b) => a.p50 - b.p50).map((r) => ({ label: r.label, v: r.p50, lo: r.p10, hi: r.p90,
+    color: r.label.startsWith("Native") ? "--muted" : r.label.includes("exec") || r.label.includes("pre-created") || r.label.includes("API") ? "--batched" : "--separate",
+    text: r.label.startsWith("Native") ? Math.round(r.p50) + " ms" : `${Math.round(r.p50)} ms (+${Math.round(r.p50 - DATA.overhead.native.noop)})`, tip: [r.label, `median ${Math.round(r.p50)} ms, overhead +${Math.round(r.p50 - DATA.overhead.native.noop)} ms`, `p10 ${Math.round(r.p10)} · p90 ${Math.round(r.p90)} ms`, `${r.n} starts`] }));
+  const narrow = document.getElementById("f-start").clientWidth < 560;
+  if (narrow) rows.forEach((r) => { r.label = r.label.replace("docker run, ", "run, ").replace("docker exec into running container", "exec, running").replace("docker start, pre-created", "start, pre-created").replace("12 GB CUDA image + GPU", "12 GB img + GPU").replace("default network", "default net"); });
+  hbar("f-start", rows, { top: 8, rowH: 30, labelW: narrow ? 130 : 250, max: 400, ticks: [0, 100, 200, 300], tickFmt: (v) => v === 300 ? "300 ms" : String(v) });
+  const { s, w, box } = svgIn("f-burst", 220);
+  const H = 220, m = { l: 46, r: 104, t: 14, b: 34 }, b = DATA.merge.burst;
+  const x = (n) => m.l + (Math.log2(n) / 4) * (w - m.l - m.r), y = lin(0, 500, H - m.b, m.t);
+  [0, 100, 200, 300, 400, 500].forEach((v) => { el("line", { x1: m.l, x2: w - m.r, y1: y(v), y2: y(v), class: "grid" }, s); el("text", { x: m.l - 6, y: y(v) + 4, "text-anchor": "end" }, s, v); });
+  b.forEach((p) => el("text", { x: x(p.n), y: H - m.b + 18, "text-anchor": "middle" }, s, p.n));
+  el("text", { x: (m.l + w - m.r) / 2, y: H - 2, "text-anchor": "middle" }, s, "containers started together");
+  el("text", { x: m.l, y: m.t - 4 }, s, "ms each");
+  [["p50", "--separate", "median"], ["p90", "--muted", "p90"]].forEach(([k, c, name]) => {
+    el("polyline", { points: b.map((p) => `${x(p.n)},${y(p[k])}`).join(" "), fill: "none", stroke: css(c), "stroke-width": 2, "stroke-linecap": "round" }, s);
+    b.forEach((p) => el("circle", { cx: x(p.n), cy: y(p[k]), r: 3.5, fill: css(c) }, s));
+    const last = b[b.length - 1];
+    el("text", { x: x(last.n) + 8, y: y(last[k]) + 4, style: `fill:${css(c)}` }, s, `${name} ${Math.round(last[k])}`);
+  });
+  const L = DATA.merge.ladder;
+  const lr = [["resident", "already in GPU memory"], ["cache", "in RAM (page cache)"], ["disk", "read from disk"]].map(([k, lab]) => ({ label: lab, v: L[k].median,
+    color: k === "resident" ? "--batched" : "--separate", text: L[k].median < 1 ? `${L[k].median.toFixed(2)} s` : `${L[k].median.toFixed(1)} s`,
+    tip: [lab, `median ${L[k].median.toFixed(3)} s`, `range ${L[k].min.toFixed(2)}–${L[k].max.toFixed(2)} s`, `${L[k].n} requests`] }));
+  hbar("f-ladder", lr, { top: 8, rowH: 32, labelW: 170, log: true, min: 0.02, max: 10, ticks: [0.02, 0.1, 1, 10], tickFmt: (v) => v + " s" });
+}
+
+function wonheeCharts() {
+  const draw = (id, rows, key, unit, colorOf) => {
+    const { s, w, box } = svgIn(id, 220);
+    const H = 220, m = { l: 40, r: 12, t: 10, b: 32 };
+    const top = Math.max(...rows.map((r) => r[key])) * 1.08;
+    const step = [1, 2, 5, 10, 20, 50, 100, 200].find((st) => top / st <= 5);
+    const ymax = Math.ceil(top / step) * step;
+    const x = lin(0, 105, m.l, w - m.r), y = lin(0, ymax, H - m.b, m.t);
+    for (let v = 0; v <= ymax; v += step) { el("line", { x1: m.l, x2: w - m.r, y1: y(v), y2: y(v), class: "grid" }, s); el("text", { x: m.l - 6, y: y(v) + 4, "text-anchor": "end" }, s, v); }
+    [0, 25, 50, 75, 100].forEach((v) => el("text", { x: x(v), y: H - m.b + 16, "text-anchor": "middle" }, s, v + " s"));
+    el("text", { x: w - m.r, y: H - 2, "text-anchor": "end" }, s, "clip length");
+    el("text", { x: m.l, y: m.t - 2 }, s, unit);
+    const tip = tipFor(box);
+    rows.forEach((r, i) => {
+      const c = el("circle", { cx: x(r.clip_s) + ((i % 3) - 1) * 2.5, cy: y(r[key]), r: 4.5, fill: css(colorOf(r)), "fill-opacity": 0.8 }, s);
+      c.addEventListener("mousemove", (ev) => tip.show(ev, [`${r.clip_s} s clip${r.model ? ", whisper " + r.model : ""}`, `${r[key]} ${unit}`]));
+      c.addEventListener("mouseleave", () => tip.hide());
+    });
+  };
+  const W = DATA.merge.wonhee;
+  draw("f-speech", W.filter((r) => r.node === "speech_subs"), "runtime_s", "seconds", (r) => r.model === "turbo" ? "--batched" : "--separate");
+  draw("f-burn", W.filter((r) => r.node === "burn_subtitles"), "cpu_s", "CPU-seconds", () => "--separate");
+}
+
+
+const PH = [["create", "client → container created"], ["start", "created → started"], ["first", "started → first instruction"], ["ret", "exit → result returned"]];
+const PHC = ["--batched", "--muted", "--separate", "--cap"];
+function overheadCharts() {
+  const legend = document.getElementById("phase-legend");
+  legend.replaceChildren(...PH.map(([, name], i) => { const sp = document.createElement("span"); const ic = document.createElement("i"); ic.style.background = css(PHC[i]); ic.style.height = "10px"; ic.style.width = "10px"; sp.append(ic, document.createTextNode(name)); return sp; }));
+  const P = DATA.overhead.phases.slice().sort((a, b) => (a.create + a.start + a.first + a.ret) - (b.create + b.start + b.first + b.ret));
+  const narrow = document.getElementById("f-phase").clientWidth < 560;
+  const short = (l) => narrow ? l.replace("docker run, ", "run, ").replace("docker start, pre-created", "start, pre-created").replace("12 GB CUDA image + GPU", "12 GB img + GPU").replace("default network", "default net") : l;
+  {
+    const rowH = 30, H = 8 + P.length * rowH + 24;
+    const { s, w, box } = svgIn("f-phase", H);
+    const lw = narrow ? 130 : 250, x = lin(0, 350, lw, w - 60);
+    [0, 100, 200, 300].forEach((v) => { el("line", { x1: x(v), x2: x(v), y1: 4, y2: H - 22, class: "grid" }, s); el("text", { x: x(v), y: H - 8, "text-anchor": "middle" }, s, v === 300 ? "300 ms" : v); });
+    const tip = tipFor(box);
+    P.forEach((p, i) => {
+      const cy = 8 + i * rowH + rowH / 2;
+      el("text", { x: lw - 8, y: cy + 4, "text-anchor": "end", class: "lbl" }, s, short(p.label));
+      let acc = 0;
+      PH.forEach(([k], j) => { const v = p[k] || 0; el("rect", { x: x(acc), y: cy - 8, width: Math.max(0, x(acc + v) - x(acc)), height: 16, fill: css(PHC[j]) }, s); acc += v; });
+      el("text", { x: x(acc) + 6, y: cy + 4 }, s, Math.round(acc) + " ms");
+      const hit = el("rect", { x: 0, y: cy - rowH / 2, width: w, height: rowH, fill: "transparent" }, s);
+      hit.addEventListener("mousemove", (ev) => tip.show(ev, [p.label, ...PH.map(([k, name]) => `${name}: ${Math.round(p[k] || 0)} ms`), `remove afterwards: ${Math.round(p.rm)} ms`]));
+      hit.addEventListener("mouseleave", () => tip.hide());
+    });
+  }
+  {
+    const O = DATA.overhead.overhead.filter((r) => r.overhead_stress != null && r.label !== "Native process").sort((a, b) => a.overhead_noop - b.overhead_noop);
+    const rowH = 28, H = 26 + O.length * rowH + 24;
+    const { s, w, box } = svgIn("f-fixed", H);
+    const lw = narrow ? 130 : 250, x = lin(0, 320, lw, w - 20);
+    [0, 100, 200, 300].forEach((v) => { el("line", { x1: x(v), x2: x(v), y1: 22, y2: H - 22, class: "grid" }, s); el("text", { x: x(v), y: H - 8, "text-anchor": "middle" }, s, v === 300 ? "+300 ms" : "+" + v); });
+    el("circle", { cx: lw + 4, cy: 9, r: 4.5, fill: "none", stroke: css("--batched"), "stroke-width": 1.5 }, s); el("text", { x: lw + 12, y: 13 }, s, "no-op");
+    el("circle", { cx: lw + 74, cy: 9, r: 4.5, fill: css("--separate") }, s); el("text", { x: lw + 82, y: 13 }, s, "340 ms CPU task");
+    const tip = tipFor(box);
+    O.forEach((r, i) => {
+      const cy = 26 + i * rowH + rowH / 2;
+      el("text", { x: lw - 8, y: cy + 4, "text-anchor": "end", class: "lbl" }, s, short(r.label));
+      el("line", { x1: x(r.overhead_noop), x2: x(r.overhead_stress), y1: cy, y2: cy, stroke: css("--muted"), "stroke-width": 1.5 }, s);
+      el("circle", { cx: x(r.overhead_noop), cy, r: 4.5, fill: css("--paper"), stroke: css("--batched"), "stroke-width": 1.5 }, s);
+      el("circle", { cx: x(r.overhead_stress), cy, r: 4.5, fill: css("--separate") }, s);
+      const hit = el("rect", { x: 0, y: cy - rowH / 2, width: w, height: rowH, fill: "transparent" }, s);
+      hit.addEventListener("mousemove", (ev) => tip.show(ev, [r.label, `overhead, no-op: +${Math.round(r.overhead_noop)} ms`, `overhead, CPU task: +${Math.round(r.overhead_stress)} ms`]));
+      hit.addEventListener("mouseleave", () => tip.hide());
+    });
+  }
+}
+
+function draw() { lineChart("f-lat", "ms_per_token", "ms / token", 1); lineChart("f-tps", "total_tps", "tokens / s", 0); memChart(); traceChart(); heatChart(); regimeChart(); seqChart(); modelChart(); startCharts(); overheadCharts(); wonheeCharts(); }
+draw();
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(draw, 120); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>

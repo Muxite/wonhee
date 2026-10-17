@@ -1,0 +1,11 @@
+# X5 pair interference. LLM decode (memory-bandwidth), CNN training (tensor/compute), NVENC encode (video engine),
+# speech-to-text (CPU-heavy startup + GPU). Every pair, traced per process.
+profile: trace
+repeats: 2
+pairs:
+  - ["llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=512,reps=2", "train.small:model=resnet50,batch=64,steps=60"]
+  - ["llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=512,reps=2", "ffmpeg.transcode:seconds=40,height=1080,codec=h264_nvenc,preset=p4"]
+  - ["llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=512,reps=2", "wonhee.speech_subs:clip_s=100,whisper_model=turbo"]
+  - ["train.small:model=resnet50,batch=64,steps=60", "ffmpeg.transcode:seconds=40,height=1080,codec=h264_nvenc,preset=p4"]
+  - ["train.small:model=resnet50,batch=64,steps=60", "wonhee.speech_subs:clip_s=100,whisper_model=turbo"]
+  - ["ffmpeg.transcode:seconds=40,height=1080,codec=h264_nvenc,preset=p4", "wonhee.speech_subs:clip_s=100,whisper_model=turbo"]
