@@ -106,6 +106,12 @@ def checks(settings: Settings) -> list[Check]:
     out.append(Check("creator.yaml", has_creator,
                      str(settings.creator_path) if has_creator else
                      f"missing at {settings.creator_path}; copy creator.example.yaml and edit it", "warning"))
+    from wonhee.edit.text import available as fonts_available
+    fonts = fonts_available()
+    missing = [k for k, ok in fonts.items() if not ok]
+    out.append(Check("text fonts", not missing, "bundled sans + script, Noto Color Emoji, Noto Sans CJK" if not missing
+                     else f"missing: {', '.join(missing)} (emoji and CJK fall back to the base font)", "warning",
+                     "" if not missing else "apt install fonts-noto-color-emoji fonts-noto-cjk"))
     priced = settings.llm_price_in_per_mtok > 0 and settings.llm_price_out_per_mtok > 0
     out.append(Check("llm prices", priced,
                      "configured" if priced else "LLM prices are 0 so LLM spend counts as free; set "

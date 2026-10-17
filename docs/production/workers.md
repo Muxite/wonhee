@@ -14,6 +14,7 @@ Model-backed workers stay up with the model loaded. Pure-ffmpeg workers can be o
 | `translate` | net | 80-line batches with a glossary |
 | `burn_subtitles` | cpu-encode | libass + x264. **Becomes a timeline transform** once `render` exists |
 | `look`, `look_image` | nvenc (x264 fallback) / cpu-light | named looks from `wonhee/edit/looks.py`: `moody` (underexposed, desaturated, cool shadows, vignette), `grain`, `moody_grain`, `digicam` (+ optional orange date stamp), `faded`, `bw_grain`, `warm_pink`, `cool_night`; `intensity` 0–2, `grain` override. Each preset is one filter string that `render` can fuse later |
+| `text_image`, `text_video` | cpu-light / nvenc | one text block in the `outline` / `band` / `script` preset at `top` / `upper` / `center` / `lower` / `bottom` (IG safe zones), colour emoji and CJK, with an optional `look` underneath, in one pass (`wonhee/edit/text.py`, bundled OFL fonts in `wonhee/assets/fonts`) |
 
 ## On this machine, ready to wrap
 
