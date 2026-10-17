@@ -204,6 +204,12 @@ def _literal_ref(conn, settings, base: str, path: Path) -> str:
             raise ChainError([f"{path}: not a valid subtitles JSON file ({e.error_count()} problem(s); "
                               f"want {{\"language\": ..., \"lines\": [{{id, start_ms, end_ms, text, source}}]}})"]) from None
         return save_subs(conn, settings.media_dir, subs)
+    if base == "images":
+        from wonhee.nodes.images import store_local
+        try:
+            return store_local(conn, settings.media_dir, path)
+        except (ValueError, KeyError, TypeError) as e:
+            raise ChainError([f"{path}: {e}"]) from None
     if base in ("video", "image"):
         return repo.save_file(conn, settings.media_dir, path, base, _mime(path))
     return repo.save_bytes(conn, settings.media_dir, path.read_bytes(), _mime(path))
@@ -227,8 +233,9 @@ def _resolve_paths(conn, settings, chain):
             if is_literal(value) or (m and m.group(1) in ids) or port not in node.inputs:
                 continue
             path = Path(value).expanduser()
-            if path.is_file():
-                cn.in_[port] = _literal_ref(conn, settings, parse_type(node.inputs[port])[0], path)
+            base = parse_type(node.inputs[port])[0]
+            if path.is_file() or (base == "images" and path.is_dir()):
+                cn.in_[port] = _literal_ref(conn, settings, base, path)
     return out
 
 
@@ -278,6 +285,46 @@ def chain_run(conn, settings, deps, chain_obj, *, wait: bool = True, progress=No
                         f"(log: {log})")
     status = run_stages(conn, settings, deps, run_id, stages_for_chain(chain), progress=progress)
     return run_id, _outcome(conn, settings, run_id, status)
+
+
+def export(conn, settings, ref: str, dest: Path) -> list[Path]:
+    """Copy a stored result into a folder for posting: a video or image as one file, an images manifest or a
+    content:<id> photo post as 01.jpg, 02.jpg, ... Returns the written paths."""
+    import shutil
+
+    from wonhee.media import path_for
+    from wonhee.nodes.images import Images
+    from wonhee.nodes.types import CONTENT, SHA
+
+    dest = Path(dest).expanduser()
+    if m := CONTENT.match(ref):
+        rows = conn.execute("SELECT media_sha256, kind FROM content_media WHERE content_id=? ORDER BY ord",
+                            (int(m.group(1)),)).fetchall()
+        files = [(r["media_sha256"], ".mp4" if r["kind"] == "video" else ".jpg") for r in rows]
+        if not files:
+            raise ValueError(f"{ref}: nothing stored for this post")
+    elif SHA.match(ref):
+        row = conn.execute("SELECT b.mime, m.kind FROM blob b LEFT JOIN media m ON m.blob_sha256=b.sha256 "
+                           "WHERE b.sha256=?", (ref,)).fetchone()
+        if row is None:
+            raise ValueError(f"{ref}: not in the media store")
+        if row["kind"] in ("video", "image"):
+            files = [(ref, ".mp4" if row["kind"] == "video" else ".jpg")]
+        else:
+            try:
+                images = Images.model_validate_json(path_for(settings.media_dir, ref).read_bytes())
+            except ValueError:
+                raise ValueError(f"{ref}: not a video, image or images manifest") from None
+            files = [(s.sha, ".jpg") for s in images.items]
+    else:
+        raise ValueError(f"{ref}: want a 64-hex sha or content:<id>")
+    dest.mkdir(parents=True, exist_ok=True)
+    out = []
+    for i, (sha, ext) in enumerate(files, 1):
+        p = dest / (f"{i:02d}{ext}" if len(files) > 1 else f"{sha[:12]}{ext}")
+        shutil.copyfile(path_for(settings.media_dir, sha), p)
+        out.append(p)
+    return out
 
 
 def node_run(conn, settings, deps, node: str, inputs: dict | None = None, params: dict | None = None,

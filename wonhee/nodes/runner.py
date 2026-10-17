@@ -44,9 +44,18 @@ def _resolve_inputs(ctx, cn: ChainNode) -> dict[str, str]:
 
 
 def _files_present(ctx, hit: dict[str, tuple[str, str]]) -> bool:
-    """A cached result is only good while the files it points at are still in the media store."""
-    return all(media.path_for(ctx.settings.media_dir, ref).is_file()
-               for typ, ref in hit.values() if typ != "content")
+    """A cached result is only good while the files it points at (and an images manifest's members) are stored."""
+    d = ctx.settings.media_dir
+    for typ, ref in hit.values():
+        if typ == "content":
+            continue
+        if not media.path_for(d, ref).is_file():
+            return False
+        if typ == "images":
+            from wonhee.nodes.images import load_images
+            if not all(media.path_for(d, s.sha).is_file() for s in load_images(d, ref).items):
+                return False
+    return True
 
 
 def _out_types(node: Node) -> dict[str, str]:

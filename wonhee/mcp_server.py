@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import functools
+from pathlib import Path
 
 from wonhee import envfile, errlog, llm, service
 from wonhee.config import get_settings
@@ -134,6 +135,18 @@ def chain_run(chain: list | dict, wait: bool = True) -> str:
     conn, settings = _open()
     try:
         return service.chain_run(conn, settings, _deps(settings), chain, wait=wait)[1]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def export(ref: str, dest: str) -> str:
+    """Copy a stored result into a local folder for posting: a video or image (one file), an images manifest or
+    content:<id> photo post (01.jpg, 02.jpg, ...). Returns the written paths."""
+    conn, settings = _open()
+    try:
+        return "\n".join(str(p) for p in service.export(conn, settings, ref, Path(dest)))
     finally:
         conn.close()
 

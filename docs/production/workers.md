@@ -15,6 +15,7 @@ Model-backed workers stay up with the model loaded. Pure-ffmpeg workers can be o
 | `burn_subtitles` | cpu-encode | libass + x264. **Becomes a timeline transform** once `render` exists |
 | `look`, `look_image` | nvenc (x264 fallback) / cpu-light | named looks from `wonhee/edit/looks.py`: `moody` (underexposed, desaturated, cool shadows, vignette), `grain`, `moody_grain`, `digicam` (+ optional orange date stamp), `faded`, `bw_grain`, `warm_pink`, `cool_night`; `intensity` 0–2, `grain` override. Each preset is one filter string that `render` can fuse later |
 | `text_image`, `text_video` | cpu-light / nvenc | one text block in the `outline` / `band` / `script` preset at `top` / `upper` / `center` / `lower` / `bottom` (IG safe zones), colour emoji and CJK, with an optional `look` underneath, in one pass (`wonhee/edit/text.py`, bundled OFL fonts in `wonhee/assets/fonts`) |
+| `carousel`, `content_images` | cpu-light | `images` port (ordered manifest). Lay photos out as 4:5 / 1:1 / 9:16 slides, with panoramas spanning slides; one look (+ date stamp) for the whole set in a single ffmpeg pass; per-photo text. `content_images` pulls a grabbed post's slides. Save with `wonhee export <ref> <dir>` (also MCP `export`). A directory or JSON list works as `--in images=` |
 
 ## On this machine, ready to wrap
 

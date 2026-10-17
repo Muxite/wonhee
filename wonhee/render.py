@@ -124,6 +124,13 @@ def _preview_unsafe(conn, media_dir: Path, type_: str, ref: str) -> list[str]:
         out = [f"{ind}language {subs.language or '-'}, {len(subs.lines)} line(s)"]
         out += [f"{ind}[{ln.start_ms / 1000:.1f}s] {ln.text}" for ln in subs.lines[:3]]
         return out
+    if type_ == "images":
+        from wonhee.nodes.images import load_images
+        items = load_images(media_dir, ref).items
+        out = [f"{ind}{len(items)} image(s), manifest {ref}  (save with: wonhee export {ref} <dir>)"]
+        for i, s in enumerate(items, 1):
+            out.append(f"{ind}{i:02d} {path_for(media_dir, s.sha)}" + (f"  \"{s.text}\"" if s.text else ""))
+        return out
     path = path_for(media_dir, ref)
     if type_ == "video":
         m = conn.execute("SELECT * FROM media WHERE blob_sha256=?", (ref,)).fetchone()

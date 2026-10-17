@@ -166,6 +166,12 @@ def _cmd_account(a, settings) -> int:
     return 0
 
 
+def _cmd_export(a, settings) -> int:
+    for p in service.export(open_db(settings), settings, a.ref, Path(a.dest)):
+        print(p)
+    return 0
+
+
 def _cmd_sql(a, settings) -> int:
     q = a.query.strip()
     if not q.lower().startswith(READ_ONLY_PREFIXES) or (q.lower().startswith("pragma") and "=" in q):
@@ -226,6 +232,8 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("handle"); s.add_argument("relation", choices=list(service.RELATIONS)); s.set_defaults(fn=_cmd_account)
     s = sub.add_parser("db", help="database helpers").add_subparsers(dest="sub", required=True).add_parser("sql")
     s.add_argument("query"); s.set_defaults(fn=_cmd_sql)
+    s = sub.add_parser("export", help="copy a result (video, image, images manifest, content:<id>) into a folder")
+    s.add_argument("ref", help="64-hex sha or content:<id>"); s.add_argument("dest"); s.set_defaults(fn=_cmd_export)
     s = sub.add_parser("profile", help="workload profiler (gauge): `wonhee profile doctor`, `... run <workload>`; "
                                        "see docs/profiling/GUIDE.md")
     s.add_argument("rest", nargs=argparse.REMAINDER)
