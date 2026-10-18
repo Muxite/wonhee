@@ -136,6 +136,7 @@ class VibeParams(BaseModel):
     tone: float = Field(default=1.0, ge=0, le=1.5)  # share of the tone-curve move
     colour: float = Field(default=1.0, ge=0, le=1.5)  # share of the colour move
     mask: MaskKind = "none"  # keep a person / object apart from the background
+    mask_prompt: str | None = Field(default=None, max_length=40)  # name the subject ("plush toy"): GPU text mask
     subject_strength: float = Field(default=0.4, ge=0, le=1)
     subject_lift: float = Field(default=0.0, ge=0, le=0.5)  # brighten the subject like a key light / flash
     fisheye: float = Field(default=0.0, ge=0, le=1)
@@ -165,9 +166,23 @@ def crop_to(im: np.ndarray, aspect: str) -> np.ndarray:
     return im[y:y + nh]
 
 
+def subject_mask(im: np.ndarray, p: VibeParams, models_dir: Path) -> tuple[np.ndarray | None, str]:
+    """The subject mask and how it was made. GPU (Grounding-DINO + SAM 2.1) from a text prompt when torch and a
+    GPU are present; otherwise, or when the prompt finds nothing, the CPU ONNX models."""
+    if p.mask == "none" and not p.mask_prompt:
+        return None, "none"
+    prompt = p.mask_prompt or ("person" if p.mask == "person" else None)
+    if prompt and mk.gpu_available():
+        m = mk.subject_text(im, prompt)
+        if m is not None:
+            return m, f"sam2:{prompt}"
+    kind = "person" if p.mask == "person" else "object"
+    return mk.subject(im, models_dir, kind), f"onnx:{kind}"
+
+
 def render(im: np.ndarray, prof: style.Profile | None, p: VibeParams, models_dir: Path) -> np.ndarray:
     im = crop_to(im, p.crop)
-    m = mk.subject(im, models_dir, p.mask) if p.mask != "none" else None
+    m, _ = subject_mask(im, p, models_dir)
     if prof is not None and p.strength > 0:
         im = style.match(im, prof.stats, p.strength, tone=p.tone, colour=p.colour, mask=m,
                          subject_strength=p.subject_strength, subject_lift=p.subject_lift)
@@ -206,6 +221,7 @@ class Knobs(BaseModel):
     tone: float = 1.0
     colour: float = 1.0
     mask: MaskKind = "none"
+    mask_prompt: str | None = Field(default=None, description="when masking, the subject in 1-3 words, e.g. 'plush toy'")
     subject_lift: float = 0.0
     fisheye: float = 0.0
     edge_blur: float = 0.0
@@ -219,7 +235,8 @@ class Knobs(BaseModel):
     def to_params(self) -> VibeParams:
         c = lambda x, hi=1.0: float(min(max(x, 0.0), hi))  # noqa: E731
         return VibeParams(strength=c(self.strength), tone=c(self.tone, 1.5), colour=c(self.colour, 1.5),
-                          mask=self.mask, subject_lift=c(self.subject_lift, 0.5), fisheye=c(self.fisheye),
+                          mask=self.mask, mask_prompt=(self.mask_prompt or "")[:40] or None,
+                          subject_lift=c(self.subject_lift, 0.5), fisheye=c(self.fisheye),
                           edge_blur=c(self.edge_blur), motion_blur=c(self.motion_blur), bloom=c(self.bloom),
                           vignette=c(self.vignette), grain=c(self.grain), crop=self.crop)
 
@@ -229,7 +246,8 @@ SYSTEM_REVIEW = (
     "first image is the creator's photo, the rest are references. You get measured numbers for both. Choose: "
     "strength 0-1 (how far to move tone and colour), tone 0-1.5 and colour 0-1.5 (lower tone keeps a daylight "
     "photo readable when the look is a night look), mask person|object|none (use one when there is a clear "
-    "subject to keep lit and true while the background takes the grade), subject_lift 0-0.5 (key light / flash "
+    "subject to keep lit and true while the background takes the grade; then name it in mask_prompt, e.g. 'plush "
+    "toy', 'person', 'laptop'), subject_lift 0-0.5 (key light / flash "
     "on the subject), fisheye, edge_blur, motion_blur, bloom (glow on bright lights), vignette, grain (0-1 each, "
     "only when the references show that trait), crop none|4:5|1:1|9:16. Then `reshoot`: concrete changes to how "
     "the photo is taken next time (angle, lens, light, timing), because editing cannot fix everything. Keep "
@@ -266,18 +284,19 @@ def vibe_review_fn(ctx, inputs, p: ReviewParams) -> dict[str, str]:
     return {"review": save_text(ctx.conn, d, json.dumps(body, indent=1))}
 
 
-registry.register(Node("style_profile", 1, {"images": "images"}, {"profile": "text"}, ProfileParams,
+registry.register(Node("style_profile", 2, {"images": "images"}, {"profile": "text"}, ProfileParams,
                        style_profile_fn, "Measure a set of reference photos into a look profile (tone, colour per "
                        "band, lens traits); no model call."))
 registry.register(Node("shot_guide", 1, {"images": "images", "profile": "text"}, {"guide": "text"}, GuideParams,
                        shot_guide_fn, "How to shoot for a look: lens, angle, light, motion, places like it; a "
                        "vision model grounded on the measured profile.",
                        salt=lambda s: {"llm_model": s.llm_model, "local_llm_model": s.local_llm_model}))
-registry.register(Node("vibe_review", 1, {"image": "image", "profile": "text"}, {"review": "text"}, ReviewParams,
+registry.register(Node("vibe_review", 2, {"image": "image", "profile": "text"}, {"review": "text"}, ReviewParams,
                        vibe_review_fn, "A vision model picks the edit knobs (clamped) for one photo toward a look, "
                        "plus what to change when reshooting.",
                        salt=lambda s: {"llm_model": s.llm_model, "local_llm_model": s.local_llm_model}))
-registry.register(Node("vibe_image", 1, {"image": "image", "profile": "text?"}, {"image": "image"}, VibeParams,
+registry.register(Node("vibe_image", 2, {"image": "image", "profile": "text?"}, {"image": "image"}, VibeParams,
                        vibe_image_fn, "Move a photo toward a look profile: tone and per-band colour match, optional "
                        "subject mask, lens effects (fisheye, edge/motion blur, bloom, vignette, grain), halftone or "
-                       "duotone print, crop. Deterministic."))
+                       "duotone print, crop. Deterministic.",
+                       salt=lambda s: {"gpu_masks": mk.gpu_available()}))

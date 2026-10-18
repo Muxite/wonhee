@@ -54,6 +54,24 @@ class CleanParams(BaseModel):
     lufs: float = Field(default=PLATFORM_LUFS, ge=-30, le=-8)
     true_peak: float = Field(default=-1.5, ge=-6, le=-0.1)
     lra: float = Field(default=11, ge=3, le=20)
+    isolate: bool = False  # GPU: split the voice from music / street / room (Demucs) before cleaning it
+    music_db: float | None = Field(default=None, ge=-40, le=0)  # with isolate: put the bed back this far down
+
+
+def _isolated(src: Path, tmp: Path, pre: str, music_db: float | None) -> Path:
+    """Voice stem through the pre-chain, optionally over the ducked bed, as one WAV for the loudness passes."""
+    from wonhee.edit import separate
+    voice, bed, mix = tmp / "voice.wav", tmp / "bed.wav", tmp / "mix.wav"
+    separate.split_voice(src, voice, bed)
+    if music_db is None:
+        args = ["-i", str(voice), "-af", pre or "anull"]
+    else:
+        args = ["-i", str(voice), "-i", str(bed), "-filter_complex",
+                f"[0:a]{pre or 'anull'}[v];[1:a]volume={music_db}dB[b];[v][b]amix=inputs=2:normalize=0:duration=first"]
+    proc = au._run([*args, "-c:a", "pcm_f32le", str(mix)])
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg voice mix failed: {proc.stderr.strip()[-400:]}")
+    return mix
 
 
 def audio_clean_fn(ctx, inputs, p: CleanParams) -> dict[str, str]:
@@ -67,23 +85,33 @@ def audio_clean_fn(ctx, inputs, p: CleanParams) -> dict[str, str]:
         ctx.flag("DENOISE_FALLBACK", "RNNoise model unavailable, used afftdn")
     pre = au.pre_chain(p.preset, p.denoise, rnn, p.de_ess, p.gate)
     before, _ = au.measure(src)
-    _, first = au.measure(src, pre, target)  # pass 1 measures what the pre-chain produces
     with tempfile.TemporaryDirectory(prefix="wonhee-audio-") as tmp:
-        out = Path(tmp) / "out.mp4"
-        proc = au._run(["-i", str(src), "-map", "0:v?", "-map", "0:a:0", "-c:v", "copy", "-af",
-                        au.clean_chain(first, pre, target), "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-                        "-movflags", "+faststart", str(out)])
+        tmpd = Path(tmp)
+        if p.isolate:
+            from wonhee.edit import separate
+            if not separate.available():
+                raise ValueError("isolate needs the gpu dependency group (uv sync --group gpu)")
+            audio_in, chain_pre = _isolated(src, tmpd, pre, p.music_db), ""  # the pre-chain is already applied
+        else:
+            audio_in, chain_pre = src, pre
+        _, first = au.measure(audio_in, chain_pre, target)  # pass 1 measures what pass 2 will feed loudnorm
+        out = tmpd / "out.mp4"
+        proc = au._run(["-i", str(src), "-i", str(audio_in), "-map", "0:v?", "-map", "1:a:0", "-c:v", "copy", "-af",
+                        au.clean_chain(first, chain_pre, target), "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+                        "-shortest", "-movflags", "+faststart", str(out)])
         if proc.returncode != 0 or not out.exists():
             raise RuntimeError(f"ffmpeg audio clean failed: {proc.stderr.strip()[-400:]}")
         after, _ = au.measure(out)
         sha = repo.save_file(ctx.conn, d, out, "video", "video/mp4")
     report = {"before": before.model_dump(), "after": after.model_dump(), "chain": pre,
-              "denoiser": "rnnoise" if rnn else ("afftdn" if "afftdn" in pre else "none")}
+              "denoiser": ("demucs+" if p.isolate else "") + ("rnnoise" if rnn else ("afftdn" if "afftdn" in pre else "none")),
+              "music_db": p.music_db if p.isolate else None}
     return {"video": sha, "report": save_text(ctx.conn, d, json.dumps(report, indent=1))}
 
 
 registry.register(Node("audio_check", 2, {"video": "video"}, {"report": "text"}, CheckParams, audio_check_fn,
                        "Measure a clip's loudness (LUFS), true peak, range and noise floor, with what to fix."))
-registry.register(Node("audio_clean", 2, {"video": "video"}, {"video": "video", "report": "text"}, CleanParams,
+registry.register(Node("audio_clean", 3, {"video": "video"}, {"video": "video", "report": "text"}, CleanParams,
                        audio_clean_fn, "Local audio clean-up: rumble cut, RNNoise denoise, compression, two-pass "
-                       "loudness to -14 LUFS / -1.5 dBTP; video copied untouched."))
+                       "loudness to -14 LUFS / -1.5 dBTP; isolate=true splits the voice from music and street noise on the GPU "
+                       "(Demucs) first, music_db puts the music back underneath; video copied untouched."))

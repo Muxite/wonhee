@@ -26,7 +26,7 @@ A look is mostly four things, and all four are measurable:
 - **Light:** night, with the room light off. The lights *in* frame do the work: monitor, LED strip, vending machine, fluorescent tubes. Keep one in frame so it glows. There's no front key light; screen light on the face is enough.
 - **Exposure:** lock it 1–1.5 stops under; the shadows should go black. Use 1/15–1/30 s and let one real action (Enter key, cable, sip) smear.
 - **Places:** your desk at night (PC + Jetson glow), the E-building stairwell after dark, a night bus or train seat, a vending machine.
-- **Edit:** tone + cool cast, `bloom` 0.4–0.7, `vignette` 0.5–0.8, a little `fisheye` / `edge_blur` if the lens was not wide enough, `mask=person` + `subject_lift` 0.15–0.3 so you stay readable.
+- **Edit:** tone + cool cast, `bloom` 0.4–0.7, `vignette` 0.5–0.8, a little `fisheye` / `edge_blur` if the lens was not wide enough, `mask_prompt=person` (or the prop: "laptop", "plush toy") + `subject_lift` 0.15–0.3 so you stay readable.
 
 ## Look B: K-pop flash editorial (fan-club party shoot)
 
@@ -62,6 +62,7 @@ A look is mostly four things, and all four are measurable:
 | Which saved posts share a look | `wonhee inspire`, section "Looks (measured from the pixels)" | $0 (cached teardowns) |
 | Spec-sheet poster | `wonhee node run poster --in image=<photo> --set title=... --set body=...` | $0 |
 | Clean audio | `wonhee audio clip.mp4 [--preset voice\|mixed\|music] [--check]` | $0, about 1/4 real time |
+| Voice over music / street | `wonhee audio clip.mp4 --isolate [--music-db -15]` | $0, GPU, ~14 s for 44 s |
 
 The output folder `data/vibe/<date>-<name>/` holds:
 - the edited photos

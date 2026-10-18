@@ -564,7 +564,7 @@ def _db(x) -> str:
 
 
 def audio(conn, settings, deps, src: Path, *, preset: str = "voice", check_only: bool = False,
-          dest: Path | None = None, progress=None) -> str:
+          dest: Path | None = None, isolate: bool = False, music_db: float | None = None, progress=None) -> str:
     """Measure a clip's audio (loudness, peaks, noise) and, unless check_only, clean it with audio_clean."""
     import json
 
@@ -582,7 +582,8 @@ def audio(conn, settings, deps, src: Path, *, preset: str = "voice", check_only:
              *[f"- {v}" for v in chk["verdicts"]]]
     if check_only:
         return "\n".join(lines)
-    rid, text = node_run(conn, settings, deps, "audio_clean", {"video": sha}, {"preset": preset}, progress=progress)
+    params = {"preset": preset, "isolate": isolate, **({"music_db": music_db} if music_db is not None else {})}
+    rid, text = node_run(conn, settings, deps, "audio_clean", {"video": sha}, params, progress=progress)
     o = _step_out(conn, rid, "audio_clean")
     if o is None:
         return "\n".join(lines + [text])

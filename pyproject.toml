@@ -48,3 +48,22 @@ packages = ["wonhee", "gauge"]
 testpaths = ["tests"]
 addopts = "-m 'not live and not gpu'"
 markers = ["live: hits real Apify/Brave/LLM (needs keys, costs money)", "gpu: needs CUDA"]
+
+[dependency-groups]
+# GPU masks (Grounding-DINO text->box, SAM 2.1 box->mask; both Apache-2.0, from the HF cache) and later GPU audio.
+# Not installed by default: `uv sync --group gpu`. Without it, masks fall back to the ONNX U2-Net models on CPU.
+gpu = ["torch==2.13.0", "torchvision==0.28.0", "transformers>=5.16.1", "demucs>=4.1",
+       "nvidia-cudnn-cu12==9.20.0.48"]  # = the cu13 cuDNN torch pins; mismatched pairs cross-load sublibraries
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
+
+[tool.uv]
+# wonhee runs on this Linux GPU box only; resolving for macOS made demucs (torch<2.3 on Intel Macs) unsatisfiable.
+environments = ["sys_platform == 'linux'"]

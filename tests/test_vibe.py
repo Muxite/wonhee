@@ -156,3 +156,45 @@ def test_audio_clean_hits_the_loudness_target_and_tames_peaks(conn, settings, tm
     after, _ = au.measure(src.with_name("loud.clean.mp4"))
     assert abs(after.lufs - -14) < 1.0 and after.true_peak <= -1.0
     assert conn.execute("SELECT 1 FROM step_flag WHERE code='DENOISE_FALLBACK'").fetchone()
+
+
+def test_subject_mask_prefers_the_gpu_text_mask_and_falls_back(monkeypatch, tmp_path):
+    from wonhee.edit import mask as mk
+    from wonhee.nodes import vibe as vb
+    im = day()
+    calls = []
+    monkeypatch.setattr(mk, "gpu_available", lambda: True)
+    monkeypatch.setattr(mk, "subject_text", lambda im, p: calls.append(p) or np.ones(im.shape[:2], np.float32))
+    monkeypatch.setattr(mk, "subject", lambda im, d, kind: np.zeros(im.shape[:2], np.float32))
+    assert vb.subject_mask(im, vb.VibeParams(mask_prompt="plush toy"), tmp_path)[1] == "sam2:plush toy"
+    assert vb.subject_mask(im, vb.VibeParams(mask="person"), tmp_path)[1] == "sam2:person"
+    assert vb.subject_mask(im, vb.VibeParams(mask="object"), tmp_path)[1] == "onnx:object"  # nothing named
+    monkeypatch.setattr(mk, "subject_text", lambda im, p: None)  # the prompt found nothing
+    assert vb.subject_mask(im, vb.VibeParams(mask_prompt="unicorn"), tmp_path)[1] == "onnx:object"
+    monkeypatch.setattr(mk, "gpu_available", lambda: False)
+    assert vb.subject_mask(im, vb.VibeParams(mask="person"), tmp_path)[1] == "onnx:person"
+    assert vb.subject_mask(im, vb.VibeParams(), tmp_path) == (None, "none")
+
+
+@needs_ffmpeg
+def test_audio_isolate_cleans_the_voice_and_ducks_the_bed(conn, settings, tmp_path, monkeypatch):
+    from wonhee.edit import audio as au
+    from wonhee.edit import separate
+    src = tmp_path / "street.mp4"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=f=220:d=4,volume=4", "-c:a", "aac",
+                    str(src)], check=True)
+    split = []
+
+    def fake_split(s, voice, bed, model="htdemucs"):  # voice = the input, bed = a quiet tone
+        split.append(s)
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(s), "-ac", "2", "-ar", "44100", str(voice)], check=True)
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=f=880:d=4", "-ac", "2", "-ar",
+                        "44100", str(bed)], check=True)
+
+    monkeypatch.setattr(separate, "available", lambda: True)
+    monkeypatch.setattr(separate, "split_voice", fake_split)
+    monkeypatch.setattr(au, "rnn_model", lambda d: None)
+    text = service.audio(conn, settings, fake_deps(), src, isolate=True, music_db=-15)
+    assert len(split) == 1 and "cleaned (demucs+afftdn)" in text
+    after, _ = au.measure(src.with_name("street.clean.mp4"))
+    assert abs(after.lufs - -14) < 1.0

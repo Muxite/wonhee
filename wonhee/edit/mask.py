@@ -70,3 +70,76 @@ def subject(im: np.ndarray, models_dir: Path, kind: Kind = "person", feather: fl
     if feather > 0:
         m = cv2.GaussianBlur(m, (0, 0), max(1.0, feather * max(h, w)))
     return np.clip(m, 0, 1)
+
+
+# --- GPU: a mask from a text prompt ("person", "plush toy", "laptop") ---------------------------------------------
+# Grounding-DINO finds boxes for the words, SAM 2.1 turns each box into an exact mask. Both are Apache-2.0 and loaded
+# through `transformers` (pure PyTorch, so no custom CUDA kernels to build on Blackwell). Needs the `gpu` dependency
+# group (`uv sync --group gpu`); without torch, `gpu_available()` is False and callers use the ONNX models above.
+DINO_ID = "IDEA-Research/grounding-dino-tiny"
+SAM_ID = "facebook/sam2.1-hiera-base-plus"
+_gpu: dict[str, object] = {}
+
+
+def gpu_available() -> bool:
+    try:
+        import torch
+        return bool(torch.cuda.is_available())
+    except ImportError:
+        return False
+
+
+def _pretrained(cls, model_id: str):
+    try:
+        return cls.from_pretrained(model_id, local_files_only=True)  # cached: no network round trip
+    except OSError:
+        return cls.from_pretrained(model_id)
+
+
+def _gpu_models():
+    if not _gpu:
+        import torch
+        from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor, Sam2Model, Sam2Processor
+        _gpu["torch"] = torch
+        _gpu["dp"] = _pretrained(AutoProcessor, DINO_ID)
+        _gpu["dm"] = _pretrained(AutoModelForZeroShotObjectDetection, DINO_ID).to("cuda").eval()
+        _gpu["sp"] = _pretrained(Sam2Processor, SAM_ID)
+        _gpu["sm"] = _pretrained(Sam2Model, SAM_ID).to("cuda").eval()
+    return _gpu
+
+
+def boxes_for(im: np.ndarray, prompt: str, threshold: float = 0.3, top: int = 3) -> list[tuple[list[float], float]]:
+    """Grounding-DINO boxes (pixel xyxy, score) for a text prompt, best first."""
+    from PIL import Image
+    g = _gpu_models()
+    pil = Image.fromarray(cv2.cvtColor(im, cv2.COLOR_BGR2RGB))
+    text = prompt.strip().lower().rstrip(".") + "."  # Grounding-DINO wants lower-case phrases ending in a dot
+    inputs = g["dp"](images=pil, text=text, return_tensors="pt").to("cuda")
+    with g["torch"].no_grad():
+        out = g["dm"](**inputs)
+    res = g["dp"].post_process_grounded_object_detection(out, inputs["input_ids"], threshold=threshold,
+                                                         text_threshold=threshold,
+                                                         target_sizes=[(pil.height, pil.width)])[0]
+    pairs = sorted(zip(res["boxes"].tolist(), res["scores"].tolist()), key=lambda bs: -bs[1])
+    # keep boxes near the best one: weak extras are usually a second guess at the same thing or a background
+    # patch. Scores can't tell present from absent (pure noise scores 0.43 for "person"), so callers only ask
+    # for things a reviewer saw in the photo.
+    return [bs for bs in pairs[:top] if bs[1] >= 0.75 * pairs[0][1]] if pairs else []
+
+
+def subject_text(im: np.ndarray, prompt: str, feather: float = 0.003) -> np.ndarray | None:
+    """A 0..1 mask of everything matching `prompt` (union of the top boxes' SAM masks), or None if nothing found."""
+    from PIL import Image
+    found = boxes_for(im, prompt)
+    if not found:
+        return None
+    g = _gpu_models()
+    pil = Image.fromarray(cv2.cvtColor(im, cv2.COLOR_BGR2RGB))
+    inputs = g["sp"](images=pil, input_boxes=[[b for b, _ in found]], return_tensors="pt").to("cuda")
+    with g["torch"].no_grad():
+        out = g["sm"](**inputs, multimask_output=False)
+    masks = g["sp"].post_process_masks(out.pred_masks.cpu(), inputs["original_sizes"], binarize=True)[0]
+    m = np.asarray(masks).astype(np.float32).reshape(-1, im.shape[0], im.shape[1]).max(axis=0)
+    if feather > 0:
+        m = cv2.GaussianBlur(m, (0, 0), max(1.0, feather * max(im.shape[:2])))
+    return np.clip(m, 0, 1)

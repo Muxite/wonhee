@@ -200,7 +200,8 @@ def _cmd_vibe(a, settings) -> int:
 
 def _cmd_audio(a, settings) -> int:
     conn, deps = open_db(settings), build_deps(settings)
-    text = service.audio(conn, settings, deps, Path(a.file), preset=a.preset, check_only=a.check,
+    text = service.audio(conn, settings, deps, Path(a.file), preset=a.preset, check_only=a.check, isolate=a.isolate,
+                         music_db=a.music_db,
                          dest=Path(a.out) if a.out else None, progress=_progress)
     print(text)
     return 0
@@ -309,6 +310,8 @@ def _parser() -> argparse.ArgumentParser:
     s = sub.add_parser("audio", help="check or clean a clip's audio on the box: denoise, peaks, -14 LUFS loudness")
     s.add_argument("file"); s.add_argument("--preset", choices=["voice", "mixed", "music"], default="voice")
     s.add_argument("--check", action="store_true", help="measure only"); s.add_argument("--out", help="write here")
+    s.add_argument("--isolate", action="store_true", help="GPU: split the voice from music / street noise first")
+    s.add_argument("--music-db", type=float, metavar="DB", help="with --isolate: keep the music this many dB down, e.g. -15")
     s.set_defaults(fn=_cmd_audio)
     s = sub.add_parser("export", help="copy a result (video, image, images manifest, content:<id>) into a folder")
     s.add_argument("ref", help="64-hex sha or content:<id>"); s.add_argument("dest"); s.set_defaults(fn=_cmd_export)

@@ -107,4 +107,5 @@ Data goes to `data/gauge/` (gitignored).
 Photos and audio, all on the box except the optional shooting guide:
 
 - `wonhee vibe <photos...> --like <ref folder | content:id> --name <look>`: learn a look from references, get a shooting guide, and edit your photos toward it (measured grade, subject mask, lens effects; no image generation). See `docs/production/photo-looks.md`.
-- `wonhee audio <clip> [--preset voice|mixed|music] [--check]`: denoise, tame peaks, -14 LUFS.
+- `wonhee audio <clip> [--preset voice|mixed|music] [--check] [--isolate [--music-db -15]]`: denoise, tame peaks, -14 LUFS; `--isolate` splits voice from music/noise on the GPU.
+- GPU extras (SAM masks from a text prompt, Demucs voice isolation): `uv sync --group gpu`.
