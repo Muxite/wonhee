@@ -103,3 +103,8 @@ Data goes to `data/gauge/` (gitignored).
 ## Producing reels fast
 
 `docs/production/` has the rules for agent-planned video DAGs. Edit nodes write a timeline and one `render` encodes it. It also covers lanes and concurrency limits, which workers to build next from what's already on this machine, and the pitfalls found so far. All numbers are measured.
+
+Photos and audio, all on the box except the optional shooting guide:
+
+- `wonhee vibe <photos...> --like <ref folder | content:id> --name <look>`: learn a look from references, get a shooting guide, and edit your photos toward it (measured grade, subject mask, lens effects; no image generation). See `docs/production/photo-looks.md`.
+- `wonhee audio <clip> [--preset voice|mixed|music] [--check]`: denoise, tame peaks, -14 LUFS.

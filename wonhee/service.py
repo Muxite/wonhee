@@ -1,6 +1,7 @@
 """What the CLI and the MCP server both call. Returns plain text; raises KeyError/ValueError for expected errors."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from wonhee.db import queries, repo
@@ -383,7 +384,10 @@ def inspire(conn, settings, deps, content_ids: list[int] | None = None, since: s
     from wonhee.inspire import report
 
     tds, metrics, missing, last_run = _teardowns(conn, settings, deps, content_ids, since, relation, progress)
+    from wonhee.inspire import looks
     md = report.build(tds, metrics, missing)
+    md += "\n" + looks.section(conn, settings.media_dir, [t["content_id"] for t in tds],
+                               {t["content_id"]: t["summary"] for t in tds})
     out_dir = settings.home / "inspire" / f"{date.today().isoformat()}-run{last_run}"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "report.md").write_text(md, encoding="utf-8")
@@ -430,6 +434,165 @@ def ideate(conn, settings, deps, *, n: int = 20, focus: str | None = None, engin
     (out_dir / "ideas.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     head = md.split("\n## ")[0].strip()
     return f"{head}\n\nFull list: {out_dir / 'ideas.md'}", out_dir / "ideas.md"
+
+
+def _step_out(conn, rid: int, node: str) -> dict[str, str] | None:
+    step = queries.current_step(conn, rid, node)
+    if step is None or step["status"] not in ("ok", "weak"):
+        return None
+    return {k: v["ref"] for k, v in queries.step_outputs(conn, step["id"]).items()}
+
+
+def _ref_images(conn, settings, refs: list[str]) -> str:
+    """An images manifest from folders / image files / content:<id> photo posts, in the order given."""
+    from wonhee.inspire.looks import post_images
+    from wonhee.nodes import images as im
+    from wonhee.nodes.types import CONTENT
+
+    items = []
+    for r in refs:
+        if m := CONTENT.match(r):
+            paths = post_images(conn, settings.media_dir, int(m.group(1)))  # photos, else video keyframes
+            if not paths:
+                raise ValueError(f"{r}: no stored images or analysed keyframes (grab it first)")
+            items += [im.Slide(sha=p.name) for p in paths]
+        else:
+            items += im.load_images(settings.media_dir, im.store_local(conn, settings.media_dir,
+                                                                       Path(r).expanduser())).items
+    if not items:
+        raise ValueError("no reference images")
+    return im.save_images(conn, settings.media_dir, im.Images(items=items))
+
+
+def vibe(conn, settings, deps, refs: list[str], photos: list[Path], *, name: str = "look", engine: str = "local",
+         guide: bool = True, guide_engine: str = "remote", overrides: dict | None = None,
+         progress=None) -> tuple[str, Path | None]:
+    """Learn a look from reference photos, write a shooting guide for it, and move each photo toward it: a vision
+    model picks the edit knobs per photo (engine local = $0) and the edit itself is deterministic. Writes
+    `<home>/vibe/<date>-<name>/`: the edited photos, a before/after sheet and report.md. Returns (summary, dir)."""
+    import json
+    from datetime import date
+
+    import cv2
+    import numpy as np
+
+    from wonhee.edit import style
+    from wonhee.media import path_for
+    from wonhee.nodes.vibe import ShotGuide, VibeParams
+
+    d = settings.media_dir
+    refs_sha = _ref_images(conn, settings, refs)
+    rid, text = node_run(conn, settings, deps, "style_profile", {"images": refs_sha}, {"name": name}, progress=progress)
+    out = _step_out(conn, rid, "style_profile")
+    if out is None:
+        return text, None
+    prof_sha = out["profile"]
+    prof = style.Profile.model_validate_json(path_for(d, prof_sha).read_text())
+    runs, gd = [rid], None
+    if guide:
+        rid, text = node_run(conn, settings, deps, "shot_guide", {"images": refs_sha, "profile": prof_sha},
+                             {"engine": guide_engine}, progress=progress)
+        runs.append(rid)
+        if (o := _step_out(conn, rid, "shot_guide")) is not None:
+            gd = ShotGuide.model_validate_json(path_for(d, o["guide"]).read_text())
+    out_dir = settings.home / "vibe" / f"{date.today().isoformat()}-{re.sub(r'[^a-z0-9-]+', '-', name.lower())}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rows, pairs = [], []
+    for n, photo in enumerate(photos, 1):
+        sha = repo.save_file(conn, d, Path(photo).expanduser(), "image", "image/jpeg")
+        rid, text = node_run(conn, settings, deps, "vibe_review", {"image": sha, "profile": prof_sha},
+                             {"engine": engine}, progress=progress)
+        runs.append(rid)
+        o = _step_out(conn, rid, "vibe_review")
+        review = json.loads(path_for(d, o["review"]).read_text()) if o else None
+        params = {**(review["params"] if review else VibeParams().model_dump()), **(overrides or {})}
+        rid, text = node_run(conn, settings, deps, "vibe_image", {"image": sha, "profile": prof_sha}, params,
+                             progress=progress)
+        runs.append(rid)
+        o2 = _step_out(conn, rid, "vibe_image")
+        if o2 is None:
+            rows.append((photo, review, params, None, text))
+            continue
+        dest = out_dir / f"{n:02d}-{Path(photo).stem}.jpg"
+        dest.write_bytes(path_for(d, o2["image"]).read_bytes())
+        rows.append((photo, review, params, dest, None))
+        pairs.append((style.load(photo), style.load(dest)))
+    if pairs:
+        tiles = []
+        for a, b in pairs:
+            h = 600
+            tiles.append(np.hstack([cv2.resize(x, (round(x.shape[1] * h / x.shape[0]), h)) for x in (a, b)]))
+        w = max(t.shape[1] for t in tiles)
+        sheet = np.vstack([np.pad(t, ((0, 8), (0, w - t.shape[1]), (0, 0)), constant_values=255) for t in tiles])
+        cv2.imwrite(str(out_dir / "sheet.jpg"), sheet, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    cost = sum(_run_cost(conn, r) for r in runs)
+    md = [f"# Look: {name}", "", f"{prof.n} reference image(s). Runs {runs[0]}-{runs[-1]}, ${cost:.3f}, "
+          f"reviewer engine {engine}.", "", "## What the references share (measured)", "",
+          *[f"- {h}" for h in prof.hints], "",
+          f"Tone (L* 1/5/25/50/75/95/99 %): {prof.stats.lum}. Colour by band: "
+          + "; ".join(f"{k} a {v.a:+.1f} b {v.b:+.1f}" for k, v in prof.stats.bands.items()) + ".", ""]
+    if gd:
+        md += ["## How to shoot it", "", f"**{gd.summary}**", "", f"- **Lens:** {gd.lens}",
+               f"- **Camera:** {gd.camera_position}; {gd.distance}", f"- **Light:** {'; '.join(gd.light)}",
+               f"- **Exposure and motion:** {gd.exposure_and_motion}", f"- **Colour:** {gd.colour}",
+               f"- **Composition:** {'; '.join(gd.composition)}",
+               f"- **Directing:** {'; '.join(gd.subject_direction)}",
+               f"- **Places like this:** {'; '.join(gd.places_like_this)}", f"- **Avoid:** {'; '.join(gd.avoid)}",
+               f"- **The edit finishes:** {gd.edit_finish}", "", "On-set checklist:", "",
+               *[f"- [ ] {c}" for c in gd.checklist], ""]
+    md += ["## Your photos", ""]
+    for photo, review, params, dest, err in rows:
+        md.append(f"### {Path(photo).name}")
+        if err:
+            md += [f"Edit failed: {err}", ""]
+            continue
+        if review:
+            k = review["knobs"]
+            md.append(f"Fit {k['fit']}/5. {k['reason']}")
+            if k["reshoot"]:
+                md += ["", "Next time you shoot it:", *[f"- {x}" for x in k["reshoot"]]]
+        knobs = {k: v for k, v in params.items() if v not in (0, 0.0, "none") and k not in ("ink", "paper")}
+        md += ["", f"Edit: `{json.dumps(knobs)}` -> `{dest.name}`", ""]
+    (out_dir / "report.md").write_text("\n".join(md), encoding="utf-8")
+    summary = (f"Look '{name}' from {prof.n} reference(s): {'; '.join(prof.hints)}.\n"
+               f"{len(pairs)} of {len(photos)} photo(s) edited, ${cost:.3f}. Report: {out_dir / 'report.md'}")
+    return summary, out_dir
+
+
+def _db(x) -> str:
+    return "-" if x is None else f"{x:.0f}"
+
+
+def audio(conn, settings, deps, src: Path, *, preset: str = "voice", check_only: bool = False,
+          dest: Path | None = None, progress=None) -> str:
+    """Measure a clip's audio (loudness, peaks, noise) and, unless check_only, clean it with audio_clean."""
+    import json
+
+    from wonhee.media import path_for
+
+    sha = repo.save_file(conn, settings.media_dir, Path(src).expanduser(), "video", "video/mp4")
+    rid, text = node_run(conn, settings, deps, "audio_check", {"video": sha}, {}, progress=progress)
+    o = _step_out(conn, rid, "audio_check")
+    if o is None:
+        return text
+    chk = json.loads(path_for(settings.media_dir, o["report"]).read_text())
+    s = chk["stats"]
+    lines = [f"{Path(src).name}: {s['lufs']:.1f} LUFS, true peak {s['true_peak']:.1f} dBTP, range {s['lra']:.1f} LU, "
+             f"speech/noise {_db(s['snr'])} dB",
+             *[f"- {v}" for v in chk["verdicts"]]]
+    if check_only:
+        return "\n".join(lines)
+    rid, text = node_run(conn, settings, deps, "audio_clean", {"video": sha}, {"preset": preset}, progress=progress)
+    o = _step_out(conn, rid, "audio_clean")
+    if o is None:
+        return "\n".join(lines + [text])
+    rep = json.loads(path_for(settings.media_dir, o["report"]).read_text())
+    a = rep["after"]
+    dest = dest or Path(src).with_name(Path(src).stem + ".clean.mp4")
+    dest.write_bytes(path_for(settings.media_dir, o["video"]).read_bytes())
+    lines.append(f"cleaned ({rep['denoiser']}): {a['lufs']:.1f} LUFS, true peak {a['true_peak']:.1f} dBTP, "
+                 f"range {a['lra']:.1f} LU, speech/noise {_db(a['snr'])} dB -> {dest}")
+    return "\n".join(lines)
 
 
 def export(conn, settings, ref: str, dest: Path) -> list[Path]:

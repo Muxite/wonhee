@@ -26,17 +26,23 @@ def _post(settings: Settings, body: dict) -> dict:  # tests replace this
     return r.json()
 
 
-def chat_json(settings: Settings, model_cls: type[T], *, system: str, prompt: str, retries: int = 1) -> T:
+def chat_json(settings: Settings, model_cls: type[T], *, system: str, prompt: str, retries: int = 1,
+              images=()) -> T:
+    """images: paths to small JPEGs (the local model is multimodal); each costs a few hundred tokens."""
+    import base64
+    from pathlib import Path
     schema = model_cls.model_json_schema()
     # Ollama silently drops the start of a prompt longer than its window (default 4096), so size it explicitly
     # and refuse what cannot fit; ~3 chars a token is a conservative estimate for mixed English/JSON.
-    est = (len(system) + len(prompt) + len(json.dumps(schema))) // 3
+    est = (len(system) + len(prompt) + len(json.dumps(schema))) // 3 + 800 * len(images)
     if est > settings.local_llm_ctx * 3 // 4:
         raise LocalLLMError(f"prompt is ~{est} tokens, too long for the local window of {settings.local_llm_ctx} "
                             "(raise local_llm_ctx or use the remote engine)")
     body = {"model": settings.local_llm_model, "stream": False, "think": False, "keep_alive": "30m",
             "format": schema, "options": {"temperature": 0.2, "num_ctx": settings.local_llm_ctx},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}]}
+    if images:
+        body["messages"][1]["images"] = [base64.b64encode(Path(i).read_bytes()).decode() for i in images]
     last = ""
     for _ in range(retries + 1):
         try:

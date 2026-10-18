@@ -2,3 +2,4 @@ Fonts bundled so text renders the same everywhere (host, containers). Both are S
 - NotoSans-Bold.ttf: outline and band presets
 - DancingScript.ttf: script preset (variable font; the renderer uses the Bold instance)
 Colour emoji (Noto Color Emoji) and CJK (Noto Sans CJK) come from the system fonts; `wonhee doctor` checks them.
+- NotoSans-Regular.ttf, NotoSansMono-Regular.ttf: the spec-sheet poster (title and body); same OFL as NotoSans-Bold

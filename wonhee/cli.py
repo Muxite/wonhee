@@ -186,6 +186,26 @@ def _cmd_ideate(a, settings) -> int:
     return 0
 
 
+def _cmd_vibe(a, settings) -> int:
+    over = {}
+    for kv in a.set or []:
+        k, _, v = kv.partition("=")
+        over[k] = v if not v.replace(".", "", 1).lstrip("-").isdigit() else float(v)
+    text, _ = service.vibe(open_db(settings), settings, build_deps(settings), a.like, [Path(p) for p in a.photos],
+                           name=a.name, engine=a.engine, guide=not a.no_guide, guide_engine=a.guide_engine,
+                           overrides=over, progress=_progress)
+    print(text)
+    return 0
+
+
+def _cmd_audio(a, settings) -> int:
+    conn, deps = open_db(settings), build_deps(settings)
+    text = service.audio(conn, settings, deps, Path(a.file), preset=a.preset, check_only=a.check,
+                         dest=Path(a.out) if a.out else None, progress=_progress)
+    print(text)
+    return 0
+
+
 def _cmd_export(a, settings) -> int:
     for p in service.export(open_db(settings), settings, a.ref, Path(a.dest)):
         print(p)
@@ -274,6 +294,22 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--engine", choices=["remote", "local"], default="remote", help="local = on-box model, $0")
     s.add_argument("--since", metavar="YYYY-MM-DD"); s.add_argument("--relation", choices=["ours", "friend", "external"])
     s.set_defaults(fn=_cmd_ideate)
+    s = sub.add_parser("vibe", help="learn a look from reference photos, get a shooting guide, and edit your photos "
+                                    "toward it (no image generation)")
+    s.add_argument("photos", nargs="*", help="your photos to edit (none = just profile + guide)")
+    s.add_argument("--like", action="append", required=True, metavar="REF",
+                   help="reference folder, image or content:<id> photo post (repeatable)")
+    s.add_argument("--name", default="look", help="name of the look, e.g. kpop-night")
+    s.add_argument("--engine", choices=["local", "remote"], default="local", help="who picks the edit knobs")
+    s.add_argument("--no-guide", action="store_true", help="skip the shooting guide")
+    s.add_argument("--guide-engine", choices=["remote", "local"], default="remote",
+                   help="who writes the guide: remote ~$0.003 (default, best), local $0")
+    s.add_argument("--set", action="append", metavar="KNOB=VALUE", help="force an edit knob, e.g. fisheye=0.6")
+    s.set_defaults(fn=_cmd_vibe)
+    s = sub.add_parser("audio", help="check or clean a clip's audio on the box: denoise, peaks, -14 LUFS loudness")
+    s.add_argument("file"); s.add_argument("--preset", choices=["voice", "mixed", "music"], default="voice")
+    s.add_argument("--check", action="store_true", help="measure only"); s.add_argument("--out", help="write here")
+    s.set_defaults(fn=_cmd_audio)
     s = sub.add_parser("export", help="copy a result (video, image, images manifest, content:<id>) into a folder")
     s.add_argument("ref", help="64-hex sha or content:<id>"); s.add_argument("dest"); s.set_defaults(fn=_cmd_export)
     s = sub.add_parser("profile", help="workload profiler (gauge): `wonhee profile doctor`, `... run <workload>`; "

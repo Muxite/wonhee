@@ -182,6 +182,37 @@ def ideate(n: int = 20, focus: str | None = None, engine: str = "remote", conten
 
 @mcp.tool()
 @_guard
+def vibe(like: list[str], photos: list[str] | None = None, name: str = "look", engine: str = "local",
+         guide: bool = True) -> str:
+    """Learn a photographic look from references (folders, image files or content:<id> posts; reels give their
+    keyframes), write a shooting guide for it (remote vision, ~$0.003, guide=False skips), and edit each photo
+    toward it: a vision model picks clamped knobs (engine local = $0), the edit is deterministic (tone and
+    per-band colour match, subject mask, fisheye / blur / bloom / vignette / grain). No image generation."""
+    from pathlib import Path
+    conn, settings = _open()
+    try:
+        return service.vibe(conn, settings, _deps(settings), like, [Path(p) for p in photos or []], name=name,
+                            engine=engine, guide=guide)[0]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def audio(file: str, preset: str = "voice", check: bool = False) -> str:
+    """Measure a clip's audio (LUFS, true peak, range, speech-to-noise) and, unless check, clean it on the box:
+    rumble cut, RNNoise denoise, compression, two-pass loudness to -14 LUFS / -1.5 dBTP. Writes <file>.clean.mp4.
+    preset: voice | mixed | music."""
+    from pathlib import Path
+    conn, settings = _open()
+    try:
+        return service.audio(conn, settings, _deps(settings), Path(file), preset=preset, check_only=check)
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
 def export(ref: str, dest: str) -> str:
     """Copy a stored result into a local folder for posting: a video or image (one file), an images manifest or
     content:<id> photo post (01.jpg, 02.jpg, ...). Returns the written paths."""
