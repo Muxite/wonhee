@@ -179,6 +179,13 @@ def _cmd_inspire(a, settings) -> int:
     return 0
 
 
+def _cmd_ideate(a, settings) -> int:
+    text, _ = service.ideate(open_db(settings), settings, build_deps(settings), n=a.n, focus=a.focus, engine=a.engine,
+                             content_ids=a.ids or None, since=a.since, relation=a.relation, progress=_progress)
+    print(text)
+    return 0
+
+
 def _cmd_export(a, settings) -> int:
     for p in service.export(open_db(settings), settings, a.ref, Path(a.dest)):
         print(p)
@@ -259,6 +266,14 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("ids", nargs="*", type=int, metavar="CONTENT_ID", help="default: every stored post with media")
     s.add_argument("--since", metavar="YYYY-MM-DD", help="only posts observed (grabbed) since this date")
     s.add_argument("--relation", choices=["ours", "friend", "external"]); s.set_defaults(fn=_cmd_inspire)
+    s = sub.add_parser("ideate", help="ideas for posts and the b-roll to film, from saved posts + your brief "
+                                      "(data/brief/*.md), each tagged with where it came from")
+    s.add_argument("ids", nargs="*", type=int, metavar="CONTENT_ID", help="inspiration posts (default: all stored)")
+    s.add_argument("-n", type=int, default=20, help="ideas to write (3-40)")
+    s.add_argument("--focus", help='steer this batch, e.g. "cafe shoot day" or "carousels only"')
+    s.add_argument("--engine", choices=["remote", "local"], default="remote", help="local = on-box model, $0")
+    s.add_argument("--since", metavar="YYYY-MM-DD"); s.add_argument("--relation", choices=["ours", "friend", "external"])
+    s.set_defaults(fn=_cmd_ideate)
     s = sub.add_parser("export", help="copy a result (video, image, images manifest, content:<id>) into a folder")
     s.add_argument("ref", help="64-hex sha or content:<id>"); s.add_argument("dest"); s.set_defaults(fn=_cmd_export)
     s = sub.add_parser("profile", help="workload profiler (gauge): `wonhee profile doctor`, `... run <workload>`; "

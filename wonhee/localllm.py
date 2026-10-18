@@ -27,8 +27,15 @@ def _post(settings: Settings, body: dict) -> dict:  # tests replace this
 
 
 def chat_json(settings: Settings, model_cls: type[T], *, system: str, prompt: str, retries: int = 1) -> T:
+    schema = model_cls.model_json_schema()
+    # Ollama silently drops the start of a prompt longer than its window (default 4096), so size it explicitly
+    # and refuse what cannot fit; ~3 chars a token is a conservative estimate for mixed English/JSON.
+    est = (len(system) + len(prompt) + len(json.dumps(schema))) // 3
+    if est > settings.local_llm_ctx * 3 // 4:
+        raise LocalLLMError(f"prompt is ~{est} tokens, too long for the local window of {settings.local_llm_ctx} "
+                            "(raise local_llm_ctx or use the remote engine)")
     body = {"model": settings.local_llm_model, "stream": False, "think": False, "keep_alive": "30m",
-            "format": model_cls.model_json_schema(), "options": {"temperature": 0.2},
+            "format": schema, "options": {"temperature": 0.2, "num_ctx": settings.local_llm_ctx},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}]}
     last = ""
     for _ in range(retries + 1):
@@ -36,6 +43,8 @@ def chat_json(settings: Settings, model_cls: type[T], *, system: str, prompt: st
             out = _post(settings, body)
         except (httpx.HTTPError, OSError) as e:
             raise LocalLLMError(f"local model {settings.local_llm_model} at {settings.local_llm_url}: {e}") from e
+        if (out.get("prompt_eval_count") or 0) >= settings.local_llm_ctx - 8:
+            raise LocalLLMError(f"prompt filled the local window ({settings.local_llm_ctx} tokens) and was cut")
         text = (out.get("message") or {}).get("content", "")
         try:
             return model_cls.model_validate_json(text)

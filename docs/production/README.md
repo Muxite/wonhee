@@ -17,6 +17,7 @@ Written 2026-10-17. Every number here was measured on this box (Ryzen 7 3700X, 1
 - `wonhee grab <urls>`: store references (reels, photo posts and carousels) with analysis.
 - `wonhee inspire`: turn everything stored into an actionable report (what to film, what to build, lines to use).
 - `wonhee larp "<mundane task>" [--image|--video PATH]`: professional-moment framings, rendered onto your media.
+- `wonhee ideate [-n 20] [--focus "cafe day"]`: what to post next and the b-roll to film, from saved posts + your brief (`data/brief/*.md`), each idea tagged with where it came from.
 - `wonhee node run look|look_image|text_image|text_video|carousel ...`, then `wonhee export <ref> <dir>`: produce and save.
 
 ## The rules on one screen

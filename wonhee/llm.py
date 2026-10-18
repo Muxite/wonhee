@@ -82,7 +82,9 @@ def _backend(settings: Settings, req: dict) -> dict:
     from nanobot.kernel.llm import GenerateOptions
     from nanobot.kernel.llm_errors import LLMError as KernelError
     kernel = _kernel(settings)
-    opts = GenerateOptions(response_format=req.get("response_format"), timeout_s=settings.llm_timeout_s)
+    from nanobot.kernel.llm import Sampling
+    opts = GenerateOptions(response_format=req.get("response_format"), timeout_s=settings.llm_timeout_s,
+                           sampling=Sampling(max_tokens=req.get("max_tokens")))
     try:
         c = kernel.llm.complete_sync(req["prompt"], system=req.get("system"),
                                      images=req.get("images") or (), opts=opts)
@@ -108,13 +110,14 @@ def _parse(model_cls: type[T], text: str) -> T:
 
 def call_json(conn, settings: Settings, model_cls: type[T], *, schema_name: str, system: str, prompt: str,
               images: tuple[str, ...] | list[str] = (), step_id: int | None = None,
-              intent_id: int | None = None) -> LLMResult[T]:
+              intent_id: int | None = None, max_tokens: int | None = None) -> LLMResult[T]:
+    """max_tokens: the reply ceiling; None = the provider default (4096 on OpenRouter), too small for long lists."""
     schema = model_cls.model_json_schema()
     sys_full = f"{system}\n\nReply with ONLY a JSON object matching this JSON schema:\n{json.dumps(schema)}"
     total, retried, cur_prompt, last_err = 0.0, False, prompt, ""
     for attempt in (1, 2):
         req = {"system": sys_full, "prompt": cur_prompt, "images": [str(i) for i in images],
-               "model": settings.llm_model,
+               "model": settings.llm_model, **({"max_tokens": max_tokens} if max_tokens else {}),
                "response_format": {"type": "json_schema",
                                    "json_schema": {"name": schema_name, "schema": schema, "strict": False}}}
         try:

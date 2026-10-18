@@ -63,7 +63,7 @@ class Replicate(BaseModel):
     score_1to5: int = Field(ge=1, le=5)
     effort_minutes: int = Field(ge=0, le=6000)
     blockers: list[str] = []
-    fit_for_creator: str
+    who_can_make_it: str  # what it takes to make a version: skills, people, props, places
 
 
 class Teardown(BaseModel):

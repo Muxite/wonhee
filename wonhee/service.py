@@ -320,16 +320,11 @@ def larp(conn, settings, deps, task: str, *, image: str | None = None, video: st
     return "\n".join(out)
 
 
-def inspire(conn, settings, deps, content_ids: list[int] | None = None, since: str | None = None,
-            relation: str | None = None, progress=None) -> tuple[str, Path | None]:
-    """Tear down stored posts (cached per post) and write one actionable report. Returns (summary, report path).
-
-    With no ids: every post that has media, optionally only those observed since a date / of one relation.
-    A post whose teardown fails is dropped and the rest re-run (finished teardowns come from the cache)."""
+def _teardowns(conn, settings, deps, content_ids, since, relation, progress):
+    """Teardowns for stored posts (cached per post). A failing post is dropped and the rest re-run.
+    Returns (teardowns, metrics, failed + not reached, last run id)."""
     import json
-    from datetime import date
 
-    from wonhee.inspire import report
     from wonhee.media import path_for
 
     if not content_ids:
@@ -369,15 +364,72 @@ def inspire(conn, settings, deps, content_ids: list[int] | None = None, since: s
         f"SELECT content_id, plays, likes FROM v_content_latest WHERE content_id IN ({','.join('?' * len(tds))})",
         [t["content_id"] for t in tds])}
     skipped = [c for c in content_ids if c not in done and c not in failed]
-    md = report.build(tds, metrics, failed + skipped)
+    return tds, metrics, failed + skipped, last_run
+
+
+def _run_cost(conn, run_id) -> float:
+    return conn.execute("SELECT coalesce(sum(cost_usd),0) FROM step WHERE run_id=?", (run_id,)).fetchone()[0]
+
+
+def inspire(conn, settings, deps, content_ids: list[int] | None = None, since: str | None = None,
+            relation: str | None = None, progress=None) -> tuple[str, Path | None]:
+    """Tear down stored posts (cached per post) and write one actionable report. Returns (summary, report path).
+
+    With no ids: every post that has media, optionally only those observed since a date / of one relation.
+    A post whose teardown fails is dropped and the rest re-run (finished teardowns come from the cache)."""
+    import json
+    from datetime import date
+
+    from wonhee.inspire import report
+
+    tds, metrics, missing, last_run = _teardowns(conn, settings, deps, content_ids, since, relation, progress)
+    md = report.build(tds, metrics, missing)
     out_dir = settings.home / "inspire" / f"{date.today().isoformat()}-run{last_run}"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "report.md").write_text(md, encoding="utf-8")
     (out_dir / "teardowns.json").write_text(json.dumps(tds, ensure_ascii=False, indent=1), encoding="utf-8")
-    cost = conn.execute("SELECT coalesce(sum(cost_usd),0) FROM step WHERE run_id=?", (last_run,)).fetchone()[0]
     head = md.split("## Best to replicate")[0].strip()
-    return (f"{head}\n\n{len(tds)} teardown(s), {len(failed)} failed, {len(skipped)} not reached; last run "
-            f"{last_run} (${cost:.3f}). Full report: {out_dir / 'report.md'}"), out_dir / "report.md"
+    return (f"{head}\n\n{len(tds)} teardown(s), {len(missing)} failed or not reached; last run "
+            f"{last_run} (${_run_cost(conn, last_run):.3f}). Full report: {out_dir / 'report.md'}"), out_dir / "report.md"
+
+
+def ideate(conn, settings, deps, *, n: int = 20, focus: str | None = None, engine: str = "remote",
+           content_ids: list[int] | None = None, since: str | None = None, relation: str | None = None,
+           progress=None) -> tuple[str, Path | None]:
+    """Ideas for posts to make and the b-roll to film, from inspiration teardowns and the creator's own brief
+    (`<home>/brief/*.md`), kept apart so each idea's origin is known. Returns (summary, report path)."""
+    import json
+    from datetime import date
+
+    from wonhee.inspire import brief as bf
+    from wonhee.inspire import ideas as ix
+    from wonhee.media import path_for
+    from wonhee.nodes.subtitles import save_text
+
+    tds, metrics, missing, _ = _teardowns(conn, settings, deps, content_ids, since, relation, progress)
+    items = bf.load(settings.home / "brief")
+    refs = {"inspiration": save_text(conn, settings.media_dir, ix.digest(tds, metrics)),
+            "brief": save_text(conn, settings.media_dir, bf.render(items))}
+    params = {"n": n, "engine": engine, **({"focus": focus} if focus else {})}
+    rid, text = node_run(conn, settings, deps, "ideate", refs, params, progress=progress)
+    step = queries.current_step(conn, rid, "ideate")
+    if step is None or step["status"] not in ("ok", "weak"):
+        return text, None
+    data = json.loads(path_for(settings.media_dir, queries.step_outputs(conn, step["id"])["ideas"]["ref"]).read_text())
+    flags = [f"{r['code']}: {r['detail']}" for r in conn.execute(
+        "SELECT code, detail FROM step_flag WHERE step_id=? AND code IN ('UNKNOWN_REF','IDEA_COPY')", (step["id"],))]
+    header = (f"Sources: {len(tds)} inspiration teardowns, {len(items)} brief items "
+              f"({', '.join(sorted({i.source for i in items})) or 'no brief files'}). Run {rid}, "
+              f"${_run_cost(conn, rid):.3f}, engine {engine}." + (f" Focus: {focus}." if focus else ""))
+    if flags:
+        header += "\n\nDropped by checks:\n" + "\n".join(f"- {f}" for f in flags)
+    md = ix.report(data, {t["content_id"]: t["summary"] for t in tds}, {i.id: i.text for i in items}, header)
+    out_dir = settings.home / "ideate" / f"{date.today().isoformat()}-run{rid}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "ideas.md").write_text(md, encoding="utf-8")
+    (out_dir / "ideas.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    head = md.split("\n## ")[0].strip()
+    return f"{head}\n\nFull list: {out_dir / 'ideas.md'}", out_dir / "ideas.md"
 
 
 def export(conn, settings, ref: str, dest: Path) -> list[Path]:

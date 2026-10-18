@@ -26,7 +26,7 @@ def teardown_reply(template="POV when you're [activity] and remember [trigger]",
                                    "framing": "wide", "duration_s": 3, "person_on_camera": False,
                                    "difficulty_1to5": 2}],
             "edit_recipe": ["one shot", "one line"], "why_it_works": [{"claim": "relatable", "evidence": "3.8M plays"}],
-            "replicate": {"score_1to5": 4, "effort_minutes": 30, "blockers": [], "fit_for_creator": "good"},
+            "replicate": {"score_1to5": 4, "effort_minutes": 30, "blockers": [], "who_can_make_it": "anyone with a phone"},
             "text_template": template, "learn": ["text is the product"], "capabilities": list(caps) * 2,
             "confidence": "high", "gaps": []}
 
@@ -73,13 +73,14 @@ def test_inspire_translates_tears_down_and_reports(conn, settings, fake_llm, tin
     assert len(local_calls) == 1  # only the Korean post needed the on-box model
     prompts = [c["prompt"] for c in fake_llm.calls() if c["response_format"]["json_schema"]["name"] == "Teardown"]
     assert "English translations" not in prompts[0] and "english 0" in prompts[1]
+    assert not any("Creator profile" in p for p in prompts)  # teardowns stay creator-blind (provenance)
     md = path.read_text()
     assert "## What to build" in md and "| speed_ramp | 1 | **missing** |" in md
     assert "| text_overlay | 1 | text_image / text_video |" in md  # capabilities deduped per post
     assert "**You on camera**" in md and "**Places and things**" in md
     assert "→ `text_video preset=outline position=upper look=moody`" in md
     assert json.loads((path.parent / "teardowns.json").read_text())[0]["format"] == "pov-text-meme"
-    assert "2 teardown(s), 0 failed" in text
+    assert "2 teardown(s), 0 failed or not reached" in text
 
 
 def test_inspire_drops_a_copied_template(conn, settings, fake_llm, tiny_video, tiny_jpg, local_calls):

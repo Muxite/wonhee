@@ -81,10 +81,10 @@ class Ctx:
         repo.add_artifact(self.conn, self.step_id, sha, role)
         return sha
 
-    def llm(self, model_cls, *, schema_name: str, system: str, prompt: str, images=()):
+    def llm(self, model_cls, *, schema_name: str, system: str, prompt: str, images=(), max_tokens: int | None = None):
         try:
             res = llm.call_json(self.conn, self.settings, model_cls, schema_name=schema_name, system=system,
-                                prompt=prompt, images=images, step_id=self.step_id)
+                                prompt=prompt, images=images, step_id=self.step_id, max_tokens=max_tokens)
         except llm.SchemaFail as e:
             raise StageFailed("SCHEMA_FAIL", str(e)) from e
         self.add_cost(res.cost_usd)

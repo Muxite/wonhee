@@ -2,7 +2,7 @@
 
 **Niche:** low-budget Asian engineering student, gorpcore, K-pop and performative AI-founder culture. Genuinely fun or useful things, made funny by describing them like major life achievements.
 
-**Source:** the user's own list (2026-10-17), organised for production. The reference formats come from `insights-2026-10-17.md`.
+**Source:** the user's own list (2026-10-17), organised for production. **Own ideas only.** Anything learned from saved posts lives in `insights-2026-10-17.md`, so the two never mix. The raw brief is in `data/brief/` (gitignored), and `wonhee ideate` reads it as a source separate from the inspiration teardowns (see `workers.md`).
 
 **Budget rule:** $0–30 per idea; the digicam is the only planned purchase.
 
@@ -94,15 +94,3 @@
 | wired IEMs for coding | close-up | IEMs on a keyboard | "audio infrastructure upgrade" | moody |
 | Labubu / blind-box charm | close-up | charm on bag | "diversified into collectibles" | warm_pink |
 | more spent on photocards than on hosting | carousel | photocard receipts vs. a $5 VPS bill | "our burn rate breakdown" | none |
-
-## Text-led reels from the reference formats (pair with any plate above)
-- **Text over a static plate** (c15, c23 formats). Examples:
-  - "Is there anyone on board who can approve my PR because it compiled?"
-  - "POV: you're in a lecture and remember your Jetson is still training"
-- **"How I [X] as a [Y]"** (c17): "how I check nvtop as a founder", over the deadpan plate.
-- **Brag line over two people at a mic** (c24, needs a friend): "me and bro shipping our 4th AI wrapper after saying we'd never build an AI wrapper".
-- **"AI RELEASE" card** (c30) over a screen recording of your own project.
-- **Dad-relaxation joke** (c34, translated from Spanish): "how I relax: building agent workflows so I never have to relax".
-
-## Why this niche has real upside
-c33 (@cordia) describes a builder-creator hired into OpenAI's developer experience team. Companies now pay for people who can **build and document** things in a way audiences trust. This niche is that skill made into a joke. Every post doubles as proof that you ship (`look`, `gauge` and the GPU work are all real) and that you can tell the story. Keep one in every 4–5 posts sincere: a real project demo with the same visual language.

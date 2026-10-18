@@ -167,6 +167,21 @@ def inspire(content_ids: list[int] | None = None, since: str | None = None, rela
 
 @mcp.tool()
 @_guard
+def ideate(n: int = 20, focus: str | None = None, engine: str = "remote", content_ids: list[int] | None = None,
+           since: str | None = None) -> str:
+    """Ideas for posts to make and the b-roll plates to film, from saved inspiration posts (teardowns, cached) and
+    the creator's own brief (data/brief/*.md). Each idea cites its sources and is tagged inspiration / own / blend /
+    new; plates are ranked by how many ideas they serve. engine="local" uses the on-box model ($0)."""
+    conn, settings = _open()
+    try:
+        return service.ideate(conn, settings, _deps(settings), n=n, focus=focus, engine=engine,
+                              content_ids=content_ids, since=since)[0]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
 def export(ref: str, dest: str) -> str:
     """Copy a stored result into a local folder for posting: a video or image (one file), an images manifest or
     content:<id> photo post (01.jpg, 02.jpg, ...). Returns the written paths."""
