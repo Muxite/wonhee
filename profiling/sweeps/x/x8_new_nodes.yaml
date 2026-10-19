@@ -1,0 +1,19 @@
+# X8 anatomy of wonhee's newer GPU nodes, one model per container via `python -m wonhee.bench`.
+# Each run marks model_loaded and one compute span per repeat, so phase_s gives load vs compute and
+# spans[0] vs spans[1] gives the first-call (cold) vs later-call (warm) cost. Questions:
+#   - Is each node load-bound like whisper speech_subs (~15 s flat, 3% GPU busy)?
+#   - Where does the GPU mask (Grounding-DINO + SAM 2.1) beat the CPU U2-Net, and at what VRAM?
+experiment: X8 new nodes
+jobs:
+  - {workload: wonhee.gpu, fixed: {task: mask, engine: sam2, repeat: 3}, grid: {px: [1080, 2160], images: [1, 4, 16]}, repeats: 2}
+  - {workload: wonhee.gpu, fixed: {task: mask, engine: onnx, repeat: 3}, grid: {px: [1080, 2160], images: [1, 4]}, repeats: 2}
+  - {workload: wonhee.gpu, fixed: {task: separate, repeat: 2}, grid: {clip_s: [10, 40, 100]}, repeats: 2}
+  - {workload: wonhee.gpu, fixed: {task: whisper, repeat: 2}, grid: {clip_s: [10, 40, 100]}, repeats: 2}
+  - {workload: wonhee.gpu, fixed: {task: embed, repeat: 3}, grid: {images: [16, 64], batch: [8, 32]}, repeats: 2}
+  # one traced run per task: what the GPU actually does inside a compute span (kernel mix, busy share)
+  - {workload: wonhee.gpu, fixed: {task: mask, engine: sam2, images: 4, repeat: 3}, repeats: 1, profile: trace}
+  - {workload: wonhee.gpu, fixed: {task: separate, clip_s: 40}, repeats: 1, profile: trace}
+  - {workload: wonhee.gpu, fixed: {task: embed, images: 64, batch: 32}, repeats: 1, profile: trace}
+  # the warm worker end to end: 6 speech_subs jobs, one whisper load. Cold reference: wonhee.speech_subs
+  - {workload: wonhee.gpu, fixed: {task: worker, repeat: 6}, grid: {clip_s: [10, 40]}, repeats: 2}
+  - {workload: wonhee.speech_subs, fixed: {whisper_model: turbo}, grid: {clip_s: [10, 40]}, repeats: 2}

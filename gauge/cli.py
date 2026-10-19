@@ -56,6 +56,16 @@ def cmd_doctor(a) -> int:
     from gauge.runner import GPU_LOCK
 
     check("gpu-lock", Path(GPU_LOCK).exists(), GPU_LOCK)
+    if getattr(a, "mps", False):
+        from gauge import mps
+
+        try:
+            mps.start()
+            check("mps daemon", True, mps.NAME)
+        except Exception as e:  # noqa: BLE001
+            check("mps daemon", False, str(e)[:200])
+        finally:
+            mps.stop()
     return 0 if ok else 1
 
 
@@ -86,7 +96,7 @@ def _spec(workload: str, params: dict, a):
 
     return JobSpec(workload=workload, params=params, warmness=getattr(a, "warmness", "unknown"),
                    timeout_s=getattr(a, "timeout", 1800), mem_limit=getattr(a, "mem", None),
-                   profile=getattr(a, "profile", "none"))
+                   profile=getattr(a, "profile", "none"), sharing=getattr(a, "sharing", "timeslice"))
 
 
 def cmd_run(a) -> int:
@@ -103,14 +113,18 @@ def cmd_run(a) -> int:
 
 
 def expand(sweep: dict) -> list[tuple[str, dict]]:
-    """sweep yaml: {jobs: [{workload, fixed: {...}, grid: {param: [values]}, repeats: n}]}"""
+    """sweep yaml: {experiment?, jobs: [{workload, fixed: {...}, grid: {param: [values]}, repeats: n,
+    profile?, sharing?, experiment?}]}. `experiment` labels the runs in the dataset (gauge/dataset.py)."""
     out = []
     for j in sweep["jobs"]:
         grid = j.get("grid", {})
         keys = list(grid)
         for combo in itertools.product(*(grid[k] for k in keys)) if keys else [()]:
             params = {**j.get("fixed", {}), **dict(zip(keys, combo))}
-            out += [(j["workload"], params, j.get("profile"))] * j.get("repeats", 1)
+            over = {k: j[k] for k in ("profile", "sharing") if j.get(k)}
+            if j.get("experiment") or sweep.get("experiment"):  # dataset label; provenance is not hashed
+                over["provenance"] = {"experiment": j.get("experiment") or sweep["experiment"]}
+            out += [(j["workload"], params, over)] * j.get("repeats", 1)
     return out
 
 
@@ -120,11 +134,9 @@ def cmd_sweep(a) -> int:
     conn = store.connect(a.db)
     jobs = expand(yaml.safe_load(Path(a.file).read_text()))
     print(f"{len(jobs)} jobs")
-    for i, (wl, params, prof) in enumerate(jobs, 1):
+    for i, (wl, params, over) in enumerate(jobs, 1):
         try:
-            spec = _spec(wl, params, a)
-            if prof:
-                spec = spec.model_copy(update={"profile": prof})
+            spec = _spec(wl, params, a).model_copy(update=over)
             rid, s = runner.run(conn, spec, interval_s=a.interval, lock=not a.no_lock)
             print(f"[{i}/{len(jobs)}] run {rid} {wl} {params}: {_fmt(s)}", flush=True)
         except Exception as e:  # one broken job must not sink the sweep
@@ -146,8 +158,12 @@ def cmd_corun(a) -> int:
     for g in doc["pairs"]:
         for _ in range(doc.get("repeats", a.repeats)):
             specs = [_job_arg(i, a) for i in g]
-            if doc.get("profile"):
-                specs = [s.model_copy(update={"profile": doc["profile"]}) for s in specs]
+            for k in ("profile", "sharing"):
+                if doc.get(k):
+                    specs = [s.model_copy(update={k: doc[k]}) for s in specs]
+            if doc.get("experiment"):
+                specs = [s.model_copy(update={"provenance": {**s.provenance, "experiment": doc["experiment"]}})
+                         for s in specs]
             for rid, s in runner.corun(conn, specs, interval_s=a.interval, lock=not a.no_lock):
                 print(f"run {rid}: {_fmt(s)}", flush=True)
     return 0
@@ -259,7 +275,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="gauge")
     ap.add_argument("--db", default=str(store.DEFAULT_DB))
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("doctor").set_defaults(fn=cmd_doctor)
+    p = sub.add_parser("doctor")
+    p.add_argument("--mps", action="store_true", help="also start and stop the MPS control daemon")
+    p.set_defaults(fn=cmd_doctor)
     sub.add_parser("build").set_defaults(fn=cmd_build)
     sub.add_parser("prepare").set_defaults(fn=cmd_prepare)
 
@@ -271,6 +289,8 @@ def main(argv=None) -> int:
         p.add_argument("--warmness", default="unknown", choices=["cold", "warm", "unknown"])
         p.add_argument("--profile", default="none", choices=["none", "trace", "metrics"],
                        help="Nsight inside the container: trace = this process's kernels; metrics = + GPU counters")
+        p.add_argument("--sharing", default="timeslice", choices=["timeslice", "mps"],
+                       help="mps: run the job(s) as clients of one MPS server (gauge.mps)")
 
     p = sub.add_parser("run")
     p.add_argument("workload")

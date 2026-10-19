@@ -36,12 +36,24 @@ def _write(name: str, rows: list[dict], gz=False) -> int:
 
 def _experiment(spec: dict, corun: str | None) -> str:
     wl, p, prof = spec["workload"], spec["params"], spec.get("profile", "none")
+    if (spec.get("provenance") or {}).get("experiment"):  # set by the sweep/corun file's `experiment:` key
+        return spec["provenance"]["experiment"]
     if wl == "micro.idle":
         return "X0 idle floor"
     if wl == "micro.ceilings":
         return "X1 ceilings"
+    # round 2 (2026-10-19): told apart by workload or parameter, never by date
+    if spec.get("sharing") == "mps":
+        return "X11 mps"
     if wl == "llamacpp.batched":
-        return "X4 batched"
+        big = max(int(x) for x in str(p.get("parallel", "1,2,4,8")).split(",")) > 8 or p.get("prompt_tokens", 128) > 128
+        return "X12 batch limits" if big else "X4 batched"
+    if wl == "ffmpeg.transcode" and p.get("decode") == "cuvid":
+        return "X10 cuvid"
+    if wl in ("wonhee.gpu", "wonhee.worker"):
+        if p.get("hold"):
+            return "X9 resident"
+        return "X9 pairs" if corun else "X8 new nodes"
     if corun:
         return "X4/X5 co-run"
     if wl == "llamacpp.phase" and p.get("tokens") in (256,) and prof == "trace":
@@ -79,6 +91,9 @@ def export(conn) -> dict:
             "device_metrics_attributable": int(not r["corun_group"] and len(tenants) <= 1),
             # container scope
             "runtime_s": s.get("runtime_s"), "cpu_time_s": s.get("cpu_time_s"),
+            # phases from the workload's own marks (None when it emits none)
+            "load_s": (s.get("phase_s") or {}).get("load"), "compute_s": (s.get("phase_s") or {}).get("compute"),
+            "compute_spans": len((s.get("phase_s") or {}).get("spans") or []),
             "cpu_mean_cores": s.get("cpu_mean_cores"), "ram_peak_gib": (s.get("ram_peak_bytes") or 0) / GIB,
             "ram_anon_peak_gib": (s.get("ram_anon_peak_sampled_bytes") or 0) / GIB,
             "io_read_mib": (s.get("io_read_bytes") or 0) / 2**20,

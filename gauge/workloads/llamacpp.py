@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from gauge.workloads.base import Workload, register
-from gauge.workloads.llm import MODEL_VOLUME, MODELS
+from gauge.workloads.llm import MODEL_VOLUME, MODELS, kv_bytes
 
 MB = 2**20
 IMAGE = "ghcr.io/ggml-org/llama.cpp:full-cuda"
@@ -68,14 +68,36 @@ class BatchedParams(BaseModel):
     prompt_tokens: int = 128
     gen_tokens: int = 128
     parallel: str = "1,2,4,8"  # sequences decoded at once, each level measured in turn
+    ngl: int = 99
+    flash_attn: bool = True
+    ubatch: int = 512  # llama.cpp -ub: tokens per physical batch; bounds the compute buffer
+
+
+def batched_ctx(p) -> int:
+    return (p.prompt_tokens + p.gen_tokens) * max(int(x) for x in p.parallel.split(",")) + 256
+
+
+def batched_cmd(p) -> list[str]:
+    return ["bash", "-c", RESOLVE, "lc", p.model, "llama-batched-bench", "-ngl", str(p.ngl),
+            "-fa", "on" if p.flash_attn else "off", "-ub", str(p.ubatch), "-c", str(batched_ctx(p)),
+            "-npp", str(p.prompt_tokens), "-ntg", str(p.gen_tokens), "-npl", p.parallel, "--output-format", "jsonl"]
+
+
+def batched_prior(p) -> dict:
+    """Weights + the KV cache for the whole context (it is allocated up front) + a compute buffer that grows with
+    -ub. Runtime: each level prefills npl prompts (compute-bound) and decodes gen steps, each step reading all
+    weights once plus every sequence's KV so far."""
+    m, ctx = MODELS[p.model], batched_ctx(p)
+    t = 6 + m["file_bytes"] / 3e9
+    for n in (int(x) for x in p.parallel.split(",")):
+        t += n * p.prompt_tokens * 2 * m["params"] / 60e12
+        t += p.gen_tokens * (m["file_bytes"] + n * kv_bytes(m, p.prompt_tokens + p.gen_tokens // 2)) / 700e9
+    return {"runtime_s": t, "vram_peak_bytes": m["file_bytes"] + kv_bytes(m, ctx) + 300 * MB + p.ubatch * 0.6 * MB,
+            "ram_peak_bytes": 600 * MB + m["file_bytes"]}
 
 
 register(Workload(
     name="llamacpp.batched", family="inference", image=IMAGE, params=BatchedParams, gpu=True,
-    mounts=(f"{MODEL_VOLUME}:/ollama:ro",),
-    command=lambda p: ["bash", "-c", RESOLVE, "lc", p.model, "llama-batched-bench", "-ngl", "99", "-fa", "on",
-                       "-c", str((p.prompt_tokens + p.gen_tokens) * max(int(x) for x in p.parallel.split(",")) + 256),
-                       "-npp", str(p.prompt_tokens), "-ntg", str(p.gen_tokens), "-npl", p.parallel, "--output-format", "jsonl"],
-    size_params=("model",), size=lambda p: MODELS[p.model]["file_bytes"],
-    prior=lambda p: {"runtime_s": 20, "vram_peak_bytes": MODELS[p.model]["file_bytes"] + 1500 * MB},
+    mounts=(f"{MODEL_VOLUME}:/ollama:ro",), command=batched_cmd,
+    size_params=("model",), size=lambda p: MODELS[p.model]["file_bytes"], prior=batched_prior,
     doc="llama-batched-bench: throughput and latency as 1..N sequences share one model"))

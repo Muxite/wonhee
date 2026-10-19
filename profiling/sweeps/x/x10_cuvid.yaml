@@ -1,0 +1,6 @@
+# X10a NVDEC decode + scale_cuda vs CPU decode in front of NVENC (and x264 as the CPU baseline).
+# benchmarks.md: parallel NVENC saturated at ~4 copies because decode + scale ran on the CPU.
+experiment: X10 cuvid
+jobs:
+  - {workload: ffmpeg.transcode, fixed: {seconds: 60, codec: h264_nvenc, preset: p5}, grid: {decode: [cpu, cuvid], height: [1080, 720]}, repeats: 3}
+  - {workload: ffmpeg.transcode, fixed: {seconds: 60, codec: libx264, preset: veryfast, height: 1080}, repeats: 2}

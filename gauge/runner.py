@@ -8,16 +8,17 @@ import sys
 import threading
 import time
 import uuid
+import contextlib
 from contextlib import contextmanager
 from pathlib import Path
 
-from gauge import evaluate, host, nsight, predict, store
+from gauge import evaluate, host, mps, nsight, predict, store
 from gauge.docker_run import Container, docker_argv, image_digest, inspect
 from gauge.probe.cgroup import Cgroup
 from gauge.probe.gpu import Gpu
 from gauge.probe.sampler import Sampler
 from gauge.spec import JobSpec
-from gauge.summarize import classify, summarize
+from gauge.summarize import classify, phases, summarize
 from gauge.workloads.base import CUDA_OOM_RE, MARK_RE, get, parse_outcome_line
 
 GPU_LOCK = os.environ.get("GAUGE_GPU_LOCK", "/home/muk/projects/gpu-lock")
@@ -106,12 +107,16 @@ class Job:
                          status="running")
         name = f"gauge-{self.run_id}-{uuid.uuid4().hex[:6]}"
         cmd, mounts, caps = w.command(self.p), w.mounts + w.param_mounts(self.p), ()
+        env, args = {**w.env, **w.param_env(self.p)}, ()
         if spec.profile != "none":
             cmd, extra, caps = nsight.wrap(cmd, self.run_id, spec.profile)
             mounts = mounts + extra
+        if spec.sharing == "mps":
+            m, e, args = mps.client_args()
+            mounts, env = mounts + m, {**env, **e}
         argv_fn = lambda cid: docker_argv(name, w.image, cmd, cidfile=cid, gpu=w.gpu,  # noqa: E731
                                           mem_limit=spec.mem_limit or w.mem_limit, mounts=mounts,
-                                          env={**w.env, **w.param_env(self.p)}, shm_size=w.shm_size, cap_add=caps)
+                                          env=env, shm_size=w.shm_size, cap_add=caps, extra=args)
         self.c = Container(name, argv_fn, self._on_line)
         self.energy0 = self.gpu.energy_mj()
         self.t_req = time.time()
@@ -157,6 +162,7 @@ class Job:
                             wall_s=t_fin - self.t_req, energy_j=energy_j, sampler=self.sampler,
                             gpu_caps=dict(self.gpu.capabilities), failure_class=fclass)
         summary["marks"] = [{"mark": m["mark"], "t": m["at"] - started} for m in self.marks]
+        summary["phase_s"] = phases(summary["marks"], summary["runtime_s"])
         summary["log_tail"] = [l[:300] for _, l in c.lines[-12:]]
         store.insert_samples(self.conn, self.run_id, rows)
         store.update_run(self.conn, self.run_id, container_started=started, workload_finished=workload_end,
@@ -175,11 +181,16 @@ class Job:
         return summary
 
 
+def _sharing(specs: list[JobSpec]):
+    """The MPS daemon for the length of the run, when any job asks for it (solo MPS runs are the references)."""
+    return mps.daemon() if any(s.sharing == "mps" for s in specs) else contextlib.nullcontext()
+
+
 def run(conn, spec: JobSpec, *, interval_s=0.1, lock=True) -> tuple[int, dict]:
     gpu = Gpu()
     job = Job(conn, spec, gpu, interval_s=interval_s, host_fp=host.fingerprint(gpu))
     job.commit()
-    with gpu_lock(f"gauge run {job.run_id} {spec.workload}", lock):
+    with gpu_lock(f"gauge run {job.run_id} {spec.workload}", lock), _sharing([spec]):
         try:
             job.launch(overlapping=[])
             summary = job.finish()
@@ -202,7 +213,7 @@ def corun(conn, specs: list[JobSpec], *, interval_s=0.1, lock=True) -> list[tupl
     jobs = [Job(store.connect(path) if path else conn, s, gpu, interval_s=interval_s, corun_group=group,
                 host_fp=fp) for s in specs]
     ids = [j.commit() for j in jobs]
-    with gpu_lock(f"gauge corun {group}", lock):
+    with gpu_lock(f"gauge corun {group}", lock), _sharing(specs):
         for j in jobs:
             j.launch(overlapping=[i for i in ids if i != j.run_id])
         results: dict[int, dict] = {}

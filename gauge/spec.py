@@ -35,12 +35,15 @@ class JobSpec(BaseModel):
     # Nsight Systems inside the container. "trace": this process tree's CUDA kernels/copies (process scope).
     # "metrics": trace + GPU hardware counters at 10 kHz (device scope; only one job at a time can hold them).
     profile: Literal["none", "trace", "metrics"] = "none"
+    # How co-running jobs share the GPU: time-sliced contexts (the driver default) or one MPS server (gauge.mps).
+    sharing: Literal["timeslice", "mps"] = "timeslice"
 
     def spec_hash(self, validated_params: dict | None = None) -> str:
         """Hash of the job as run. Pass the validated params (defaults filled in) so `batch=128` and
         `{model: resnet18, steps: 30, batch: 128}` hash the same."""
         return digest({"workload": self.workload, "params": validated_params if validated_params is not None else self.params,
-                       "mode": self.execution_mode, "mem_limit": self.mem_limit})
+                       "mode": self.execution_mode, "mem_limit": self.mem_limit,
+                       **({"sharing": self.sharing} if self.sharing != "timeslice" else {})})  # old hashes stay put
 
 
 class Prediction(BaseModel):

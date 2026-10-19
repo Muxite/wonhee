@@ -34,6 +34,8 @@ class TranscodeParams(BaseModel):
     height: int = 1080  # output height; width follows 16:9
     codec: Literal["libx264", "h264_nvenc"] = "libx264"
     preset: str = "medium"  # libx264: ultrafast..veryslow; nvenc: p1..p7
+    # cuvid: NVDEC decode + scale_cuda, frames stay in GPU memory up to NVENC (needs codec=h264_nvenc)
+    decode: Literal["cpu", "cuvid"] = "cpu"
 
 
 def _px(p) -> float:
@@ -54,10 +56,26 @@ def transcode_prior(p) -> dict:
         runtime = cpu / 12 + 0.5  # x264 frame threads keep ~12 of 16 cores busy
         return {"runtime_s": runtime, "cpu_time_s": cpu,
                 "ram_peak_bytes": 150 * MB + 60 * (p.height * 16 / 9) * p.height * 1.5}
+    if p.decode == "cuvid":  # NVDEC ~ 1e9 px/s of source; the CPU only drives the pipeline
+        src = p.seconds * 30 * 1920 * 1080
+        runtime = max(px / 1.2e9, src / 1e9) + 1.2
+        return {"runtime_s": runtime, "cpu_time_s": 0.2 * runtime + 0.3, "ram_peak_bytes": 200 * MB,
+                "vram_peak_bytes": 500 * MB}
     # NVENC: encoder ~ 1.2e9 px/s; decode+scale on CPU usually becomes the limit
     runtime = max(px / 1.2e9, decode / 4) + 0.8
     return {"runtime_s": runtime, "cpu_time_s": decode + 0.3 * runtime,
             "ram_peak_bytes": 250 * MB, "vram_peak_bytes": 350 * MB}
+
+
+def transcode_cmd(p) -> list[str]:
+    if p.decode == "cuvid":
+        if p.codec != "h264_nvenc":
+            raise ValueError("decode=cuvid keeps frames on the GPU, so it needs codec=h264_nvenc")
+        dec, vf = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"], f"scale_cuda=-2:{p.height}"
+    else:
+        dec, vf = [], f"scale=-2:{p.height}"
+    return ["ffmpeg", "-hide_banner", "-nostats", *dec, "-i", f"/media/{SOURCE}", "-t", str(p.seconds),
+            "-vf", vf, "-c:v", p.codec, "-preset", p.preset, "-an", "-f", "null", "-"]
 
 
 register(Workload(
@@ -65,7 +83,6 @@ register(Workload(
     gpu=True,  # harmless for libx264, and keeps the two codecs on identical container config
     env={"NVIDIA_DRIVER_CAPABILITIES": "compute,video,utility"},
     mounts=(f"{MEDIA_DIR}:/media:ro",),
-    command=lambda p: ["ffmpeg", "-hide_banner", "-nostats", "-i", f"/media/{SOURCE}", "-t", str(p.seconds),
-                       "-vf", f"scale=-2:{p.height}", "-c:v", p.codec, "-preset", p.preset, "-an", "-f", "null", "-"],
+    command=transcode_cmd,
     size_params=("seconds", "height"), size=_px, prior=transcode_prior,
     doc="decode the 1080p source, scale, encode with libx264 or NVENC, discard output"))

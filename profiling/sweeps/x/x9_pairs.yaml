@@ -1,0 +1,11 @@
+# X9d the new GPU nodes next to an LLM decode (bandwidth-bound) and next to NVENC (other engine).
+# Same shape as X5: slowdown and tokens/s ratio vs the traced solos in x9_solos.yaml.
+experiment: X9 pairs
+profile: trace
+repeats: 2
+pairs:
+  - ["wonhee.gpu:task=mask,engine=sam2,images=4,repeat=6", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=1024,reps=2"]
+  - ["wonhee.gpu:task=separate,clip_s=100", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=1024,reps=2"]
+  - ["wonhee.gpu:task=embed,images=64,batch=32,repeat=10", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=1024,reps=2"]
+  - ["wonhee.gpu:task=mask,engine=sam2,images=4,repeat=6", "ffmpeg.transcode:seconds=40,height=1080,codec=h264_nvenc,preset=p4"]
+  - ["wonhee.gpu:task=separate,clip_s=100", "ffmpeg.transcode:seconds=40,height=1080,codec=h264_nvenc,preset=p4"]

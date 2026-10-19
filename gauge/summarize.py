@@ -52,6 +52,25 @@ def classify(*, exit_code, timed_out: bool, oom_kill_events: int, docker_oom: bo
     return "application_error", "exit_code"
 
 
+def phases(marks: list[dict], runtime_s: float | None) -> dict:
+    """Marks (seconds from container start) -> phase durations. `load`: start to the first model_loaded.
+    `compute`: summed compute_started..compute_finished spans (a warm worker emits one span per job, listed in
+    `spans`). `tail`: last compute_finished to the end. Missing marks leave a phase None, never 0."""
+    first = {}
+    for m in marks:
+        first.setdefault(m["mark"], m["t"])
+    spans, start = [], None
+    for m in marks:
+        if m["mark"] == "compute_started":
+            start = m["t"]
+        elif m["mark"] == "compute_finished" and start is not None:
+            spans.append(m["t"] - start)
+            start = None
+    ends = [m["t"] for m in marks if m["mark"] == "compute_finished"]
+    return {"load": first.get("model_loaded"), "compute": sum(spans) if spans else None, "spans": spans,
+            "tail": runtime_s - ends[-1] if ends and runtime_s is not None else None}
+
+
 def summarize(*, rows: list[dict], end: dict | None, end_is_final: bool, workload_s: float | None,
               wall_s: float | None, energy_j: float | None, sampler, gpu_caps: dict, failure_class: str) -> dict:
     cpu = (end or {}).get("cpu", {})

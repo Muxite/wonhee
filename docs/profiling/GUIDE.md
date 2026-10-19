@@ -74,6 +74,23 @@ Stdout lines are timestamped by the host:
 - `GAUGE_MARK <name>` marks a phase (`model_loaded`, `compute_started`, `cuda_oom`, ...).
 - `GAUGE_OUTCOME {json}` reports facts such as token counts. These are stored as outcomes, never as prediction features.
 
+## Round 2 additions (2026-10-19)
+
+- **Phases.** A workload that prints `GAUGE_MARK model_loaded`, `compute_started` and `compute_finished` gets `summary.phase_s = {load, compute, spans, tail}`. These appear in `runs.csv` as `load_s`, `compute_s` and `compute_spans`. wonhee speaks the protocol through `wonhee/marks.py`, which only does so when `GAUGE=1`.
+- **`wonhee.gpu`** runs one wonhee GPU model per container via `python -m wonhee.bench <task>`:
+  - Tasks: whisper, mask (sam2 | onnx), separate, embed, and worker (N jobs through one warm worker).
+  - `repeat=N` gives N compute spans (first call vs later calls). `hold=S` keeps the model resident instead, for VRAM budgets.
+  - Image: `profiling/images/wonhee-gpu` (the `gpu` dependency group).
+- **Sharing mode.** `--sharing mps` (or `sharing: mps` in a sweep job / corun file) runs the jobs as clients of one NVIDIA MPS server (`gauge/mps.py`):
+  - The daemon runs in its own root container, because MPS only serves clients of its own uid.
+  - The mode is part of the spec hash.
+  - `interference` compares MPS co-runs only with MPS solos.
+- **Experiment labels.** An `experiment:` key in a sweep or corun file is stored in the run's provenance and becomes its `experiment` in the dataset. Older runs keep the heuristic labels in `gauge/dataset.py`.
+- **New knobs.**
+  - `ffmpeg.transcode decode=cuvid` (NVDEC + `scale_cuda`, with NVENC).
+  - `llamacpp.batched ngl / flash_attn / ubatch`, and its prior now counts the KV cache.
+- **Run order:** `profiling/sweeps/x/round2.sh` (X8–X12). Each step waits for the gpu-lock.
+
 ## Known measurement facts on this box (2026-10-16)
 
 - **CUDA JIT**: Ollama 0.35 in a fresh container spends about 60 s JIT-compiling for the RTX 5070 Ti. A 0.5B request took 66.6 s cold vs 5.3 s with a persistent compute cache. `llm.generate` defaults to `jit_cache=shared` (volume `gauge-cuda-cache`).

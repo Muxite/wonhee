@@ -11,7 +11,8 @@ from gauge.workloads.base import get
 def _key(conn_row):
     spec = json.loads(conn_row["spec_json"])
     w = get(conn_row["workload"])
-    return conn_row["workload"], json.dumps(w.validate(spec["params"]).model_dump(), sort_keys=True), spec.get("profile", "none")
+    return (conn_row["workload"], json.dumps(w.validate(spec["params"]).model_dump(), sort_keys=True),
+            spec.get("profile", "none"), spec.get("sharing", "timeslice"))
 
 
 def _tps(outcome: dict) -> float | None:
@@ -53,6 +54,7 @@ def rows(conn) -> list[dict]:
             out.append({
                 "run_id": r["id"], "corun_group": g, "n_jobs": len(members), "workload": r["workload"],
                 "params": json.loads(r["spec_json"])["params"], "alongside": ", ".join(sorted(others)),
+                "sharing": json.loads(r["spec_json"]).get("sharing", "timeslice"),
                 "n_solo_refs": len(ref),
                 "runtime_s": s.get("runtime_s"), "solo_runtime_s": solo_rt,
                 "slowdown": s["runtime_s"] / solo_rt if solo_rt else None,
