@@ -18,6 +18,8 @@ Sub-projects, in build order:
 
 The job-application form filler that used to live here is now `../awork-fill`.
 
+Changing the code? Start with [AGENTS.md](AGENTS.md): code map, add-a-node checklist, tests, GPU etiquette.
+
 ## Setup
     uv sync --all-extras          # moeka is a pinned pip dependency; there is no submodule
     cp creator.example.yaml creator.yaml   # what you can film
@@ -109,4 +111,15 @@ Photos and audio, all on the box except the optional shooting guide:
 - `wonhee filter list | apply <name> <photos...> | make "<a vibe>" --name <name> --on <photos...> [--from <filter>] | show <name> --cube out.cube`: filters that give a vibe without copying anyone: a 13-filter pack, or a filter a local model drafts and tunes on your photos and saves for later; exports as a .cube LUT for phone and video editors.
 - `wonhee vibe <photos...> --like <ref folder | content:id> --name <look>`: learn a look from references, get a shooting guide, and edit your photos toward it (measured grade, subject mask, lens effects; no image generation). See `docs/production/photo-looks.md`.
 - `wonhee audio <clip> [--preset voice|mixed|music] [--check] [--isolate [--music-db -15]]`: denoise, tame peaks, -14 LUFS; `--isolate` splits voice from music/noise on the GPU.
-- GPU extras (SAM masks from a text prompt, Demucs voice isolation): `uv sync --group gpu`.
+- GPU extras (SAM masks from a text prompt, Demucs voice isolation, shot search): `uv sync --group gpu`.
+- `wonhee shots index <video>` / `wonhee shots search "bus at sunset"`: cut footage into shots, embed and tag each keyframe (SigLIP2), then find shots by description across everything indexed.
+
+## Warm GPU worker
+
+A cold GPU node reloads its model on every call (whisper ~5 s, masks ~10 s, demucs ~5 s, SigLIP2 ~7 s). A worker keeps them loaded:
+
+    uv run wonhee worker serve --lane cuda --preload whisper,mask   # foreground; SIGTERM finishes the current job
+    uv run wonhee node run speech_subs --in video=clip.mp4 --detach # goes to the worker while it is alive
+    uv run wonhee worker status                                     # workers, heartbeats, queue
+
+Detached chains with a `cuda` node go to a live worker. Without one they start a background process as before. A job whose worker dies is requeued (up to 3 attempts). See `wonhee/worker.py`.
