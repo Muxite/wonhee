@@ -114,6 +114,7 @@ class Job:
             return
         o = parse_outcome_line(line)
         if o is not None:
+            o["gauge_at"] = t  # host time the line arrived: per-level windows for tools that print as they go
             self.outcomes.append(o)
             if len(self.outcomes) == 1:
                 self.outcome.update(o)  # first response's fields at top level; all of them under "responses"

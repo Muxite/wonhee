@@ -1,0 +1,21 @@
+# C8c  Packing: do tasks that top out on different resources fit together?  Four tasks with different expected
+# limiters (LLM batch decode: memory bandwidth; NVENC with NVDEC: the media engines; whisper: light GPU, CPU-side
+# work; masks: SM compute) run alone and in combinations. Solos are one-job groups in this file, interleaved.
+experiment: C8 packing
+question: "How much more useful work does the GPU do when tasks with different limiters share it?"
+measure: "each task's throughput in the mix / its solo throughput (median), summed over the mix = packing gain"
+analysis: "packing gain per mix with min-max over 2 repeats; > 1.0 means the mix gets more useful work than any one task alone"
+tolerance: "a mix 'packs well' if its gain is >= 1.5 and no member drops below 0.5 of its solo rate"
+stop: "2 repeats per group"
+decision: "which tasks a lane scheduler should co-locate on one GPU, and which it must keep apart"
+repeats: 2
+pairs:
+  - ["llamacpp.batched:model=qwen2.5:7b,prompt_tokens=128,gen_tokens=1024,parallel=32"]
+  - ["ffmpeg.transcode:seconds=480,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid"]
+  - ["wonhee.gpu:task=whisper,clip_s=100,repeat=8,jit_cache=shared,cache=warm"]
+  - ["wonhee.gpu:task=mask,images=16,repeat=6,jit_cache=shared,cache=warm"]
+  - ["llamacpp.batched:model=qwen2.5:7b,prompt_tokens=128,gen_tokens=1024,parallel=32", "ffmpeg.transcode:seconds=480,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid"]
+  - ["llamacpp.batched:model=qwen2.5:7b,prompt_tokens=128,gen_tokens=1024,parallel=32", "wonhee.gpu:task=whisper,clip_s=100,repeat=8,jit_cache=shared,cache=warm"]
+  - ["llamacpp.batched:model=qwen2.5:7b,prompt_tokens=128,gen_tokens=1024,parallel=32", "wonhee.gpu:task=mask,images=16,repeat=6,jit_cache=shared,cache=warm"]
+  - ["ffmpeg.transcode:seconds=480,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid", "wonhee.gpu:task=whisper,clip_s=100,repeat=8,jit_cache=shared,cache=warm", "wonhee.gpu:task=mask,images=16,repeat=6,jit_cache=shared,cache=warm"]
+  - ["llamacpp.batched:model=qwen2.5:7b,prompt_tokens=128,gen_tokens=1024,parallel=32", "ffmpeg.transcode:seconds=480,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid", "wonhee.gpu:task=whisper,clip_s=100,repeat=8,jit_cache=shared,cache=warm", "wonhee.gpu:task=mask,images=16,repeat=6,jit_cache=shared,cache=warm"]

@@ -68,10 +68,17 @@ class Gpu:
         nv, h = self.nv, self.h
         dec = lambda v: v.decode() if isinstance(v, bytes) else v  # noqa: E731
         mem = self._call("memory", "nvmlDeviceGetMemoryInfo", h)
+        lim = self._call("power_limit", "nvmlDeviceGetEnforcedPowerLimit", h)
         return {"gpu_name": dec(self._call("name", "nvmlDeviceGetName", h)),
                 "gpu_uuid": dec(self._call("uuid", "nvmlDeviceGetUUID", h)),
                 "driver": dec(self._call("driver", "nvmlSystemGetDriverVersion")),
-                "vram_total": int(mem.total) if mem is not None else None}
+                "vram_total": int(mem.total) if mem is not None else None,
+                # the ceilings a saturation analysis compares readings against
+                "power_limit_w": lim / 1000 if lim is not None else None,
+                "max_sm_mhz": self._call("max_sm_clock", "nvmlDeviceGetMaxClockInfo", h, getattr(nv, "NVML_CLOCK_SM", 1)),
+                "max_mem_mhz": self._call("max_mem_clock", "nvmlDeviceGetMaxClockInfo", h, getattr(nv, "NVML_CLOCK_MEM", 2)),
+                "pcie_max_gen": self._call("pcie_gen", "nvmlDeviceGetMaxPcieLinkGeneration", h),
+                "pcie_max_width": self._call("pcie_width", "nvmlDeviceGetMaxPcieLinkWidth", h)}
 
     def device(self) -> dict:
         """Device-scope reading. On a shared GPU none of this is a job's own consumption."""
@@ -107,6 +114,12 @@ class Gpu:
         r = self._call("throttle", fn, h)
         if r is not None:
             out["dev_throttle"] = int(r)
+        # cumulative PCIe bytes (field values, <1 ms; nvmlDeviceGetPcieThroughput blocks ~20 ms per call)
+        ids = [getattr(nv, n) for n in ("NVML_FI_DEV_PCIE_COUNT_TX_BYTES", "NVML_FI_DEV_PCIE_COUNT_RX_BYTES")
+               if hasattr(nv, n)]
+        fv = self._call("pcie_bytes", "nvmlDeviceGetFieldValues", h, ids) if len(ids) == 2 else None
+        if fv is not None and all(x.nvmlReturn == 0 for x in fv):
+            out["dev_pcie_tx_bytes"], out["dev_pcie_rx_bytes"] = int(fv[0].value.ullVal), int(fv[1].value.ullVal)
         return out
 
     def energy_mj(self) -> int | None:

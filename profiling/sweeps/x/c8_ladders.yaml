@@ -1,0 +1,31 @@
+# C8b  In-process ladders (batch size), same rules as c8_copies.yaml. llama-batched-bench measures every batch
+# level inside one run; each level's window comes from the time its result line arrived and its reported duration.
+experiment: C8 capacity
+question: "For each kind of work on this GPU, what limits throughput first as load rises?"
+measure: "throughput per rung (work units/s) and per-resource fraction of ceiling in the rung's window"
+analysis: "plateau = first rung where doubling the load adds <10% throughput; limiter = resource >=0.9 of its ceiling at the plateau, else 'software/serialization'; an OOM rung = VRAM wall"
+tolerance: "a limiter is named only when one resource is >=0.9 and no other is; two or more >=0.9 -> 'co-limited'"
+stop: "2 repeats per rung, interleaved; a ladder stops at its first OOM rung"
+decision: "how many copies / how big a batch each lane runs, and which resource a new chip or a second GPU would need more of"
+jobs:
+  # LLM decode: batch 1-128 sequences in one process (KV cache for the whole context is allocated up front)
+  # (llama-batched-bench allocates the KV cache for its largest level up front, so a level past the VRAM wall would
+  # sink the whole run: 14B stops at 64 here and its 128 is a separate run that documents the wall)
+  - {workload: llamacpp.batched, fixed: {prompt_tokens: 128, gen_tokens: 256, parallel: "1,2,4,8,16,32,64,128,256"}, grid: {model: ["qwen2.5:3b", "qwen2.5:7b"]}, repeats: 2}
+  - {workload: llamacpp.batched, fixed: {model: "qwen2.5:14b", prompt_tokens: 128, gen_tokens: 256, parallel: "1,2,4,8,16,32,64"}, repeats: 2}
+  - {workload: llamacpp.batched, fixed: {model: "qwen2.5:14b", prompt_tokens: 128, gen_tokens: 256, parallel: "128"}, repeats: 1}
+  # LLM prefill: prompt length (compute-bound by design)
+  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:7b", phase: prefill, reps: 3}, grid: {tokens: [512, 2048, 8192]}, repeats: 2}
+  # training: ResNet-50, mixed precision, batch until the VRAM wall
+  - {workload: train.small, fixed: {model: resnet50, amp: true, steps: 300}, grid: {batch: [32, 64, 128, 256, 512]}, repeats: 2}
+  # whisper's batched pipeline (one process) vs more processes (c8_copies.yaml)
+  - {workload: wonhee.gpu, fixed: {task: whisper, clip_s: 100, repeat: 6, jit_cache: shared, cache: warm}, grid: {whisper_batch: [0, 4, 8, 16, 32]}, repeats: 2}
+  # SigLIP2 batch size in one process
+  - {workload: wonhee.gpu, fixed: {task: embed, images: 256, repeat: 6, jit_cache: shared, cache: warm}, grid: {batch: [1, 8, 32, 128, 256]}, repeats: 2}
+  # counters at the top rung of each ladder (one run each; device counters, the job alone on the GPU)
+  - {workload: llamacpp.batched, fixed: {model: "qwen2.5:7b", prompt_tokens: 128, gen_tokens: 256, parallel: "64"}, repeats: 1, profile: metrics}
+  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:7b", phase: prefill, tokens: 8192, reps: 3}, repeats: 1, profile: metrics}
+  - {workload: train.small, fixed: {model: resnet50, amp: true, steps: 300, batch: 256}, repeats: 1, profile: metrics}
+  - {workload: wonhee.gpu, fixed: {task: whisper, clip_s: 100, repeat: 6, jit_cache: shared, cache: warm, whisper_batch: 16}, repeats: 1, profile: metrics}
+  - {workload: wonhee.gpu, fixed: {task: embed, images: 256, repeat: 6, jit_cache: shared, cache: warm, batch: 128}, repeats: 1, profile: metrics}
+  - {workload: wonhee.gpu, fixed: {task: mask, images: 16, repeat: 4, jit_cache: shared, cache: warm}, repeats: 1, profile: metrics}
