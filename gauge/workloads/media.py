@@ -38,6 +38,10 @@ class TranscodeParams(BaseModel):
     preset: str = "medium"  # libx264: ultrafast..veryslow; nvenc: p1..p7
     # cuvid: NVDEC decode + scale_cuda, frames stay in GPU memory up to NVENC (needs codec=h264_nvenc)
     decode: Literal["cpu", "cuvid"] = "cpu"
+    # which stages run: transcode = decode + scale + encode; decode = decode only (frames discarded);
+    # encode = synthetic frames (lavfi testsrc2, CPU) + scale + encode; source = synthetic frames only, the
+    # baseline to subtract from encode. Splitting them shows which engine (CPU, NVDEC, NVENC) a run really used.
+    mode: Literal["transcode", "decode", "encode", "source"] = "transcode"
 
 
 def _px(p) -> float:
@@ -70,16 +74,24 @@ def transcode_prior(p) -> dict:
 
 
 def transcode_cmd(p) -> list[str]:
+    head = ["ffmpeg", "-hide_banner", "-nostats"]
+    if p.mode in ("encode", "source"):
+        src = ["-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30", "-t", str(p.seconds)]
+        if p.mode == "source":
+            return head + src + ["-f", "null", "-"]
+        return head + src + ["-vf", f"scale=-2:{p.height}", "-c:v", p.codec, "-preset", p.preset, "-an", "-f", "null", "-"]
     if p.decode == "cuvid":
-        if p.codec != "h264_nvenc":
+        if p.codec != "h264_nvenc" and p.mode == "transcode":
             raise ValueError("decode=cuvid keeps frames on the GPU, so it needs codec=h264_nvenc")
         dec, vf = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"], f"scale_cuda=-2:{p.height}"
     else:
         dec, vf = [], f"scale=-2:{p.height}"
     # longer than the 120 s source: loop it (a long, steady co-tenant for interference runs)
     loop = ["-stream_loop", str(math.ceil(p.seconds / SOURCE_S) - 1)] if p.seconds > SOURCE_S else []
-    return ["ffmpeg", "-hide_banner", "-nostats", *dec, *loop, "-i", f"/media/{SOURCE}", "-t", str(p.seconds),
-            "-vf", vf, "-c:v", p.codec, "-preset", p.preset, "-an", "-f", "null", "-"]
+    inp = [*dec, *loop, "-i", f"/media/{SOURCE}", "-t", str(p.seconds)]
+    if p.mode == "decode":
+        return head + inp + ["-an", "-f", "null", "-"]
+    return head + inp + ["-vf", vf, "-c:v", p.codec, "-preset", p.preset, "-an", "-f", "null", "-"]
 
 
 register(Workload(

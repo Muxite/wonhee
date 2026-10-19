@@ -1,8 +1,0 @@
-# X9b sets of models held together: what fits in 16 GB, and what is left for an LLM. A warm worker's --preload
-# list comes from the largest set that fits with headroom. Run after x9_resident.yaml.
-experiment: X9 resident
-repeats: 1
-pairs:
-  - ["wonhee.gpu:task=whisper,hold=60", "wonhee.gpu:task=mask,hold=60"]
-  - ["wonhee.gpu:task=whisper,hold=60", "wonhee.gpu:task=mask,hold=60", "wonhee.gpu:task=separate,hold=60", "wonhee.gpu:task=embed,hold=60"]
-  - ["wonhee.gpu:task=whisper,hold=60", "wonhee.gpu:task=mask,hold=60", "wonhee.gpu:task=embed,hold=60", "llamacpp.phase:model=qwen2.5:7b,phase=decode,tokens=2048,reps=2"]

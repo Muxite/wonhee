@@ -87,3 +87,39 @@ def test_overlap_frac_uses_the_compute_window():
     assert overlap_frac(me, [run(0, 20)]) == pytest.approx(0.5)  # partner left halfway through my compute
     assert overlap_frac(me, [run(0, 15), run(12, 40)]) == pytest.approx(1.0)
     assert overlap_frac(run(0, 10), [run(20, 30)]) == 0
+
+
+def test_interleave_alternates_conditions():
+    from gauge.cli import order
+    jobs = ["a", "a", "a", "b", "b", "b", "c"]
+    assert order(jobs, "file") == jobs
+    assert order(jobs) == ["a", "b", "c", "a", "b", "a", "b"]
+    shuffled = order(jobs, seed=1)
+    assert sorted(shuffled[:3]) == ["a", "b", "c"] and sorted(shuffled) == sorted(jobs)
+    assert order(jobs, seed=1) == shuffled  # reproducible
+
+
+def test_input_hashes_name_media_files(tmp_path, monkeypatch):
+    import hashlib
+
+    from gauge import runner
+    from gauge.workloads import media
+    (tmp_path / "clip.mp4").write_bytes(b"abc")
+    monkeypatch.setattr(media, "MEDIA_DIR", tmp_path)
+    got = runner.input_hashes(["ffmpeg", "-i", "/media/clip.mp4", "-f", "null", "/media/missing.mp4"])
+    assert got == {"/media/clip.mp4": hashlib.sha256(b"abc").hexdigest()}
+
+
+def test_corun_file_groups_solo_and_override(monkeypatch):
+    import argparse
+
+    from gauge import cli, runner
+    calls = []
+    monkeypatch.setattr(runner, "run", lambda conn, spec, **k: calls.append(("run", spec.sharing, spec.provenance)) or (1, {}))
+    monkeypatch.setattr(runner, "corun", lambda conn, specs, **k: calls.append(("corun", [s.sharing for s in specs])) or [])
+    a = argparse.Namespace(interval=0.1, no_lock=True, warmness="unknown", timeout=10, mem=None, profile="none",
+                           sharing="timeslice")
+    doc = {"experiment": "C2 sharing"}
+    cli.run_group(None, ["stress.gpu:mode=bw"], doc, a)
+    cli.run_group(None, {"jobs": ["stress.gpu:mode=bw", "stress.gpu:mode=compute"], "sharing": "mps"}, doc, a)
+    assert calls == [("run", "timeslice", {"experiment": "C2 sharing"}), ("corun", ["mps", "mps"])]

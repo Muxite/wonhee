@@ -1,0 +1,17 @@
+# C1  Does the profiler change what we measure?  (plan question 1; AUDIT.md finding 1)
+# Existing: wall time +24-146% under Nsight; training throughput unchanged (one condition, n=2). No profiler-off
+# LLM decode run exists. Contrast: the same condition with the profiler off, on a timeline trace, and on GPU
+# metrics, in alternating order.
+experiment: C1 profiler
+question: "Does Nsight (trace / 10 kHz metrics) change steady-state throughput, or only add fixed cost?"
+measure: "LLM: llama-bench avg_ts (decode tok/s). Masks: median of compute spans after the first. Also wall time."
+analysis: "ratio of medians (mode / none) per workload, with min-max over 5 repeats"
+tolerance: "steady-state within +-3% -> profiled runs may report rates; outside -> rates come only from profiler-off runs"
+stop: "5 repeats per cell; no extension"
+decision: "whether timing and counter collection must be separate passes in every future experiment"
+jobs:
+  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 512, reps: 3}, repeats: 5, profile: none}
+  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 512, reps: 3}, repeats: 5, profile: trace}
+  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 512, reps: 3}, repeats: 5, profile: metrics}
+  - {workload: wonhee.gpu, fixed: {task: mask, images: 4, repeat: 4, cache: warm}, repeats: 3, profile: none}
+  - {workload: wonhee.gpu, fixed: {task: mask, images: 4, repeat: 4, cache: warm}, repeats: 3, profile: trace}

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from gauge.workloads.base import Workload, register
 from gauge.workloads.llm import MODEL_VOLUME, MODELS, kv_bytes
@@ -71,6 +71,11 @@ class BatchedParams(BaseModel):
     ngl: int = 99
     flash_attn: bool = True
     ubatch: int = 512  # llama.cpp -ub: tokens per physical batch; bounds the compute buffer
+
+    @field_validator("parallel", mode="before")
+    @classmethod
+    def _one_level(cls, v):  # `parallel=4` on a command line arrives as an int
+        return str(v)
 
 
 def batched_ctx(p) -> int:

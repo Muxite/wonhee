@@ -1,0 +1,24 @@
+# C3  Does solo demand predict sensitivity?  (plan question 3)
+# X5: LLM decode lost 0.35-0.58x next to ResNet training, training lost 1.15x. Which shared resource does the
+# decode lose? Pair it with stressors that each hold ONE resource busy: DRAM bandwidth, tensor compute, kernel
+# launches. Both sides are measured: LLM tok/s, and the stressor's own rate inside the LLM's window.
+# Solo references are one-job groups in the same file, so solos and pairs interleave.
+# A stressor result supports a mechanism hypothesis; it does not prove a unique cause.
+experiment: C3 stressors
+question: "Is LLM decode's loss next to training a bandwidth, compute or scheduling effect?"
+measure: "LLM avg_ts ratio vs solo; stressor rate inside the LLM window vs its solo rate"
+analysis: "medians, min-max over 3 repeats; compare the LLM's loss across bw / compute / launch / training partners"
+tolerance: "a partner explains the training loss if the LLM loses within 0.1 of its training ratio next to it"
+stop: "3 repeats per pair"
+decision: "whether task records need resource-sensitivity fields beyond solo demand"
+repeats: 3
+pairs:
+  - ["llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=4096,reps=2"]
+  - ["stress.gpu:mode=bw,seconds=120"]
+  - ["stress.gpu:mode=compute,seconds=120"]
+  - ["stress.gpu:mode=launch,seconds=120"]
+  - ["train.small:model=resnet50,batch=64,steps=3000"]
+  - ["llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=4096,reps=2", "stress.gpu:mode=bw,seconds=120"]
+  - ["llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=4096,reps=2", "stress.gpu:mode=compute,seconds=120"]
+  - ["llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=4096,reps=2", "stress.gpu:mode=launch,seconds=120"]
+  - ["llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=4096,reps=2", "train.small:model=resnet50,batch=64,steps=3000"]

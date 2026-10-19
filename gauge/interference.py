@@ -54,7 +54,7 @@ def rows(conn) -> list[dict]:
     runs = conn.execute("SELECT r.id, r.workload, r.spec_json, r.corun_group, r.outcome_json, r.container_started,"
                         " r.workload_finished, s.json AS sj FROM run r"
                         " JOIN summary s ON s.run_id=r.id WHERE r.status='done' AND r.failure_class='success'"
-                        " AND json_extract(r.spec_json,'$.profile') IN ('trace','metrics')").fetchall()
+                        ).fetchall()  # every profile mode: the key keeps modes apart
     solo: dict = {}
     for r in runs:
         if not r["corun_group"]:

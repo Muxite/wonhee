@@ -49,6 +49,29 @@ def gpu_lock(what: str, enabled: bool, ttl_s: int = 7200):
             print(f"WARNING gpu-lock release failed: {(rr.stdout + rr.stderr).strip()[:300]}", file=sys.stderr)
 
 
+_HASHES: dict[tuple, str] = {}
+
+
+def input_hashes(argv: list[str]) -> dict[str, str]:
+    """sha256 of every /media/<file> the command names (clips are small; cached per path, size and mtime)."""
+    import hashlib
+
+    from gauge.workloads.media import MEDIA_DIR
+
+    out = {}
+    for a in argv:
+        for tok in str(a).split():
+            if tok.startswith("/media/"):
+                f = MEDIA_DIR / tok[len("/media/"):]
+                if f.is_file():
+                    st_ = f.stat()
+                    key = (str(f), st_.st_size, st_.st_mtime)
+                    if key not in _HASHES:
+                        _HASHES[key] = hashlib.sha256(f.read_bytes()).hexdigest()
+                    out[tok] = _HASHES[key]
+    return out
+
+
 class Job:
     """One job's lifecycle. Split into phases so co-runs can launch several before waiting on any."""
 
@@ -117,6 +140,7 @@ class Job:
         argv_fn = lambda cid: docker_argv(name, w.image, cmd, cidfile=cid, gpu=w.gpu,  # noqa: E731
                                           mem_limit=spec.mem_limit or w.mem_limit, mounts=mounts,
                                           env=env, shm_size=w.shm_size, cap_add=caps, extra=args)
+        self.argv = cmd
         self.c = Container(name, argv_fn, self._on_line)
         self.energy0 = self.gpu.energy_mj()
         self.t_req = time.time()
@@ -164,6 +188,8 @@ class Job:
         summary["marks"] = [{"mark": m["mark"], "t": m["at"] - started} for m in self.marks]
         summary["phase_s"] = phases(summary["marks"], summary["runtime_s"])
         summary["log_tail"] = [l[:300] for _, l in c.lines[-12:]]
+        summary["argv"] = self.argv  # the command as run (the workload code may change later)
+        summary["inputs"] = input_hashes(self.argv)
         store.insert_samples(self.conn, self.run_id, rows)
         store.update_run(self.conn, self.run_id, container_started=started, workload_finished=workload_end,
                          container_finished=t_fin, marks_json=summary["marks"], outcome_json=self.outcome,

@@ -1,22 +1,29 @@
 #!/bin/sh
-# Profiling round 2 (2026-10-19), in run order. Every step waits for the machine's gpu-lock, so this can run
-# unattended next to other sessions. Each step is independent: rerun one by copying its line.
-# Results land in data/gauge/gauge.sqlite; then `gauge dataset` and `python profiling/report/build_report.py`.
+# Profiling round 2 (2026-10-19): the pre-registered contrasts C0-C7 from docs/profiling/AUDIT.md, in run order.
+# Each file states its question, measure, analysis rule, tolerance and stopping rule before it runs.
+# Conditions are interleaved and each round shuffled with a fixed seed (reproducible order); every run waits for
+# the machine's gpu-lock, so this can run unattended next to other sessions.
+# Then: `uv run gauge dataset` and `uv run python profiling/analysis/round2.py`.
 set -u
 cd "$(dirname "$0")/../../.."
+SEED=${SEED:-20261019}
+X=profiling/sweeps/x
 g() { echo "== gauge $*"; uv run gauge "$@" || echo "!! failed: gauge $*"; }
 
-g build                                                    # images: wonhee-gpu (torch), torch, wonhee
-g sweep profiling/sweeps/x/x8_new_nodes.yaml               # X8  load vs compute per GPU node; warm worker vs cold
-g sweep profiling/sweeps/x/x9_resident.yaml                # X9a each model held: steady VRAM
-g corun --pairs profiling/sweeps/x/x9_coresident.yaml      # X9b sets of models held together: what fits in 16 GB
-g sweep profiling/sweeps/x/x9_solos.yaml                   # X9c traced solo references
-g corun --pairs profiling/sweeps/x/x9_pairs.yaml           # X9d new nodes next to LLM decode / NVENC
-g sweep profiling/sweeps/x/x10_cuvid.yaml                  # X10a NVDEC + scale_cuda vs CPU decode
-g corun --pairs profiling/sweeps/x/x10_parallel.yaml       # X10b 2/4/8 parallel encodes
-g sweep profiling/sweeps/x/x12_batch_limits.yaml           # X12 batching to 64 sequences, 2k prompts, 14B
-if uv run python -c "from gauge import mps; mps.start(); mps.stop()"; then  # X11 only if MPS starts here
-  g sweep profiling/sweeps/x/x11_mps_solos.yaml
-  g corun --pairs profiling/sweeps/x/x11_mps.yaml
-else echo "!! MPS daemon did not start: X11 skipped (record that as the result)"; fi
+g build                                                  # images: wonhee-gpu, torch (stressor), wonhee
+gpu=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader | wc -l)
+[ "$gpu" -eq 0 ] || echo "!! $gpu other GPU process(es) resident: runs record them, but the GPU is not quiet"
+
+g sweep $X/c1_profiler.yaml --seed $SEED                 # C1 profiler on/off: decides how every later run is read
+g sweep $X/c7_warm_cold.yaml --seed $SEED                # C7 cold vs warm, cache controlled
+g sweep $X/c5_inputs.yaml --seed $SEED                   # C5 input size per GPU node
+g corun --pairs $X/c3_stressors.yaml --seed $SEED        # C3 targeted co-runners
+g sweep $X/c6_media.yaml --seed $SEED                    # C6 media stages and engines
+g corun --pairs $X/c6_parallel.yaml --seed $SEED         # C6 4 parallel transcodes
+if uv run python -c "from gauge import mps; mps.start(); mps.stop()"; then
+  g corun --pairs $X/c2_sharing.yaml --seed $SEED        # C2 copies vs batching vs MPS at fixed work
+else
+  echo "!! MPS daemon did not start: running C2 without the MPS arm is not meaningful; record MPS as unsupported"
+fi
+g sweep $X/c0_resident.yaml --seed $SEED                 # C0 operational: resident VRAM for the worker
 g dataset

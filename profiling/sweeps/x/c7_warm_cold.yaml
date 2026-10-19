@@ -1,0 +1,19 @@
+# C7  Readiness vs steady state  (plan question 7)
+# The same whisper work four ways, with cache state controlled rather than left to run order:
+#   cold process, model files evicted from page cache   (load from disk)
+#   cold process, model files read into page cache      (load from memory)
+#   warm worker: one process, one load, 6 jobs          (wonhee worker)
+#   wonhee node run speech_subs, the real cold path     (CLI + DB + node, as users run it today)
+# Phases from marks: started (launch + interpreter + imports), model_loaded, first compute span, later spans.
+experiment: C7 warm-cold
+question: "What does a cold call pay before useful work, and how much of it does a warm worker remove?"
+measure: "phase_s.load, spans[0] (first result) vs spans[1:] (subsequent), container start -> 'started', wall time per job"
+analysis: "medians with min-max over 3 repeats; readiness = launch + load + first result; steady = median later span"
+tolerance: "none: descriptive decomposition"
+stop: "3 repeats per cell"
+decision: "which state fields (page cache, residency, JIT) must accompany any timing record"
+jobs:
+  - {workload: wonhee.gpu, fixed: {task: whisper, clip_s: 40, repeat: 3}, grid: {cache: [cold, warm]}, repeats: 3}
+  - {workload: wonhee.gpu, fixed: {task: mask, images: 4, repeat: 3}, grid: {cache: [cold, warm]}, repeats: 3}
+  - {workload: wonhee.gpu, fixed: {task: worker, clip_s: 40, repeat: 6}, grid: {cache: [cold, warm]}, repeats: 3}
+  - {workload: wonhee.speech_subs, fixed: {clip_s: 40, whisper_model: turbo}, repeats: 3}

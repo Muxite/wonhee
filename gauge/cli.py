@@ -128,11 +128,36 @@ def expand(sweep: dict) -> list[tuple[str, dict]]:
     return out
 
 
+def order(jobs: list, how: str = "interleave", seed: int | None = None) -> list:
+    """file: as written (repeats back to back). interleave: repeat 1 of every condition, then repeat 2, ...; with a
+    seed, each round is shuffled. Back-to-back repeats confound a condition with time, temperature and cache
+    state (the first repeat of a model-loading job reads from disk, the next from page cache)."""
+    if how == "file":
+        return list(jobs)
+    import random
+
+    rounds: list[list] = []
+    seen: dict = {}
+    for j in jobs:
+        k = json.dumps(j, sort_keys=True, default=str)
+        n = seen.get(k, 0)
+        seen[k] = n + 1
+        if n == len(rounds):
+            rounds.append([])
+        rounds[n].append(j)
+    out = []
+    for i, r in enumerate(rounds):
+        if seed is not None:
+            random.Random(seed * 1000 + i).shuffle(r)
+        out += r
+    return out
+
+
 def cmd_sweep(a) -> int:
     from gauge import runner
 
     conn = store.connect(a.db)
-    jobs = expand(yaml.safe_load(Path(a.file).read_text()))
+    jobs = order(expand(yaml.safe_load(Path(a.file).read_text())), a.order, a.seed)
     print(f"{len(jobs)} jobs")
     for i, (wl, params, over) in enumerate(jobs, 1):
         try:
@@ -151,22 +176,32 @@ def _job_arg(item: str, a):
 
 
 def cmd_corun(a) -> int:
-    from gauge import runner
-
     conn = store.connect(a.db)
     doc = {"pairs": [a.job]} if a.job else yaml.safe_load(Path(a.pairs).read_text())
-    for g in doc["pairs"]:
-        for _ in range(doc.get("repeats", a.repeats)):
-            specs = [_job_arg(i, a) for i in g]
-            for k in ("profile", "sharing"):
-                if doc.get(k):
-                    specs = [s.model_copy(update={k: doc[k]}) for s in specs]
-            if doc.get("experiment"):
-                specs = [s.model_copy(update={"provenance": {**s.provenance, "experiment": doc["experiment"]}})
-                         for s in specs]
-            for rid, s in runner.corun(conn, specs, interval_s=a.interval, lock=not a.no_lock):
-                print(f"run {rid}: {_fmt(s)}", flush=True)
+    groups = [g for g in doc["pairs"] for _ in range(doc.get("repeats", a.repeats))]
+    for g in order(groups, a.order, a.seed):
+        for rid, s in run_group(conn, g, doc, a):
+            print(f"run {rid}: {_fmt(s)}", flush=True)
     return 0
+
+
+def run_group(conn, g, doc: dict, a) -> list:
+    """One entry of a corun file: a list of job strings, or {jobs: [...], profile?, sharing?} to override the
+    file's settings for that group. A one-job group runs as a plain solo run, so a file can hold a contrast's
+    solo references next to its co-runs and interleave them (no block of solos run first)."""
+    from gauge import runner
+
+    jobs, over = (g, {}) if isinstance(g, list) else (g["jobs"], g)
+    specs = [_job_arg(i, a) for i in jobs]
+    for k in ("profile", "sharing"):
+        if over.get(k) or doc.get(k):
+            specs = [s.model_copy(update={k: over.get(k) or doc[k]}) for s in specs]
+    if doc.get("experiment"):
+        specs = [s.model_copy(update={"provenance": {**s.provenance, "experiment": doc["experiment"]}})
+                 for s in specs]
+    if len(specs) == 1:
+        return [runner.run(conn, specs[0], interval_s=a.interval, lock=not a.no_lock)]
+    return runner.corun(conn, specs, interval_s=a.interval, lock=not a.no_lock)
 
 
 def cmd_preflight(a) -> int:
@@ -289,6 +324,9 @@ def main(argv=None) -> int:
         p.add_argument("--warmness", default="unknown", choices=["cold", "warm", "unknown"])
         p.add_argument("--profile", default="none", choices=["none", "trace", "metrics"],
                        help="Nsight inside the container: trace = this process's kernels; metrics = + GPU counters")
+        p.add_argument("--order", default="interleave", choices=["interleave", "file"],
+                       help="interleave (default): one repeat of every condition per round; file: as written")
+        p.add_argument("--seed", type=int, default=None, help="with interleave: shuffle each round with this seed")
         p.add_argument("--sharing", default="timeslice", choices=["timeslice", "mps"],
                        help="mps: run the job(s) as clients of one MPS server (gauge.mps)")
 

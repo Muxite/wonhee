@@ -1,0 +1,17 @@
+# C6a  Is a long video run evidence of GPU demand?  (plan question 6)
+# Split the transcode into its stages and run each on CPU or on the GPU's media engines. NVML records NVDEC and
+# NVENC utilisation per run, so a run that silently fell back to software shows 0% on that engine.
+experiment: C6 media
+question: "Which stage and engine (CPU, NVDEC, NVENC, SMs) carries a transcode, and what does each cost?"
+measure: "wall time, container CPU-s, NVML dec/enc util, VRAM; 60 s of 1080p30"
+analysis: "medians with min-max over 3 repeats; encode cost = encode - source; backend check: dec util > 0 iff decode=cuvid, enc util > 0 iff nvenc"
+tolerance: "a stage is 'the bottleneck' if it takes >60% of the transcode's wall time"
+stop: "3 repeats per cell"
+decision: "which CPU / engine / transfer observations a media task record needs"
+jobs:
+  - {workload: ffmpeg.transcode, fixed: {seconds: 60, mode: decode}, grid: {decode: [cpu, cuvid]}, repeats: 3}
+  - {workload: ffmpeg.transcode, fixed: {seconds: 60, mode: source}, repeats: 3}
+  - {workload: ffmpeg.transcode, fixed: {seconds: 60, mode: encode, codec: h264_nvenc, preset: p5}, repeats: 3}
+  - {workload: ffmpeg.transcode, fixed: {seconds: 60, mode: encode, codec: libx264, preset: veryfast}, repeats: 3}
+  - {workload: ffmpeg.transcode, fixed: {seconds: 60, mode: transcode, codec: h264_nvenc, preset: p5}, grid: {decode: [cpu, cuvid]}, repeats: 3}
+  - {workload: ffmpeg.transcode, fixed: {seconds: 60, mode: transcode, codec: libx264, preset: veryfast}, repeats: 3}

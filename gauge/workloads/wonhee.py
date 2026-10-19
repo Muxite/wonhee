@@ -130,6 +130,7 @@ class GpuParams(BaseModel):
     batch: int = 16  # embed: images per forward pass
     repeat: int = 2
     hold: float = 0  # > 0: load, one call, then stay resident this long (no timed compute)
+    cache: Literal["as_is", "cold", "warm"] = "as_is"  # model files' page-cache state before loading
 
 
 # (load_s, VRAM bytes) guesses per task; calibration replaces them
@@ -156,7 +157,7 @@ def gpu_prior(p) -> dict:
 def gpu_cmd(p) -> list[str]:
     return ["python", "-m", "wonhee.bench", p.task, "--clip", f"/media/wonhee_{p.clip_s}s.mp4",
             "--repeat", str(p.repeat), "--hold", str(p.hold), "--engine", p.engine, "--images", str(p.images),
-            "--px", str(p.px), "--batch", str(p.batch), "--models-dir", "/models"]
+            "--px", str(p.px), "--batch", str(p.batch), "--models-dir", "/models", "--cache", p.cache]
 
 
 register(Workload(

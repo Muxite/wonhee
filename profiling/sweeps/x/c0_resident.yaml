@@ -1,0 +1,8 @@
+# C0 (operational, not a research question): steady VRAM of each wonhee GPU model when held resident after one
+# real call. Decides the warm worker's --preload list. Not interpreted as a hardware-pressure model.
+experiment: C0 resident
+question: "Which wonhee GPU models fit together in one warm worker next to an LLM?"
+measure: "vram_peak_bytes (NVML per process) during the hold"
+analysis: "sum of medians per set vs 16 GiB minus the largest LLM we co-host; report per-model min-max"
+jobs:
+  - {workload: wonhee.gpu, fixed: {hold: 45}, grid: {task: [whisper, mask, separate, embed]}, repeats: 2}

@@ -1,0 +1,20 @@
+# C5  Is task identity enough to reuse a profile?  (plan question 5)
+# X2 answered this for the LLM (prefill vs decode, 4 sizes). The wonhee GPU nodes have one end-to-end time and no
+# input contrast. Small vs large input per node, with load and compute split by phase marks. Page cache warmed so
+# the load is not a disk read. One traced run per large input shows what the GPU does inside the compute.
+experiment: C5 inputs
+question: "How much do a node's load and compute change with its input size?"
+measure: "phase_s.load, compute spans 2..n (warm calls), VRAM peak; GPU busy share from the traced run"
+analysis: "large/small ratio of warm compute and of VRAM, medians with min-max over 3 repeats"
+tolerance: "ratio < 1.5 for a 4x+ larger input -> the task label plus a size bucket is enough; otherwise size is a required descriptor"
+stop: "3 repeats per cell"
+decision: "the minimum phase and input descriptors a task record needs"
+jobs:
+  - {workload: wonhee.gpu, fixed: {task: mask, repeat: 3, cache: warm}, grid: {px: [1080, 2160], images: [1, 8]}, repeats: 3}
+  - {workload: wonhee.gpu, fixed: {task: separate, repeat: 3, cache: warm}, grid: {clip_s: [10, 100]}, repeats: 3}
+  - {workload: wonhee.gpu, fixed: {task: whisper, repeat: 3, cache: warm}, grid: {clip_s: [10, 100]}, repeats: 3}
+  - {workload: wonhee.gpu, fixed: {task: embed, repeat: 3, cache: warm, batch: 16}, grid: {images: [8, 64]}, repeats: 3}
+  - {workload: wonhee.gpu, fixed: {task: mask, px: 2160, images: 8, repeat: 3, cache: warm}, repeats: 1, profile: trace}
+  - {workload: wonhee.gpu, fixed: {task: separate, clip_s: 100, repeat: 3, cache: warm}, repeats: 1, profile: trace}
+  - {workload: wonhee.gpu, fixed: {task: whisper, clip_s: 100, repeat: 3, cache: warm}, repeats: 1, profile: trace}
+  - {workload: wonhee.gpu, fixed: {task: embed, images: 64, repeat: 3, cache: warm, batch: 16}, repeats: 1, profile: trace}

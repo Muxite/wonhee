@@ -1,0 +1,10 @@
+# C6b  4 transcodes at once: benchmarks.md saw NVENC flatten at ~4 parallel copies with CPU decode.
+# Does NVDEC move that limit? Same 60 s job; per-copy wall time and total CPU-s vs solo runs of the same job,
+# interleaved in this file.
+experiment: C6 media
+repeats: 3
+pairs:
+  - ["ffmpeg.transcode:seconds=60,mode=transcode,codec=h264_nvenc,preset=p5,decode=cpu"]
+  - ["ffmpeg.transcode:seconds=60,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid"]
+  - ["ffmpeg.transcode:seconds=60,mode=transcode,codec=h264_nvenc,preset=p5,decode=cpu", "ffmpeg.transcode:seconds=60,mode=transcode,codec=h264_nvenc,preset=p5,decode=cpu", "ffmpeg.transcode:seconds=60,mode=transcode,codec=h264_nvenc,preset=p5,decode=cpu", "ffmpeg.transcode:seconds=60,mode=transcode,codec=h264_nvenc,preset=p5,decode=cpu"]
+  - ["ffmpeg.transcode:seconds=60,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid", "ffmpeg.transcode:seconds=60,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid", "ffmpeg.transcode:seconds=60,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid", "ffmpeg.transcode:seconds=60,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid"]

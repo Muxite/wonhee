@@ -1,6 +1,0 @@
-# X11a solo references under MPS (each job is an MPS client of its own daemon), traced like X4b/X5.
-experiment: X11 mps
-jobs:
-  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 256, reps: 2}, repeats: 3, profile: trace, sharing: mps}
-  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 512, reps: 2}, repeats: 3, profile: trace, sharing: mps}
-  - {workload: train.small, fixed: {model: resnet50, batch: 64, steps: 60}, repeats: 3, profile: trace, sharing: mps}

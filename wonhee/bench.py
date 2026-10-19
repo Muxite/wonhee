@@ -9,15 +9,44 @@ embed (SigLIP2 keyframe vectors), worker (`repeat` speech_subs jobs drained by o
 """
 from __future__ import annotations
 
-import argparse
-import tempfile
 import time
-from pathlib import Path
 
-import cv2
-import numpy as np
+T_PROCESS = time.time()  # before the heavy imports: launch -> here is container + interpreter start
 
-from wonhee import marks
+import argparse  # noqa: E402
+import os  # noqa: E402
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import cv2  # noqa: E402
+import numpy as np  # noqa: E402
+
+from wonhee import marks  # noqa: E402
+
+# Hugging Face cache folders each task loads from. --cache cold|warm puts them in a known page-cache state first, so
+# a load is from disk or from memory on purpose, not by whatever the previous run left behind.
+HF_MODELS = {"whisper": ["models--mobiuslabsgmbh--faster-whisper-large-v3-turbo"],
+             "worker": ["models--mobiuslabsgmbh--faster-whisper-large-v3-turbo"],
+             "mask": ["models--IDEA-Research--grounding-dino-tiny", "models--facebook--sam2.1-hiera-base-plus"],
+             "separate": ["models--adefossez--HTDemucs"],
+             "embed": ["models--google--siglip2-so400m-patch14-384"]}
+
+
+def set_cache(task: str, state: str) -> int:
+    """Put the task's model files in a known page-cache state before loading. cold: posix_fadvise(DONTNEED) via
+    `dd iflag=nocache count=0` (works on a read-only mount; pages another process has mapped stay resident).
+    warm: read every file once. Returns the number of files touched."""
+    hub = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+    files = [f for d in HF_MODELS.get(task, []) for f in (hub / d / "blobs").glob("*")]
+    for f in files:
+        if state == "cold":
+            subprocess.run(["dd", f"if={f}", "iflag=nocache", "count=0"], capture_output=True)
+        else:
+            with f.open("rb") as fh:
+                while fh.read(1 << 24):
+                    pass
+    return len(files)
 
 
 def frames(clip: Path, n: int, px: int) -> list[np.ndarray]:
@@ -122,7 +151,14 @@ def main(argv=None) -> int:
     ap.add_argument("--prompt", default="person")
     ap.add_argument("--batch", type=int, default=16)
     ap.add_argument("--models-dir", default="/models")
+    ap.add_argument("--cache", choices=["as_is", "cold", "warm"], default="as_is",
+                    help="page-cache state of the model files before loading: cold = evicted, warm = read in")
     a = ap.parse_args(argv)
+    marks.mark("started")  # after imports: started - container start = launch + interpreter + imports
+    import_s = time.time() - T_PROCESS
+    cache_files = set_cache(a.task, a.cache) if a.cache != "as_is" else 0
+    if a.cache != "as_is":
+        marks.mark(f"page_cache_{a.cache}")
     if a.task == "worker":
         return worker_bench(a)
 
@@ -144,7 +180,8 @@ def main(argv=None) -> int:
         facts = compute() or {}
         spans.append(time.perf_counter() - t)
         marks.mark("compute_finished")
-    marks.outcome(task=a.task, load_s=load_s, compute_s=spans, **facts, **_torch_vram())
+    marks.outcome(task=a.task, import_s=import_s, load_s=load_s, compute_s=spans, cache=a.cache, cache_files=cache_files,
+                  **facts, **_torch_vram())
     print(f"{a.task}: load {load_s:.2f}s, compute {', '.join(f'{s:.2f}s' for s in spans)}")
     return 0
 

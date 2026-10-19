@@ -1,6 +1,8 @@
 """Known-answer workloads that check the probes, not the predictors."""
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 from gauge.workloads.base import Workload, register
@@ -88,3 +90,18 @@ register(Workload(
     command=lambda p: ["sleep", str(p.seconds)], size_params=("seconds",), size=lambda p: p.seconds,
     prior=lambda p: {"runtime_s": p.seconds + 0.5, "ram_peak_bytes": 16 * 2**20},
     doc="does nothing: under --profile metrics it records what the GPU does without our work (background floor)"))
+
+
+class StressParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["bw", "compute", "launch"] = "bw"
+    seconds: float = 30
+
+
+register(Workload(
+    name="stress.gpu", family="micro", image="gauge/torch:1", build="torch", params=StressParams, gpu=True,
+    command=lambda p: ["python", "/opt/gauge/stressor.py", p.mode, str(p.seconds)],
+    size_params=("seconds",), size=lambda p: p.seconds,
+    prior=lambda p: {"runtime_s": p.seconds + 6, "cpu_time_s": p.seconds + 4, "ram_peak_bytes": 2 * 2**30,
+                     "vram_peak_bytes": (2.6 if p.mode == "bw" else 0.6) * 2**30},
+    doc="one GPU resource held busy (DRAM bandwidth, tensor compute, or kernel launches) as a targeted co-runner"))

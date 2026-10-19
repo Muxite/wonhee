@@ -1,0 +1,22 @@
+# C2  Separate processes vs one batching process vs MPS, at FIXED work  (plan question 2)
+# Existing X4 compared llama-bench copies with batched-bench at different token counts: not matched. Here every
+# arm runs the same tool (llama-batched-bench) on the same 4 requests (16-token prompt, 2048 generated tokens: ~7 s of decode, longer than the ~3 s model load, so copies really decode at the same time),
+# and all arms are interleaved in one file (a one-job group is a plain solo run):
+#   single  : 1 process, 1 sequence (the per-request reference), time-sliced and as an MPS client
+#   batched : 1 process, 4 sequences together
+#   copies  : 4 processes x 1 sequence, time-sliced contexts
+#   mps     : 4 processes x 1 sequence, clients of one MPS server
+experiment: C2 sharing
+question: "Is the loss from separate copies scheduling (fixable with MPS), duplicated state, or missing batching?"
+measure: "aggregate decode tok/s (sum of speed_tg), per-request decode time t_tg (max = tail), summed VRAM"
+analysis: "medians with min-max over 3 repeats; copies vs mps isolates context switching, mps vs batched isolates batching"
+tolerance: "MPS recovers >50% of the copies->batched gap -> context switching is the main loss"
+stop: "3 repeats per arm"
+decision: "which execution-mode fields (process count, sharing mode, batch) a task record must carry"
+repeats: 3
+pairs:
+  - ["llamacpp.batched:model=qwen2.5:3b,prompt_tokens=16,gen_tokens=2048,parallel=1"]
+  - {jobs: ["llamacpp.batched:model=qwen2.5:3b,prompt_tokens=16,gen_tokens=2048,parallel=1"], sharing: mps}
+  - ["llamacpp.batched:model=qwen2.5:3b,prompt_tokens=16,gen_tokens=2048,parallel=4"]
+  - ["llamacpp.batched:model=qwen2.5:3b,prompt_tokens=16,gen_tokens=2048,parallel=1", "llamacpp.batched:model=qwen2.5:3b,prompt_tokens=16,gen_tokens=2048,parallel=1", "llamacpp.batched:model=qwen2.5:3b,prompt_tokens=16,gen_tokens=2048,parallel=1", "llamacpp.batched:model=qwen2.5:3b,prompt_tokens=16,gen_tokens=2048,parallel=1"]
+  - {jobs: ["llamacpp.batched:model=qwen2.5:3b,prompt_tokens=16,gen_tokens=2048,parallel=1", "llamacpp.batched:model=qwen2.5:3b,prompt_tokens=16,gen_tokens=2048,parallel=1", "llamacpp.batched:model=qwen2.5:3b,prompt_tokens=16,gen_tokens=2048,parallel=1", "llamacpp.batched:model=qwen2.5:3b,prompt_tokens=16,gen_tokens=2048,parallel=1"], sharing: mps}
