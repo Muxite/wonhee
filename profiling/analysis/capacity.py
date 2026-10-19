@@ -28,6 +28,17 @@ CPU_CORES = 16
 NEAR = 0.9  # a resource "topped out" at >= 90% of its ceiling
 FLAT = 1.10  # plateau: < 10% more throughput per doubling of load
 RESOURCES = ("sm_busy", "memctl_busy", "vram", "power", "sm_clock", "nvenc", "nvdec", "cpu", "pcie")
+# Deviation from the pre-registered rule (2026-10-19, after the in-process ladders, before the copy ladders and
+# packing were analysed): (1) a high SM clock means headroom, not a limit, so sm_clock is reported but never named
+# a limiter; a limit shows as the clock *falling*, which is the power cap. (2) NVML's power reading is an average,
+# while the cap acts on short peaks: power counts as topped out at >= 0.9 of the limit OR when the cap throttled
+# the clocks >= 50% of the window. The original rule named sm_clock for whisper and missed SigLIP2's capped power.
+# Resolution limit: NVML averages power and busy over ~1 s, so a rung whose GPU work comes in bursts shorter than
+# that (llama-bench prefill at 512 and 2048 tokens) reads mostly idle. Its rate is valid; its resource shares and
+# limiter are not. markdown() flags such rungs.
+SHORT_BURST = {("prefill", 512), ("prefill", 2048)}
+LIMITER_CANDIDATES = ("sm_busy", "memctl_busy", "vram", "power", "nvenc", "nvdec", "cpu", "pcie")
+CAPPED = 0.5
 
 
 def runs(conn):
@@ -137,9 +148,11 @@ def rungs(conn) -> list[dict]:
                 out.append({**base, "ladder": name, "level": x["pl"], "unit": "tok/s", "rate": x["speed_tg"], "res": res})
         elif wl == "llamacpp.phase":
             o = json.loads(r0["outcome_json"] or "{}")
-            t0 = (marks_abs(r0, "start_tool") or [r0["container_started"]])[0] + 3  # skip the model load
+            t0 = (marks_abs(r0, "start_tool") or [r0["container_started"]])[0]
+            res = resources(conn, members, t0 + 3, r0["workload_finished"])  # skip the model load when there is room
+            res = res or resources(conn, members, t0, r0["workload_finished"])  # short runs: the whole tool run
             out.append({**base, "ladder": f"{p['model']} prefill: prompt tokens", "level": p["tokens"], "unit": "tok/s",
-                        "rate": o.get("avg_ts"), "res": resources(conn, members, t0, r0["workload_finished"])})
+                        "rate": o.get("avg_ts"), "res": res})
         elif wl == "train.small":
             o = json.loads(r0["outcome_json"] or "{}")
             s, e = marks_abs(r0, "compute_started"), marks_abs(r0, "compute_finished")
@@ -195,7 +208,10 @@ def summarize(rs: list[dict]) -> dict:
         at = plateau or (good[-1] if good else None)
         limiter = None
         if at:
-            hot = sorted((k for k in RESOURCES if (at["res"].get(k) or 0) >= NEAR), key=lambda k: -at["res"][k])
+            res = dict(at["res"])
+            if (res.get("power_capped_share") or 0) >= CAPPED:
+                res["power"] = max(res.get("power") or 0, NEAR)  # the cap was throttling: power is at its limit
+            hot = sorted((k for k in LIMITER_CANDIDATES if (res.get(k) or 0) >= NEAR), key=lambda k: -res[k])
             limiter = hot[0] if len(hot) == 1 else ("co-limited: " + ", ".join(hot) if hot else "software / serialization")
         peak = max(good, key=lambda s: s["rate"]) if good else None
         out[name] = {"steps": steps, "plateau_level": plateau["level"] if plateau else None,
@@ -219,6 +235,9 @@ def markdown(summary: dict) -> str:
             cap = f"{s['res']['power_capped_share']:.2f}" if s["res"].get("power_capped_share") is not None else "–"
             lines.append(f"| {s['level']} | {rate} | " + " | ".join(cells) + f" | {cap} | {','.join(s['failed']) or ''} |")
         sp = d["speedup_peak_vs_first"]
+        if any(k[0] in name and d["judged_at_level"] == k[1] for k in SHORT_BURST):
+            lines.append("\n*Resource shares at this rung are below NVML's ~1 s resolution (bursts too short): the limiter "
+                         "verdict is not valid; the rate is.*")
         lines.append(f"\n**Peak** {d['peak_rate']:.1f} {unit} at {d['peak_level']} ({sp:.2f}x the first rung). "
                      f"**Plateau** at {d['plateau_level']}. **Tops out first:** {d['limiter']} (judged at {d['judged_at_level']})."
                      + (f" **Wall:** failed at {d['oom_or_failure_at']}." if d["oom_or_failure_at"] else "") + "\n"

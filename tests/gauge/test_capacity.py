@@ -29,3 +29,10 @@ def test_failure_rung_is_the_wall_and_no_plateau_judges_last():
     rs = [_rung("C", 1, 100), _rung("C", 2, 200), {**_rung("C", 4, None), "failed": "cuda_oom"}]
     d = cap.summarize(rs)["C"]
     assert d["oom_or_failure_at"] == 4 and d["plateau_level"] is None and d["judged_at_level"] == 2
+
+
+def test_clock_is_not_a_limiter_and_capped_power_counts():
+    rs = [_rung("D", 1, 100, sm_clock=0.95, power=0.5), _rung("D", 2, 101, sm_clock=0.95, power=0.5)]
+    assert cap.summarize(rs)["D"]["limiter"] == "software / serialization"
+    rs = [_rung("E", 1, 100, power=0.84, power_capped_share=0.8), _rung("E", 2, 101, power=0.84, power_capped_share=0.8)]
+    assert cap.summarize(rs)["E"]["limiter"] == "power"

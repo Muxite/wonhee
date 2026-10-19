@@ -7,6 +7,8 @@
 # NVML "busy" is the share of time any kernel ran, not how much of the chip it used: a near-100% SM busy with
 # low power and clocks is a serialization or launch limit, not a compute limit. Counter-level detail (SM active,
 # tensor, DRAM bandwidth) comes from the metrics runs in c8_ladders.yaml at the top rung of each ladder.
+# DEVIATION (2026-10-19, before these runs were analysed; see profiling/analysis/capacity.py): sm_clock is not a
+# limiter candidate, and power also counts as topped out when the cap throttled the clocks >= 50% of the window.
 experiment: C8 capacity
 question: "For each kind of work on this GPU, what limits throughput first as load rises?"
 measure: "throughput per rung (work units/s) and per-resource fraction of ceiling in the all-computing window"

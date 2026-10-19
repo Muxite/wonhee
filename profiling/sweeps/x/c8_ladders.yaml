@@ -1,5 +1,7 @@
 # C8b  In-process ladders (batch size), same rules as c8_copies.yaml. llama-batched-bench measures every batch
 # level inside one run; each level's window comes from the time its result line arrived and its reported duration.
+# DEVIATION (2026-10-19, recorded in profiling/analysis/capacity.py): sm_clock is not a limiter candidate (a high clock
+# is headroom), and power also counts as topped out when the power cap throttled the clocks >= 50% of the window.
 experiment: C8 capacity
 question: "For each kind of work on this GPU, what limits throughput first as load rises?"
 measure: "throughput per rung (work units/s) and per-resource fraction of ceiling in the rung's window"
