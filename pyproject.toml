@@ -20,11 +20,15 @@ dependencies = [
   "yt-dlp[default,curl-cffi]>=2026.8.19",
   # tag awr-compat-a4970c6, the same snapshot awork-resume pins
   "moeka @ git+https://github.com/Muxite/moeka.git@a4970c6169b2dff452a33773747c7376fa3033b0",
+  "pathspec>=1.0",
 ]
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.2"]
 dev = ["pytest>=8.0"]
+viz = [
+    "playwright>=1.40",
+]
 
 [project.scripts]
 wonhee = "wonhee.cli:main"

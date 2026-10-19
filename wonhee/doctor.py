@@ -4,7 +4,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 
-from wonhee.config import KEY_NAMES, Settings, secret
+from wonhee.config import KEY_NAMES, PUBLISH_KEY_NAMES, Settings, secret
 
 KEYS = KEY_NAMES
 
@@ -29,12 +29,13 @@ def _moeka_check() -> Check:
     return Check("moeka import", True, "moeka imports (pinned pip dependency)")
 
 
-def _key_check(name: str) -> Check:
+def _key_check(name: str, level: str | None = None) -> Check:
     from wonhee import envfile
+    extra = (level,) if level else ()
     if not secret(name):
-        return Check(f"key {name}", False, "not set; put it in .env (cp .env.example .env) or export it")
+        return Check(f"key {name}", False, "not set; put it in .env (cp .env.example .env) or export it", *extra)
     src = envfile.LOADED.get(name)
-    return Check(f"key {name}", True, f".env ({src})" if src else "shell env")
+    return Check(f"key {name}", True, f".env ({src})" if src else "shell env", *extra)
 
 
 def _cuda_check(settings: Settings) -> Check:
@@ -92,6 +93,7 @@ def checks(settings: Settings) -> list[Check]:
         out.append(Check(tool, bool(path), path or f"{tool} not found on PATH; install ffmpeg"))
     out.append(_moeka_check())
     out += [_key_check(k) for k in KEYS]
+    out += [_key_check(k, "warning") for k in PUBLISH_KEY_NAMES]  # only `wonhee publish` needs them
     out.append(_cuda_check(settings))
     try:
         from wonhee.db.connect import open_db

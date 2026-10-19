@@ -11,6 +11,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Project-scoped API keys. Entry points load them from .env; the detached child inherits these.
 KEY_NAMES = ("OPENROUTER_API_KEY", "BRAVE_API_KEY", "APIFY_API_KEY")
+# Only publish_muksite needs these (muksite's Supabase Storage); doctor reports them as warnings, not failures.
+PUBLISH_KEY_NAMES = ("SUPABASE_URL", "SUPABASE_SERVICE_KEY")
 
 
 class Settings(BaseSettings):
@@ -40,6 +42,9 @@ class Settings(BaseSettings):
     whisper_model: str = "turbo"
     whisper_device: str = "cuda"
     whisper_compute_type: str = "float16"
+
+    # viz_wavegen's docker image, built from wonhee/edit/viz/vendor/wavesim.Dockerfile
+    wavesim_image: str = "wonhee-wavesim:dev"
 
     cost_cap_usd: float = 1.0
     reels_per_trend: int = 5
