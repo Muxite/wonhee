@@ -60,7 +60,11 @@ Matching someone's photos is one way to get a look. The other is a filter descri
 3. A vision review moves up to four knobs a round, for three rounds.
 4. The best round is saved and reused with `wonhee filter apply rainy-cafe <photos>`.
 
-Tweak it later with `--from rainy-cafe "a bit warmer, less grain"`. Export it with `wonhee filter show rainy-cafe --cube rainy-cafe.cube` to use the same colour in CapCut / VN / Resolve on video. Glow, grain and the other texture effects don't fit in a LUT; add them in the app.
+Before the look goes on, each photo is gently corrected first (exposure and white balance, `auto` 0.6; checks and the guard compare against that corrected photo, not the raw one). If `creator.yaml` has `skin: {undertone: warm, strength: 0.5}`, skin-coloured pixels are nudged toward that undertone last (filters and `vibe`); the default is none. The reviewer can also move one colour range at a time (`range_hue` / `range_sat` / `range_lum` on red, orange, yellow, green, aqua, blue, purple or magenta).
+
+`filter apply` remembers the intensity you use: with no `--intensity` it takes the median of your last 10 runs of that filter (else 1.0) and says so ("intensity 0.7 (your usual)"). The log is `data/filters/<name>.uses.jsonl` (pack filters share `_usage.jsonl`). A photo that fails is listed and the rest still run; the command exits non-zero only if none worked. When you tweak with `--from`, the reviewer is also told your last few tweaks to that filter.
+
+Tweak it later with `--from rainy-cafe "a bit warmer, less grain"`. Export it with `wonhee filter show rainy-cafe --cube rainy-cafe.cube` to use the same colour in CapCut / VN / Resolve on video. Glow, grain and the other texture effects don't fit in a LUT; add them in the app. The auto-correct step and skin undertone are per photo, so they aren't in the LUT either.
 
 **Masks are a last resort.** The `vibe` edit first tries the grade without a mask, then a gentler one. It only blends in a soft mask (edge-aware, feathered, at most 65% strength) if your face would end up too dark or blown out. Skin protection keeps skin colour natural under colour grades without any mask. `--set mask_policy=off` never masks; `--set mask_policy=always` always uses the soft mask.
 

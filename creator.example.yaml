@@ -5,3 +5,5 @@ locations: ["bedroom", "home gym", "kitchen"]
 props: ["laptop", "dumbbells"]
 language: en
 max_length_s: 30
+# optional: nudge skin toward an undertone in filters / vibe edits (none | cool | neutral | warm | rose | gold)
+skin: {undertone: none, strength: 0.5}

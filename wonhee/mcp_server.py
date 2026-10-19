@@ -287,8 +287,9 @@ def publish_muksite(image: str, slug: str, name: str, caption: str, alt: str, da
 
 @mcp.tool()
 @_guard
-def filter_apply(name: str, photos: list[str] | None = None, intensity: float = 1.0) -> str:
-    """Apply a pack or saved filter to photos (intensity 0..2). With no photos, lists the pack and saved filters."""
+def filter_apply(name: str, photos: list[str] | None = None, intensity: float | None = None) -> str:
+    """Apply a pack or saved filter to photos (intensity 0..2; default is your usual for that filter, else 1).
+    With no photos, lists the pack and saved filters."""
     photos = [_in_path(p) for p in photos or []]
     conn, settings = _open()
     try:

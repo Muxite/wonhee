@@ -221,15 +221,16 @@ def _cmd_filter(a, settings) -> int:
     if a.sub == "show":
         print(service.filter_show(settings, a.name, cube=Path(a.cube) if a.cube else None))
         return 0
-    conn, deps = open_db(settings), build_deps(settings)
+    conn, deps = _open(settings), build_deps(settings)
     if a.sub == "apply":
-        text, _ = service.filter_apply(conn, settings, deps, a.name, [Path(p) for p in a.photos],
-                                       intensity=a.intensity, dest=Path(a.out) if a.out else None, progress=_progress)
+        text, out = service.filter_apply(conn, settings, deps, a.name, [Path(p) for p in a.photos],
+                                         intensity=a.intensity, dest=Path(a.out) if a.out else None,
+                                         progress=_progress)
     else:
-        text, _ = service.filter_make(conn, settings, deps, a.description, [Path(p) for p in a.on], name=a.name,
-                                      rounds=a.rounds, engine=a.engine, start=a.start, progress=_progress)
+        text, out = service.filter_make(conn, settings, deps, a.description, [Path(p) for p in a.on], name=a.name,
+                                        rounds=a.rounds, engine=a.engine, start=a.start, progress=_progress)
     print(text)
-    return 0
+    return 0 if out else 1  # nothing succeeded
 
 
 def _cmd_vibe(a, settings) -> int:
@@ -420,7 +421,8 @@ def _parser() -> argparse.ArgumentParser:
     n.add_argument("--cube", metavar="FILE", help="also write its colour part as a .cube LUT (CapCut, VN, Resolve)")
     n.set_defaults(fn=_cmd_filter)
     n = s.add_parser("apply", help="apply a pack or saved filter to photos"); n.add_argument("name")
-    n.add_argument("photos", nargs="+"); n.add_argument("--intensity", type=float, default=1.0, help="0..2")
+    n.add_argument("photos", nargs="+"); n.add_argument("--intensity", type=float, default=None,
+                                         help="0..2 (default: your usual for this filter, else 1)")
     n.add_argument("--out", help="folder to write into"); n.set_defaults(fn=_cmd_filter)
     n = s.add_parser("make", help='make a filter from a vibe: wonhee filter make "late-summer film, a bit '
                                   'faded" --name late-summer --on a.jpg b.jpg')

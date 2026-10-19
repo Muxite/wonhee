@@ -10,6 +10,7 @@ from wonhee import filterstore, localllm, service
 from wonhee.edit import filters as F
 from wonhee.edit import mask as mk
 from wonhee.edit import style
+from wonhee.media import path_for
 from wonhee.nodes import vibe
 from wonhee.nodes.filter import Move, apply_moves
 
@@ -187,3 +188,121 @@ def test_mask_policy_tries_without_a_mask_first(monkeypatch, tmp_path):
     assert (m is None) == (notes["step"] == "range") and (m is None or m.max() <= 0.65 + 1e-6)
     _, m, notes = vibe.grade(im, prof, vibe.VibeParams(strength=1.0, tone=1.5, mask_policy="off"), tmp_path)
     assert m is None and notes["mask"] == "none"
+
+
+# --- wave 2: store robustness, usage log, ranges, slugs, batch errors ----------------------------------------------
+
+def _write_rec(home, name, rec):
+    p = filterstore.folder(home) / f"{name}.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(rec))
+    return p
+
+
+def test_old_saved_json_with_unknown_key_and_no_dates_loads_and_resaves(tmp_path):
+    _write_rec(tmp_path, "old", {"name": "old", "description": "d", "filter": {"grain": 0.3, "sepia": 0.5}})
+    f, rec = filterstore.load(tmp_path, "old")
+    assert f.grain == 0.3 and rec["dropped"] == ["sepia"]
+    filterstore.save(tmp_path, "old", {"filter": F.Filter(grain=0.5).model_dump()})  # no created/updated before
+    f, rec = filterstore.load(tmp_path, "old")
+    assert f.grain == 0.5 and rec["previous"][-1]["updated"] is None and "dropped" not in rec
+
+
+def test_corrupt_file_is_a_clear_error_saved_skips_it_and_save_recovers(tmp_path):
+    p = filterstore.folder(tmp_path) / "bad.json"
+    p.parent.mkdir(parents=True)
+    p.write_text("{not json")
+    _write_rec(tmp_path, "nofilter", {"name": "nofilter"})
+    with pytest.raises(ValueError, match="saved filter bad is unreadable"):
+        filterstore.load(tmp_path, "bad")
+    with pytest.raises(ValueError, match="saved filter nofilter is unreadable"):
+        filterstore.load(tmp_path, "nofilter")
+    assert filterstore.saved(tmp_path) == []
+    filterstore.save(tmp_path, "bad", {"filter": F.Filter().model_dump()})
+    assert filterstore.load(tmp_path, "bad")[1]["source"] == "saved"
+
+
+def test_usage_log_is_not_a_filter_and_median_of_last_ten(tmp_path):
+    for x in (0.2, 0.9, 0.7, 0.7):
+        filterstore.log_use(tmp_path, "My Vibe", {"intensity": x, "n": 1})
+    filterstore.log_use(tmp_path, "matte", {"intensity": 0.5, "n": 1})
+    filterstore.log_use(tmp_path, "film-warm", {"intensity": 1.5, "n": 1})
+    assert [e["intensity"] for e in filterstore.uses(tmp_path, "my-vibe")] == [0.2, 0.9, 0.7, 0.7]
+    assert filterstore.usual_intensity(tmp_path, "my-vibe") == 0.7
+    assert filterstore.usual_intensity(tmp_path, "matte") == 0.5 and filterstore.usual_intensity(tmp_path, "x") is None
+    assert (filterstore.folder(tmp_path) / "_usage.jsonl").exists() and filterstore.saved(tmp_path) == []
+
+
+def test_slug_edge_cases(tmp_path):
+    assert filterstore.slug("rainy_cafe  night") == "rainy-cafe-night"
+    long = "a" * 47 + "_b"
+    assert filterstore.slug(long) == "a" * 47 and not filterstore.slug(long).endswith("-")
+    k = filterstore.slug("비 오는 카페")
+    assert k.startswith("f-") and len(k) == 10 and k == filterstore.slug("비 오는 카페")
+    assert filterstore.slug("Café Noir") == "cafe-noir"
+    _write_rec(tmp_path, "matte", {"name": "matte", "filter": {}, "description": "mine"})
+    assert "shadowed by pack" in service.filter_list(type("S", (), {"home": tmp_path})())
+
+
+def test_apply_default_intensity_follows_history_and_survives_a_missing_photo(conn, settings, tmp_path):
+    good = _write(tmp_path, "a.jpg", day())
+    text, out = service.filter_apply(conn, settings, fake_deps(), "matte", [good])
+    assert "intensity 1" in text and "usual" not in text and out is not None
+    for x in (0.4, 0.6):
+        service.filter_apply(conn, settings, fake_deps(), "matte", [good], intensity=x)
+    text, out = service.filter_apply(conn, settings, fake_deps(), "matte", [tmp_path / "gone.jpg", good])
+    assert "intensity 0.6 (your usual)" in text and "1 of 2" in text and "failed" in text and out is not None
+    assert len(list(out.glob("*.jpg"))) == 1
+    text, out = service.filter_apply(conn, settings, fake_deps(), "matte", [tmp_path / "gone.jpg"])
+    assert out is None and "0 of 1" in text
+    with pytest.raises(ValueError, match="between 0 and 2"):
+        service.filter_apply(conn, settings, fake_deps(), "matte", [good], intensity=3)
+    assert filterstore.uses(settings.home, "matte")[-1]["n"] == 1
+
+
+def test_range_moves_apply_and_a_range_knob_without_range_is_ignored():
+    f, done = apply_moves(F.Filter(), [Move(knob="range_sat", direction="down", amount="a lot", range="green"),
+                                       Move(knob="range_hue", direction="up", amount="some", range="blue"),
+                                       Move(knob="range_lum", direction="up", amount="a little")])
+    assert f.ranges["green"].sat == pytest.approx(-0.35) and f.ranges["blue"].hue == pytest.approx(0.2)
+    assert set(f.ranges) == {"green", "blue"} and "ignored" in done[-1]
+    f, _ = apply_moves(f, [Move(knob="range_sat", direction="down", amount="a lot", range="green")] * 4)
+    assert f.ranges["green"].sat == -1.0
+    from wonhee.nodes.filter import describe, knob_help
+    assert "green" in describe(f) and describe(F.Filter()) == "{}" and knob_help().count("range_hue") == 1
+
+
+def test_filter_image_node_takes_auto_and_undertone_and_undertone_changes_skin(conn, settings, tmp_path):
+    from wonhee.nodes.filter import FilterImageParams
+    assert FilterImageParams().auto == 0.6
+    im = np.full((80, 80, 3), 140, np.uint8)
+    im[:] = SKIN
+    src = _write(tmp_path, "skin.jpg", im)
+    outs = {}
+    for tone in ("none", "rose"):
+        params = {**F.Filter().model_dump(), "auto": 0.0, "undertone": tone, "undertone_strength": 1.0}
+        rid, _ = service.node_run(conn, settings, fake_deps(), "filter_image",
+                                  {"image": repo_save(conn, settings, src)}, params)
+        o = service._step_out(conn, rid, "filter_image")
+        outs[tone] = style.load(path_for(settings.media_dir, o["image"]))
+    assert np.abs(outs["none"].astype(int) - outs["rose"]).max() > 3
+
+
+def repo_save(conn, settings, p):
+    from wonhee.db import repo
+    return repo.save_file(conn, settings.media_dir, p, "image", "image/jpeg")
+
+
+def test_checks_compare_against_the_normalized_source(conn, settings, tmp_path, monkeypatch):
+    # the normalized source is 40 levels brighter; a filter that leaves the photo as-is would look "dark" against it
+    # but the guard must not pull exposure down because of the (raw) clipping difference
+    seen = []
+    real = F.checks
+    monkeypatch.setattr(F, "normalize", lambda im, a=0.5: (np.clip(im.astype(int) + 40, 0, 255).astype(np.uint8), {}))
+    monkeypatch.setattr(F, "checks", lambda a, b: (seen.append(a.mean()), real(a, b))[1])
+    photo = _write(tmp_path, "a.jpg", np.full((90, 120, 3), 100, np.uint8))
+    _fake_models(monkeypatch, {"Draft": [{"base": "none", "notes": "n", "moves": []}],
+                               "Adjust": [{"score": 4, "verdict": "ok", "moves": []}]})
+    text, _ = service.filter_make(conn, settings, fake_deps(), "plain", [photo], name="plain", rounds=1)
+    assert seen and seen[0] == pytest.approx(140, abs=3)  # the normalized source, not the raw 100
+    assert "guard" not in text

@@ -513,7 +513,8 @@ def vibe(conn, settings, deps, refs: list[str], photos: list[Path], *, name: str
         runs.append(rid)
         o = _step_out(conn, rid, "vibe_review")
         review = json.loads(path_for(d, o["review"]).read_text(encoding="utf-8")) if o else None
-        params = {**(review["params"] if review else VibeParams().model_dump()), **(overrides or {})}
+        skin = _skin_params(settings)  # the creator's undertone, explicit so it is in the cache key
+        params = {**(review["params"] if review else VibeParams().model_dump()), **skin, **(overrides or {})}
         rid, text = node_run(conn, settings, deps, "vibe_image", {"image": sha, "profile": prof_sha}, params,
                              progress=progress)
         runs.append(rid)
@@ -748,25 +749,43 @@ def _filter_sheet(pairs: list[tuple], dest: Path, h: int = 360) -> None:
     tiles = [np.hstack([cv2.resize(x, (round(x.shape[1] * h / x.shape[0]), h)) for x in pair]) for pair in pairs]
     w = max(t.shape[1] for t in tiles)
     sheet = np.vstack([np.pad(t, ((0, 8), (0, w - t.shape[1]), (0, 0)), constant_values=255) for t in tiles])
-    cv2.imwrite(str(dest), sheet, [cv2.IMWRITE_JPEG_QUALITY, 88])
+    ok, buf = cv2.imencode(".jpg", sheet, [cv2.IMWRITE_JPEG_QUALITY, 88])
+    if not ok:
+        raise ValueError("could not encode the review sheet")
+    write_atomic_bytes(dest, buf.tobytes())
 
 
-def _render_filter(conn, settings, deps, shas: list[str], spec, progress=None) -> list[str | None]:
+def _skin_params(settings) -> dict:
+    """The creator's skin undertone as explicit node params (so it is part of the cache key); none if unset."""
+    from wonhee.intent.creator import load_creator
+    try:
+        s = load_creator(settings.creator_path).skin
+    except Exception:  # a broken creator.yaml must not stop a filter
+        return {"undertone": "none", "undertone_strength": 0.5}
+    return {"undertone": s.undertone, "undertone_strength": s.strength}
+
+
+def _render_filter(conn, settings, deps, shas: list[str], spec, progress=None, *, auto: float = 0.6,
+                   intensity: float | None = None) -> list[str | None]:
     out = []
+    params = {**spec.model_dump(), "auto": auto, **_skin_params(settings),
+              **({"intensity": intensity} if intensity is not None else {})}
     for sha in shas:
-        rid, _ = node_run(conn, settings, deps, "filter_image", {"image": sha}, spec.model_dump(), progress=progress)
+        rid, _ = node_run(conn, settings, deps, "filter_image", {"image": sha}, params, progress=progress)
         o = _step_out(conn, rid, "filter_image")
         out.append(o["image"] if o else None)
     return out
 
 
 def filter_make(conn, settings, deps, description: str, photos: list[Path], *, name: str, rounds: int = 3,
-                engine: str = "local", start: str | None = None, progress=None) -> tuple[str, Path | None]:
+                engine: str = "local", start: str | None = None, auto: float = 0.6,
+                progress=None) -> tuple[str, Path | None]:
     """Make (or, with `start`, tweak) a filter from a description of a vibe, tune it on your photos and save it.
 
-    Each round renders the filter on the photos, measures them (clipping, crushed shadows, skin drift), lets the
-    guard fix what the numbers say is broken, then a vision model scores before|after against the description and
-    moves a few knobs (clamped, step-limited). The best-scoring round is saved as <home>/filters/<name>.json.
+    Each round renders the filter on the photos, measures them (clipping, crushed shadows, skin drift) against the
+    auto-corrected source, lets the guard fix what the numbers say is broken, then a vision model scores
+    before|after against the description and moves a few knobs (clamped, step-limited). The best-scoring round is
+    saved as <home>/filters/<name>.json.
     Returns (summary, the folder with the round sheets and final renders)."""
     import json
 
@@ -784,44 +803,52 @@ def filter_make(conn, settings, deps, description: str, photos: list[Path], *, n
     d = settings.media_dir
     shas = [repo.save_file(conn, d, Path(p).expanduser(), "image", "image/jpeg") for p in photos[:3]]
     srcs = [style.load(path_for(d, s)) for s in shas]
-    base, change = None, description
+    norm = [F.normalize(s, auto)[0] for s in srcs]  # what the filter actually starts from
+    base, change, past = None, description, ""
     if start:
         base, old = filterstore.load(settings.home, start)
         if old.get("description"):  # the goal stays the original vibe plus the change, not the change alone
             description = f"{old['description']}; then: {change}"[:300]
+            tweaks = old["description"].split("; then: ")[1:][-3:]
+            if tweaks:
+                past = "The user's past tweaks to this filter: " + "; ".join(tweaks)
     params = {"description": change, "engine": engine, **({"start": base.model_dump_json()} if base else {})}
     rid, text = node_run(conn, settings, deps, "filter_draft", {}, params, progress=progress)
     runs = [rid]
     o = _step_out(conn, rid, "filter_draft")
     if o is None:
         return text, None
-    draft = json.loads(path_for(d, o["filter"]).read_text())
+    draft = json.loads(path_for(d, o["filter"]).read_text(encoding="utf-8"))
     spec = F.Filter(**draft["filter"])
     out_dir = filterstore.folder(settings.home) / key
     out_dir.mkdir(parents=True, exist_ok=True)
+    for stale in out_dir.glob("round-*.jpg"):  # from an earlier make of this name
+        stale.unlink(missing_ok=True)
     history, best = [], None
     for r in range(1, max(1, rounds) + 1):
-        outs = _render_filter(conn, settings, deps, shas, spec, progress)
+        outs = _render_filter(conn, settings, deps, shas, spec, progress, auto=auto)
         if any(x is None for x in outs):
             return f"rendering the filter failed in round {r}", out_dir
         imgs = [style.load(path_for(d, x)) for x in outs]
-        facts = [F.checks(a, b) for a, b in zip(srcs, imgs)]
+        facts = [F.checks(a, b) for a, b in zip(norm, imgs)]
         fixed, guarded = F.guard(spec, facts)
         if guarded:
             spec = fixed
-            outs = _render_filter(conn, settings, deps, shas, spec, progress)
+            outs = _render_filter(conn, settings, deps, shas, spec, progress, auto=auto)
+            if any(x is None for x in outs):
+                return f"rendering the filter failed in round {r} (after the guard fix)", out_dir
             imgs = [style.load(path_for(d, x)) for x in outs]
-            facts = [F.checks(a, b) for a, b in zip(srcs, imgs)]
+            facts = [F.checks(a, b) for a, b in zip(norm, imgs)]
         sheet = out_dir / f"round-{r}.jpg"
-        _filter_sheet(list(zip(srcs, imgs)), sheet)
+        _filter_sheet(list(zip(srcs, imgs)), sheet)  # left column stays the original photo
         sheet_sha = repo.save_file(conn, d, sheet, "image", "image/jpeg")
         fact_text = "; ".join(f"photo {i + 1}: {F.verdicts(f)}" for i, f in enumerate(facts))
         rid, text = node_run(conn, settings, deps, "filter_review", {"sheet": sheet_sha},
                              {"description": description, "filter": spec.model_dump_json(), "facts": fact_text,
-                              "engine": engine}, progress=progress)
+                              "history": past[:600], "engine": engine}, progress=progress)
         runs.append(rid)
         o = _step_out(conn, rid, "filter_review")
-        rev = json.loads(path_for(d, o["review"]).read_text()) if o else None
+        rev = json.loads(path_for(d, o["review"]).read_text(encoding="utf-8")) if o else None
         score = rev["score"] if rev else 0
         history.append({"round": r, "filter": spec.model_dump(), "score": score, "guard": guarded,
                         "verdict": rev["verdict"] if rev else text, "moves": rev["moves"] if rev else [],
@@ -833,7 +860,7 @@ def filter_make(conn, settings, deps, description: str, photos: list[Path], *, n
         spec = F.Filter(**rev["filter"])
     score, spec, outs, best_round = best
     for i, (photo, x) in enumerate(zip(photos, outs), 1):
-        (out_dir / f"{i:02d}-{Path(photo).stem}.jpg").write_bytes(path_for(d, x).read_bytes())
+        write_atomic_bytes(out_dir / f"{i:02d}-{Path(photo).stem}.jpg", path_for(d, x).read_bytes())
     cost = sum(_run_cost(conn, r) for r in runs)
     rec = {"description": description, "base": draft.get("base"), "draft_moves": draft.get("moves"),
            "from": start, "engine": engine,
@@ -854,31 +881,57 @@ def filter_make(conn, settings, deps, description: str, photos: list[Path], *, n
     return "\n".join(lines), out_dir
 
 
-def filter_apply(conn, settings, deps, name: str, photos: list[Path], *, intensity: float = 1.0,
-                 dest: Path | None = None, progress=None) -> tuple[str, Path | None]:
-    """Apply a pack or saved filter to photos; writes <home>/filtered/<date>-<name>/ (or `dest`)."""
-    from datetime import date
+def filter_apply(conn, settings, deps, name: str, photos: list[Path], *, intensity: float | None = None,
+                 dest: Path | None = None, auto: float = 0.6, progress=None) -> tuple[str, Path | None]:
+    """Apply a pack or saved filter to photos; writes <home>/filtered/<date>-<name>/ (or `dest`).
+
+    No `intensity`: the median of your last 10 uses of this filter, else 1.0. A photo that fails goes in the report
+    without stopping the rest; the returned folder is None when none succeeded."""
+    import mimetypes
+    from datetime import date, datetime, timezone
 
     from wonhee import filterstore
     from wonhee.media import path_for
 
+    if intensity is not None and not 0 <= intensity <= 2:
+        raise ValueError(f"intensity must be between 0 and 2, not {intensity:g}")
     spec, rec = filterstore.load(settings.home, name)
-    key = rec["name"]
-    out_dir = dest or settings.home / "filtered" / f"{date.today().isoformat()}-{key}"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    key = filterstore.slug(rec["name"])  # the folder name comes from the slug, never from a file's own "name"
+    usual = intensity is None and filterstore.usual_intensity(settings.home, key)
+    if intensity is None:
+        intensity = usual or 1.0
+    if dest:
+        out_dir = Path(dest).expanduser()
+        out_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        out_dir = unique_dir(settings.home / "filtered", f"{date.today().isoformat()}-{key}")
+    params = {**spec.model_dump(), "intensity": intensity, "auto": auto, **_skin_params(settings)}
     done, failed = 0, []
     for i, photo in enumerate(photos, 1):
-        sha = repo.save_file(conn, settings.media_dir, Path(photo).expanduser(), "image", "image/jpeg")
-        rid, text = node_run(conn, settings, deps, "filter_image", {"image": sha},
-                             {**spec.model_dump(), "intensity": intensity}, progress=progress)
-        o = _step_out(conn, rid, "filter_image")
-        if o is None:
-            failed.append(f"{photo}: {text}")
+        try:
+            src = Path(photo).expanduser()
+            mime = mimetypes.guess_type(src.name)[0] or "image/jpeg"
+            sha = repo.save_file(conn, settings.media_dir, src, "image", mime)
+            rid, text = node_run(conn, settings, deps, "filter_image", {"image": sha}, params, progress=progress)
+            o = _step_out(conn, rid, "filter_image")
+            if o is None:
+                failed.append(f"{photo}: {text}")
+                continue
+            write_atomic_bytes(out_dir / f"{i:02d}-{src.stem}.jpg",
+                               path_for(settings.media_dir, o["image"]).read_bytes())
+        except Exception as e:  # one bad photo (missing, unreadable, node failure) must not stop the batch
+            failed.append(f"{photo}: {e}")
             continue
-        (out_dir / f"{i:02d}-{Path(photo).stem}.jpg").write_bytes(path_for(settings.media_dir, o["image"]).read_bytes())
         done += 1
-    return (f"{key} ({rec['source']}) at {intensity:g}: {done} of {len(photos)} photo(s) -> {out_dir}"
-            + "".join(f"\n  failed {f}" for f in failed)), out_dir
+    if done:
+        filterstore.log_use(settings.home, key, {"intensity": intensity, "n": done, "auto": auto,
+                                                 "date": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    elif not any(out_dir.iterdir()):
+        out_dir.rmdir()
+    how = f"{intensity:g} (your usual)" if usual else f"{intensity:g}"
+    return (f"{key} ({rec['source']}) at intensity {how}: {done} of {len(photos)} photo(s)"
+            + (f" -> {out_dir}" if done else "") + "".join(f"\n  failed {f}" for f in failed),
+            out_dir if done else None)
 
 
 VIZ_KINDS = ("depgraph", "diskviz", "history", "wavegen")
@@ -963,6 +1016,7 @@ def filter_list(settings) -> str:
     mine = filterstore.saved(settings.home)
     lines.append("Yours:" if mine else "Yours: none yet (wonhee filter make \"<a vibe>\" --name <name> --on <photos>)")
     lines += [f"  {r['name']:13} {r.get('description', '')}  [{r.get('score', '?')}/5, {r.get('updated', '')[:10]}]"
+              + (" (shadowed by pack: the pack filter wins; rename the file)" if r["name"] in PACK else "")
               for r in mine]
     return "\n".join(lines)
 
@@ -975,12 +1029,16 @@ def filter_show(settings, name: str, cube: Path | None = None) -> str:
     from wonhee.nodes.filter import describe
     spec, rec = filterstore.load(settings.home, name)
     lines = [f"{rec['name']} ({rec['source']}): {rec.get('description', '')}", f"  knobs: {describe(spec)}"]
+    if rec.get("dropped"):
+        lines.append(f"  ignored unknown keys in the saved file: {', '.join(rec['dropped'])}")
     for h in rec.get("rounds", []):
         lines.append(f"  round {h['round']}: {h['score']}/5 {h['verdict']}")
     if cube:
         cube = Path(cube).expanduser()
-        cube.write_text(F.cube(spec, title=rec["name"]), encoding="utf-8")
+        write_atomic(cube, F.cube(spec, title=rec["name"]))
         skipped = [k for k in ("clarity", "sharpen", "glow", "bloom", "halation", "light_leak", "aberration",
                                "vignette", "grain") if getattr(spec, k)]
         lines.append(f"  LUT written: {cube}" + (f" (not in a LUT: {', '.join(skipped)})" if skipped else ""))
+        lines.append("  also not in the LUT: the correct-first step (auto exposure / white balance) and skin "
+                     "undertone are per photo; in an editor, fix exposure and white balance by eye first")
     return "\n".join(lines)

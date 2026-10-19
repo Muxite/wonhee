@@ -14,14 +14,14 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 import cv2
 from pydantic import BaseModel, ConfigDict, Field
 
 from wonhee.db import repo
 from wonhee.edit import filters as F
-from wonhee.edit import style
+from wonhee.edit import skin, style
 from wonhee.media import path_for
 from wonhee.nodes import registry
 from wonhee.nodes.base import Node
@@ -36,15 +36,25 @@ Engine = Literal["local", "remote"]
 class FilterImageParams(F.Filter):
     intensity: float = Field(default=1.0, ge=0, le=2)
     seed: int = Field(default=0, ge=0)  # grain pattern
+    auto: float = Field(default=0.6, ge=0, le=1, description="correct exposure / white balance first, 0 = off")
+    undertone: Literal["none", "cool", "neutral", "warm", "rose", "gold"] = "none"  # skin tint, after the grade
+    undertone_strength: float = Field(default=0.5, ge=0, le=1)
+
+
+# everything FilterImageParams adds to Filter; derived so a new field cannot reach F.Filter (extra=forbid)
+_EXTRA = set(FilterImageParams.model_fields) - set(F.Filter.model_fields)
 
 
 def filter_image_fn(ctx, inputs, p: FilterImageParams) -> dict[str, str]:
     d = ctx.settings.media_dir
-    spec = F.Filter(**p.model_dump(exclude={"intensity", "seed"}))
-    out = F.apply(style.load(path_for(d, inputs["image"])), spec, p.intensity, seed=p.seed)
+    spec = F.Filter(**p.model_dump(exclude=_EXTRA))
+    tone = None if p.undertone == "none" else skin.Undertone(tone=p.undertone, strength=p.undertone_strength)
+    out = F.apply(style.load(path_for(d, inputs["image"])), spec, p.intensity, seed=p.seed, auto=p.auto,
+                  undertone=tone)
     with tempfile.TemporaryDirectory(prefix="wonhee-filter-") as tmp:
         dest = Path(tmp) / "out.jpg"
-        cv2.imwrite(str(dest), out, [cv2.IMWRITE_JPEG_QUALITY, 94])
+        if not cv2.imwrite(str(dest), out, [cv2.IMWRITE_JPEG_QUALITY, 94]):
+            raise ValueError("could not encode the filtered photo as JPEG")
         return {"image": repo.save_file(ctx.conn, d, dest, "image", "image/jpeg")}
 
 
@@ -52,7 +62,8 @@ def filter_image_fn(ctx, inputs, p: FilterImageParams) -> dict[str, str]:
 # Small local models are bad at writing 28 absolute numbers and good at "warmer, a little". So they pick a starting
 # filter and a handful of moves; code turns words into clamped steps. Nothing they say can leave the ranges.
 
-KNOBS = [k for k in F.NUMERIC] + ["mono"]
+RANGE_KNOBS = ["range_hue", "range_sat", "range_lum"]  # not Filter fields: they step ranges[move.range]
+KNOBS = [k for k in F.NUMERIC] + ["mono", *RANGE_KNOBS]
 Knob = Literal[tuple(KNOBS)]  # type: ignore[valid-type]
 AMOUNT = {"a little": 0.1, "some": 0.2, "a lot": 0.35}
 HUE_OF = {"shadow_tone": "shadow_hue", "highlight_tone": "highlight_hue", "light_leak": "leak_hue"}
@@ -63,20 +74,36 @@ class Move(BaseModel):
     direction: Literal["up", "down"]
     amount: Literal["a little", "some", "a lot"]
     hue: F.Hue = Field(default="none", description="only for shadow_tone, highlight_tone, light_leak: which colour")
+    range: F.ColourRange | None = Field(default=None, description="only for range_hue / range_sat / range_lum: "
+                                                                  "which colour range to adjust")
 
 
 def knob_help() -> str:
     out = []
     for k in KNOBS:
+        if k in RANGE_KNOBS:
+            continue
         f = F.Filter.model_fields[k]
         rng = "on/off" if k == "mono" else "{:g}..{:g}".format(*F._bounds(k))
         out.append(f"{k} ({rng}): {f.description or k}")
+    out.append("range_hue / range_sat / range_lum (-1..1): shift one colour range's hue / saturation / brightness; "
+               "set `range` to one of " + ", ".join(get_args(F.ColourRange)))
     return "; ".join(out)
 
 
 def apply_moves(f: F.Filter, moves: list[Move]) -> tuple[F.Filter, list[str]]:
     d, done = f.model_dump(), []
     for m in moves:
+        if m.knob in RANGE_KNOBS:
+            if m.range is None:
+                done.append(f"{m.knob} ignored: no range given")
+                continue
+            ax = m.knob[len("range_"):]
+            step = AMOUNT[m.amount] * (1 if m.direction == "up" else -1)
+            adj = d["ranges"].setdefault(m.range, {"hue": 0.0, "sat": 0.0, "lum": 0.0})
+            adj[ax] = round(min(max(adj[ax] + step, -1.0), 1.0), 3)
+            done.append(f"{m.range} {ax} {m.direction} {m.amount}")
+            continue
         if m.knob == "mono":
             d["mono"] = m.direction == "up"
         else:
@@ -115,7 +142,11 @@ class Adjust(BaseModel):
 def describe(f: F.Filter) -> str:
     """The non-neutral knobs, compactly (what the models read)."""
     base = F.Filter().model_dump()
-    return json.dumps({k: v for k, v in f.model_dump().items() if v != base[k]})
+    out = {k: v for k, v in f.model_dump().items() if v != base[k] and k != "ranges"}
+    rng = {r: {n: v for n, v in a.items() if v} for r, a in f.model_dump()["ranges"].items()}
+    if rng := {r: a for r, a in rng.items() if a}:
+        out["ranges"] = rng
+    return json.dumps(out)
 
 
 # --- filter_draft ----------------------------------------------------------------------------------------------
@@ -178,6 +209,7 @@ class ReviewParams(BaseModel):
     description: str = Field(min_length=2, max_length=300)
     filter: str = Field(max_length=4000)  # the current Filter JSON
     facts: str = Field(default="", max_length=3000)  # measured checks from the renders
+    history: str = Field(default="", max_length=600)  # how the user has tweaked this filter before
     engine: Engine = "local"
 
 
@@ -193,21 +225,22 @@ def filter_review_fn(ctx, inputs, p: ReviewParams) -> dict[str, str]:
                     [cv2.IMWRITE_JPEG_QUALITY, 85])
         raw = _ask(ctx, p.engine, Adjust, SYSTEM_REVIEW,
                    f"The vibe: {p.description}\n\nCurrent filter (others neutral): {describe(cur)}\n\n"
-                   f"Measured: {p.facts}\n\nKnobs: {knob_help()}", [thumb], "FilterAdjust")
+                   f"Measured: {p.facts}\n\n" + (f"{p.history}\n\n" if p.history else "")
+                   + f"Knobs: {knob_help()}", [thumb], "FilterAdjust")
     new, done = apply_moves(cur, raw.moves[:4])
-    body = {"score": min(max(raw.score, 1), 5), "verdict": raw.verdict, "done": not done, "moves": done,
+    body = {"score": min(max(raw.score, 1), 5), "verdict": raw.verdict, "done": new == cur, "moves": done,
             "filter": new.model_dump()}
     return {"review": save_text(ctx.conn, d, json.dumps(body, indent=1))}
 
 
 _salt = lambda s: {"llm_model": s.llm_model, "local_llm_model": s.local_llm_model}  # noqa: E731
-registry.register(Node("filter_image", 1, {"image": "image"}, {"image": "image"}, FilterImageParams,
+registry.register(Node("filter_image", 2, {"image": "image"}, {"image": "image"}, FilterImageParams,
                        filter_image_fn, "Apply a parametric filter (exposure, contrast, fade, white balance, split "
                        "toning, glow, halation, light leak, grain, ...) to a photo; skin-protected, no masks, "
                        "deterministic."))
-registry.register(Node("filter_draft", 2, {}, {"filter": "text"}, DraftParams, filter_draft_fn,
+registry.register(Node("filter_draft", 3, {}, {"filter": "text"}, DraftParams, filter_draft_fn,
                        "A text model turns a vibe description into filter numbers (or tweaks a saved filter); "
                        "clamped.", salt=_salt))
-registry.register(Node("filter_review", 3, {"sheet": "image"}, {"review": "text"}, ReviewParams, filter_review_fn,
+registry.register(Node("filter_review", 4, {"sheet": "image"}, {"review": "text"}, ReviewParams, filter_review_fn,
                        "A vision model scores before|after pairs against the vibe and moves a few knobs (clamped, "
                        "step-limited).", salt=_salt))
