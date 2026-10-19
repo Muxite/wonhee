@@ -344,7 +344,7 @@ def normalize(im: np.ndarray, amount: float = 0.5) -> tuple[np.ndarray, dict]:
                                                       max(8, round(h * 256 / max(h, w)))), interpolation=cv2.INTER_AREA)
     lab = style.to_lab(t)
     L, a, b = lab[..., 0], lab[..., 1], lab[..., 2]
-    p1, med, p99 = (float(v) for v in np.percentile(L, (1, 50, 99)))
+    p1, p5, med, p95, p99 = (float(v) for v in np.percentile(L, (1, 5, 50, 95, 99)))
     if p99 - p1 < 2:  # flat frame (all black / all white / one colour): nothing to read
         return im.copy(), notes
     with np.errstate(all="ignore"):
@@ -363,10 +363,17 @@ def normalize(im: np.ndarray, amount: float = 0.5) -> tuple[np.ndarray, dict]:
     m = (L > 25) & (L < 85) & (np.hypot(a, b) < 45)
     if m.mean() >= 0.02:
         shift = -np.clip(0.6 * np.array([a[m].mean(), b[m].mean()], np.float32), -6, 6) * amt
-    # exposure toward median L* 50, with a dead zone and no new clipping
+    # exposure toward median L* 50, with a dead zone and no new clipping. A dark frame whose highlights already
+    # reach up (low-key: studio portrait, night street) is meant to be dark, so only dull highlights justify a
+    # lift; likewise only a frame with no real blacks is darkened (high-key with deep shadows is a choice).
     stops = 0.0
     if abs(med - 50) > 5:
-        stops = 3 * np.log2(66 / (med + 16)) * float(np.clip((abs(med - 50) - 5) / 10, 0, 1)) * 0.6 * amt
+        meant = np.clip((85 - p95) / 15, 0, 1) if med < 50 else np.clip((p5 - 15) / 15, 0, 1)
+        sk = skin_weight(a, b) > 0.5
+        if sk.mean() >= 0.02 and 45 <= float(np.median(L[sk])) <= 78:  # the face is exposed right: leave the frame
+            meant = 0.0
+        stops = (3 * np.log2(66 / (med + 16)) * float(np.clip((abs(med - 50) - 5) / 10, 0, 1)) * 0.6 * amt
+                 * float(meant))
         stops = float(np.clip(stops, -0.5, 0.5))
         if stops > 0:
             stops = min(stops, max(0.0, -float(np.log2(_lstar_to_y(np.float32(p99))))))

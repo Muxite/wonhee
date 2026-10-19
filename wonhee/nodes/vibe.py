@@ -254,7 +254,10 @@ def _blown_excess(before: tuple, after: tuple) -> float:
     though it started above L* 94."""
     clip = (after[2] - before[2]) if len(before) > 2 and len(after) > 2 else 0.0
     hi = after[1] - 97.0 if after[1] > 97.0 and after[1] - before[1] > 1.5 else 0.0
-    return max(hi / 3.0, (clip - 0.02) * 20.0 if clip > 0.02 else 0.0, 0.0)
+    # washed out: a mid-toned face pushed up near white loses its modelling even before it clips (a low-key
+    # studio portrait under a high-key look went L* 58 -> 88)
+    washed = (after[0] - before[0] - 22.0) if after[0] > 82.0 and after[0] - before[0] > 22.0 else 0.0
+    return max(hi / 3.0, (clip - 0.02) * 20.0 if clip > 0.02 else 0.0, washed / 10.0, 0.0)
 
 
 def readable(before: tuple, after: tuple) -> bool:
@@ -500,7 +503,7 @@ registry.register(Node("vibe_review", 4, {"image": "image", "profile": "text"}, 
                        vibe_review_fn, "A vision model picks the edit knobs (clamped) for one photo toward a look, "
                        "plus what to change when reshooting.",
                        salt=lambda s: {"llm_model": s.llm_model, "local_llm_model": s.local_llm_model}))
-registry.register(Node("vibe_image", 4, {"image": "image", "profile": "text?"},
+registry.register(Node("vibe_image", 5, {"image": "image", "profile": "text?"},
                        {"image": "image", "notes": "text"}, VibeParams,
                        vibe_image_fn, "Move a photo toward a look profile: tone and per-band colour match with skin "
                        "protection, a soft subject mask only when needed (mask_policy), lens effects (fisheye, "

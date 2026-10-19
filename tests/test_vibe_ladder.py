@@ -24,7 +24,7 @@ def no_mask(monkeypatch):
     monkeypatch.setattr(vibe, "subject_mask", lambda im, p, d, guard=False: (None, "none"))
 
 
-HARD = dict(strength=1.0, tone=1.5)
+HARD = dict(strength=1.0, tone=1.5, auto=0.0)  # the ladder alone; correct-first has its own tests
 
 
 def test_ladder_runs_without_a_person_mask(monkeypatch, tmp_path):
@@ -63,6 +63,8 @@ def test_blown_hole_is_closed():
     assert vibe.readable((60.0, 96.0, 0.0), (62.0, 97.4, 0.0))  # small drift is fine
     assert vibe.readable((60.0, 99.0, 0.3), (60.0, 99.5, 0.31))  # already blown stays as it was
     assert vibe.readable((50.0, 80.0), (50.0, 80.0))  # two-tuples still work
+    assert not vibe.readable((57.7, 80.0, 0.0), (88.4, 95.0, 0.0))  # washed out (the studio portrait case)
+    assert vibe.readable((70.0, 90.0, 0.0), (84.0, 95.0, 0.0))  # a brighter look within reason is fine
 
 
 def test_dark_check_has_an_absolute_cap():

@@ -41,6 +41,17 @@ def test_normalize_removes_a_strong_cast():
     assert notes["wb_shift"][1] < -2 and abs(notes["wb_shift"][1]) <= 6.001
 
 
+def test_low_key_is_left_dark_but_underexposure_is_lifted():
+    im = scene()
+    low_key = np.full_like(im, 25)  # a dark studio backdrop with a bright face: meant to be dark
+    low_key[40:120, 60:140] = SKIN
+    _, notes = F.normalize(low_key, 1.0)
+    assert notes["exposure"] == pytest.approx(0, abs=0.02)
+    under = (im.astype(np.float32) * 0.35).astype(np.uint8)  # the whole frame dull, highlights included
+    _, notes = F.normalize(under, 1.0)
+    assert notes["exposure"] > 0.1
+
+
 def test_graded_photo_is_corrected_less():
     im = scene()
     faded = (im.astype(np.float32) * 0.7 + 60).astype(np.uint8)  # lifted blacks
