@@ -113,12 +113,11 @@ register(Workload(
 # The bench loads once (GAUGE_MARK model_loaded), then times `repeat` compute spans, so gauge's phase_s splits
 # load from compute and spans[0] vs spans[1] is the cold-call vs warm-call cost. `hold` keeps the model resident
 # for X9's what-fits-together runs instead of computing.
-TORCH_CACHE = Path.home() / ".cache" / "torch"  # demucs checkpoints (torch hub)
 MODELS_DIR = WONHEE_REPO / "data" / "models"  # ONNX U2-Net / IS-Net
 COMMON_GPU = dict(image="gauge/wonhee-gpu:1", build="wonhee-gpu", build_context=str(WONHEE_REPO), family="media",
                   gpu=True, shm_size="2g", env={"GAUGE": "1"},
-                  mounts=(f"{MEDIA_DIR}:/media:ro", f"{HF_CACHE}:/root/.cache/huggingface:ro",
-                          f"{TORCH_CACHE}:/root/.cache/torch:ro", f"{MODELS_DIR}:/models:ro"))
+                  # demucs, SAM, DINO, SigLIP2 and whisper all come from the HF cache
+                  mounts=(f"{MEDIA_DIR}:/media:ro", f"{HF_CACHE}:/root/.cache/huggingface:ro", f"{MODELS_DIR}:/models:ro"))
 
 
 class GpuParams(BaseModel):
