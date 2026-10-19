@@ -84,6 +84,15 @@ def setup(a):
     if a.task == "whisper":
         from wonhee.analyze.speech import WhisperTranscriber
         t = WhisperTranscriber(a.model or "turbo", "cuda", a.compute_type)
+        if a.whisper_batch > 1:  # faster-whisper's batched pipeline: VAD chunks decoded together in one pass
+            from faster_whisper import BatchedInferencePipeline
+            pipe = {}
+
+            def batched():
+                pipe.setdefault("p", BatchedInferencePipeline(model=t._load()))
+                segs, _ = pipe["p"].transcribe(str(clip), batch_size=a.whisper_batch)
+                return {"segments": len(list(segs))}
+            return t.ensure_ready, batched
         return t.ensure_ready, lambda: {"segments": len(t.transcribe(clip).segments)}
     if a.task == "mask":
         from wonhee.edit import mask as mk
@@ -150,6 +159,7 @@ def main(argv=None) -> int:
     ap.add_argument("--px", type=int, default=1080)
     ap.add_argument("--prompt", default="person")
     ap.add_argument("--batch", type=int, default=16)
+    ap.add_argument("--whisper-batch", type=int, default=0, help="whisper: >1 uses the batched pipeline")
     ap.add_argument("--models-dir", default="/models")
     ap.add_argument("--cache", choices=["as_is", "cold", "warm"], default="as_is",
                     help="page-cache state of the model files before loading: cold = evicted, warm = read in")

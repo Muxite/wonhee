@@ -134,6 +134,7 @@ class GpuParams(BaseModel):
     images: int = 4  # mask / embed: frames taken from the clip
     px: int = 1080  # mask: long side of each frame
     batch: int = 16  # embed: images per forward pass
+    whisper_batch: int = 0  # whisper: >1 = faster-whisper's batched pipeline with this batch size
     repeat: int = 2
     hold: float = 0  # > 0: load, one call, then stay resident this long (no timed compute)
     cache: Literal["as_is", "cold", "warm"] = "as_is"  # model files' page-cache state before loading
@@ -166,7 +167,8 @@ def gpu_prior(p) -> dict:
 def gpu_cmd(p) -> list[str]:
     return ["python", "-m", "wonhee.bench", p.task, "--clip", f"/media/wonhee_{p.clip_s}s.mp4",
             "--repeat", str(p.repeat), "--hold", str(p.hold), "--engine", p.engine, "--images", str(p.images),
-            "--px", str(p.px), "--batch", str(p.batch), "--models-dir", "/models", "--cache", p.cache]
+            "--px", str(p.px), "--batch", str(p.batch), "--models-dir", "/models", "--cache", p.cache,
+            "--whisper-batch", str(p.whisper_batch)]
 
 
 register(Workload(
