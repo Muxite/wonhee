@@ -207,6 +207,13 @@ def media_rows(r2) -> tuple[list[dict], list[dict]]:
     return stages, par
 
 
+def resident_rows(r2) -> list[dict]:
+    names = {"whisper": "whisper turbo (ctranslate2)", "mask": "Grounding-DINO + SAM 2.1", "separate": "demucs htdemucs",
+             "embed": "SigLIP2 so400m"}
+    return [{"model": names.get(t, t), "vram_gib": r3(med(v), 2), "vram_min": r3(rng(v, "min"), 2), "vram_max": r3(rng(v, "max"), 2),
+             "n": (v or {}).get("n")} for t, v in r2["C0 resident"]["results"].items() if v]
+
+
 def capacity_rows(conn) -> tuple[list[dict], list[dict], list[dict]]:
     summ = CA.summarize(CA.rungs(conn))
     rungs, lad = [], []
@@ -253,6 +260,21 @@ def findings(tables: dict) -> list[dict]:
     if tr:
         out.append({"id": "interference", "figure": r3(tr["llm_keeps"], 2), "unit": "x",
                     "label": "LLM decode speed kept next to training", "detail": f"training keeps {tr['partner_keeps']:.2f}x of its own; next to a bandwidth stressor decode keeps {it.get('Bandwidth stressor', {}).get('llm_keeps', float('nan')):.2f}x"})
+    sh2 = {r["arm"]: r for r in tables["sharing"]}
+    b, c, mp, one = (sh2.get(k) for k in ("batched x4", "copies x4 (timeslice)", "copies x4 (mps)", "single (timeslice)"))
+    if b and c and mp and one:
+        out.append({"id": "batching", "figure": r3(b["agg_tok_s"] / c["agg_tok_s"], 2), "unit": "x",
+                    "label": "more decode throughput: 4 requests batched vs 4 processes",
+                    "detail": f"{b['agg_tok_s']:.0f} vs {c['agg_tok_s']:.0f} tok/s (one request alone: {one['agg_tok_s']:.0f}); the 4 processes take {c['vram_gib'] / b['vram_gib']:.1f}x the VRAM"})
+        gap = (mp["agg_tok_s"] - c["agg_tok_s"]) / (b["agg_tok_s"] - c["agg_tok_s"])
+        out.append({"id": "mps", "figure": r3(gap * 100, 0), "unit": "%",
+                    "label": "of the copies-to-batching gap recovered by MPS",
+                    "detail": f"MPS lifts 4 processes from {c['agg_tok_s']:.0f} to {mp['agg_tok_s']:.0f} tok/s: context switching is part of the loss, missing batching is most of it"})
+    mpar = {r["decode"]: r for r in tables["media_parallel"]}
+    if mpar.get("cpu") and mpar.get("cuvid"):
+        out.append({"id": "nvdec", "figure": r3(mpar["cpu"]["cpu_s_all4"] / mpar["cuvid"]["cpu_s_all4"], 1), "unit": "x",
+                    "label": "less CPU for 4 parallel transcodes with NVDEC",
+                    "detail": f"{mpar['cpu']['cpu_s_all4']:.0f} vs {mpar['cuvid']['cpu_s_all4']:.0f} CPU-s at about the same speed per copy ({mpar['cpu']['per_copy_wall_s']:.1f} vs {mpar['cuvid']['per_copy_wall_s']:.1f} s)"})
     if tables["packing"]:
         best = tables["packing"][0]
         out.append({"id": "packing", "figure": best["gain"], "unit": "x", "label": f"useful work when packing {best['mix']}",
@@ -272,7 +294,7 @@ def main() -> int:
     tables = {"progress": progress(conn), "audit": audit_rows(conn), "profiler": profiler_rows(r2),
               "warmcold": warmcold_rows(r2), "inputs": input_rows(r2), "interference": interference_rows(r2),
               "shapes": shape_rows(conn), "sharing": sharing_rows(r2), "media": stages, "media_parallel": par,
-              "capacity": rungs, "ladders": lad, "packing": pack}
+              "capacity": rungs, "ladders": lad, "packing": pack, "resident": resident_rows(r2)}
     tables["findings"] = findings(tables)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

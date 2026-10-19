@@ -98,6 +98,11 @@
       <div class="pending" id="ladders-pending" hidden></div>
     </div>
     <div class="ladders" id="ladder-charts" data-source="capacity ladders"></div>
+    <div class="card">
+      <h3>Model footprint when held resident</h3>
+      <p class="muted">Steady VRAM per process after one real call, the cost of keeping each model warm in a worker. Each model was measured alone; holding them together was not tested, so read the sum as an estimate.</p>
+      <div class="tablebox"><table id="resident-table" data-source="resident" data-row-key="model"></table></div>
+    </div>
   </section>
 
   <section id="packing">
@@ -583,6 +588,13 @@ dash.onData(() => {
     { field: 'on', label: 'Profiler on', cls: 'num', fmt: (v, d) => `${GP.f2(v)} [${GP.f2(d.on_min)}–${GP.f2(d.on_max)}]` },
     { field: 'steady_change', label: 'Steady-state change', cls: 'num', render: (td, d) => td.append('span').attr('class', `pill ${Math.abs(d.steady_change) > 0.03 ? 'bad' : 'ok'}`).text(d3.format('+.1%')(d.steady_change)) },
     { field: 'wall_ratio', label: 'Wall time', cls: 'num', fmt: (v) => `${GP.f2(v)}x` }, { field: 'n', label: 'Runs', cls: 'num' },
+  ]);
+
+  const rz = GP.rows('resident');
+  if (rz) GP.table(document.getElementById('resident-table'), rz, [
+    { field: 'model', label: 'Model' },
+    { field: 'vram_gib', label: 'VRAM GiB', cls: 'num', fmt: (v, d) => `${GP.f2(v)} [${GP.f2(d.vram_min)}–${GP.f2(d.vram_max)}]` },
+    { field: 'n', label: 'Runs', cls: 'num' },
   ]);
 
   const au = GP.rows('audit');
