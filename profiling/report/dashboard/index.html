@@ -1,0 +1,604 @@
+<style>
+.gp { max-width: 72rem; margin-inline: auto; font-family: var(--font-anthropic-sans); display: grid; gap: var(--cds-gap-xl); }
+.gp h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
+.gp h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; text-wrap: balance; }
+.gp h3 { font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); margin: 0; }
+.gp p { margin: 0; max-width: 68ch; line-height: 1.5; }
+.gp .muted { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.gp .lede { color: var(--color-fg-muted); }
+.gp section { display: grid; gap: var(--cds-gap-md); scroll-margin-top: var(--cds-gap-xl); }
+.gp .head { display: grid; gap: var(--cds-gap-sm); }
+.gp .card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius);
+  padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-sm); min-width: 0; align-content: start; }
+.gp .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: var(--cds-gap-md); }
+.gp .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: var(--cds-gap-md); }
+.gp .fig { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; }
+.gp .fig small { font-family: var(--font-anthropic-sans); font-size: var(--cds-font-size-body); color: var(--color-fg-muted); margin-left: .25em; }
+.gp .flabel { font-weight: var(--cds-font-weight-medium); }
+.gp nav.toc { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs) var(--cds-gap-md); font-size: var(--cds-font-size-caption); }
+.gp nav.toc a { color: var(--color-fg-muted); text-decoration: none; }
+.gp nav.toc a:hover, .gp nav.toc a:focus-visible { color: var(--color-fg); text-decoration: underline; }
+.gp .chips { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs); }
+.gp .chip { font-size: var(--cds-font-size-caption); border: 1px solid var(--color-border-line); border-radius: 999px;
+  padding: 2px var(--cds-pad-sm); display: inline-flex; gap: .4em; align-items: center; font-variant-numeric: tabular-nums; }
+.gp .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--cds-chart-muted); }
+.gp .chip[data-state=complete] .dot { background: var(--color-ok); }
+.gp .chip[data-state=running] .dot { background: var(--color-warn); }
+.gp .tablebox { overflow-x: auto; }
+.gp table { border-collapse: collapse; width: 100%; font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; }
+.gp th { text-align: left; font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); padding: var(--cds-pad-xs) var(--cds-pad-sm);
+  border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+.gp td { padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); vertical-align: top; }
+.gp td.num, .gp th.num { text-align: right; white-space: nowrap; }
+.gp td.wrap { min-width: 14rem; }
+.gp .heat { position: relative; text-align: right; white-space: nowrap; min-width: 4.5rem; }
+.gp .heat span.bar { position: absolute; left: 0; top: 15%; bottom: 15%; border-radius: 3px; background: var(--cds-chart-muted); opacity: .35; }
+.gp .heat span.v { position: relative; }
+.gp .heat.hot span.bar { background: var(--cds-chart-status-critical); opacity: .45; }
+.gp .heat.hot span.v { font-weight: var(--cds-font-weight-medium); }
+.gp .pill { display: inline-block; border-radius: 999px; padding: 0 .55em; border: 1px solid var(--color-border-line); white-space: nowrap; }
+.gp .pill.bad { color: var(--color-bad); } .gp .pill.ok { color: var(--color-ok); } .gp .pill.warn { color: var(--color-warn); }
+.gp .chart { position: relative; min-height: 8rem; }
+.gp .chart svg { display: block; overflow: visible; }
+.gp .chart text { fill: var(--color-fg-muted); font-size: 11px; font-family: var(--font-anthropic-sans); }
+.gp .chart text.strong { fill: var(--color-fg); }
+.gp .pending { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); display: flex; gap: .5em; align-items: center; }
+.gp .pending::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-warn); flex: none; }
+.gp .tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border);
+  border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm);
+  font-size: var(--cds-font-size-caption); white-space: nowrap; z-index: 2; }
+.gp .tip .k { color: var(--cds-text-secondary); }
+.gp .legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs) var(--cds-gap-md); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.gp .legend i { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; margin-right: .35em; vertical-align: -1px; }
+.gp .ladders { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: var(--cds-gap-md); }
+.gp .ladders .card { gap: var(--cds-gap-xs); }
+.gp .method li { margin-bottom: var(--cds-gap-xs); line-height: 1.5; max-width: 72ch; }
+.gp b { font-weight: var(--cds-font-weight-medium); }
+[data-dash-source-state=empty] { color: transparent; }
+[data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+</style>
+
+<div class="gp">
+  <header class="head" id="top">
+    <h1>GPU workload profiling</h1>
+    <p class="lede">What wonhee's work actually asks of one RTX 5070 Ti, and what tops out first when it is pushed: measured with gauge, one job per container, against pre-registered rules.</p>
+    <div class="chips" id="progress" data-source="progress"></div>
+    <nav class="toc" aria-label="Sections">
+      <a href="#findings">Findings</a><a href="#limits">What tops out</a><a href="#capacity">Capacity</a><a href="#packing">Packing</a>
+      <a href="#warmcold">Cold vs warm</a><a href="#interference">Interference</a><a href="#sharing">Sharing modes</a>
+      <a href="#media">Media</a><a href="#inputs">Input size</a><a href="#profiler">Profiler effect</a><a href="#audit">Evidence audit</a><a href="#method">Method</a>
+    </nav>
+  </header>
+
+  <section id="findings">
+    <h2>Findings so far</h2>
+    <div class="grid3" id="findings-cards"></div>
+  </section>
+
+  <section id="limits">
+    <div class="head">
+      <h2>What tops out first, by shape of work</h2>
+      <p class="lede">Each row is one kind of work running alone at full tilt. Cells are the share of each ceiling it reached; a highlighted cell is at 90% or more. Dense math hits the 300 W power limit while the memory system has room; streaming memory saturates the memory controller at half the power; tiny kernels leave the GPU idle and pin one CPU thread.</p>
+    </div>
+    <div class="card">
+      <h3>Share of each ceiling, solo</h3>
+      <p class="muted">Power vs the enforced limit, memory-controller and SM busy time, SM clock vs its maximum, CPU cores in use. Busy time says a kernel ran, not how much of the chip it used.</p>
+      <div class="tablebox"><table id="shapes-table" data-source="shapes" data-row-key="work"></table></div>
+    </div>
+  </section>
+
+  <section id="capacity">
+    <div class="head">
+      <h2>Capacity ladders</h2>
+      <p class="lede">Each task pushed one step at a time (more concurrent copies, or a bigger batch in one process) until throughput stopped rising. The plateau is the first step where doubling the load adds under 10%; the limiter is the one resource at 90% of its ceiling there, or software when none is.</p>
+    </div>
+    <div class="card">
+      <h3>Where each ladder stops, and why</h3>
+      <div class="tablebox"><table id="ladders-table" data-source="ladders" data-row-key="ladder"></table></div>
+      <div class="pending" id="ladders-pending" hidden></div>
+    </div>
+    <div class="ladders" id="ladder-charts" data-source="capacity ladders"></div>
+  </section>
+
+  <section id="packing">
+    <div class="head">
+      <h2>Packing tasks with different limiters</h2>
+      <p class="lede">Each task's speed in the mix as a share of its speed alone, summed. Above 1 the mix gets more useful work from the GPU than any one task could; the dashed line at 1.5 is the pre-registered bar for "packs well".</p>
+    </div>
+    <div class="card">
+      <div class="chart" id="packing-chart" data-source="packing"></div>
+      <div class="pending" id="packing-pending" hidden></div>
+    </div>
+  </section>
+
+  <section id="warmcold">
+    <div class="head">
+      <h2>Cold vs warm: what a call pays before its first result</h2>
+      <p class="lede">The same work with page cache and CUDA JIT cache set on purpose. For whisper the JIT compile in a fresh container is the largest cost by far; a persistent JIT cache removes it. The PyTorch models barely notice JIT and pay for framework import and weights instead.</p>
+    </div>
+    <div class="card">
+      <h3>Time to first result, by phase</h3>
+      <div class="legend" id="wc-legend"></div>
+      <div class="chart" id="wc-chart" data-source="warmcold"></div>
+    </div>
+    <div class="card">
+      <h3>All conditions</h3>
+      <div class="tablebox"><table id="wc-table" data-source="warmcold" data-row-key="condition"></table></div>
+    </div>
+  </section>
+
+  <section id="interference">
+    <div class="head">
+      <h2>Interference: who loses when two jobs share the GPU</h2>
+      <p class="lede">LLM decode next to partners that each hold one resource busy, both sides measured. The loss tracks how long the partner holds the GPU per time slice more than which resource it uses: the bandwidth stressor competes for decode's own bottleneck yet hurts it less than dense math does.</p>
+    </div>
+    <div class="card">
+      <h3>Share of solo speed kept, each side</h3>
+      <div class="legend"><span><i style="background: var(--cds-chart-status-critical)"></i>LLM decode</span><span><i style="background: var(--cds-chart-muted)"></i>its partner</span></div>
+      <div class="chart" id="int-chart" data-source="interference"></div>
+    </div>
+  </section>
+
+  <section id="sharing">
+    <div class="head">
+      <h2>Sharing modes at fixed work</h2>
+      <p class="lede">Four requests of the same size, run as one batch, as four time-sliced processes, or as four MPS clients sharing one server context. Same tool and model in every arm.</p>
+    </div>
+    <div class="card">
+      <div class="chart" id="sharing-chart" data-source="sharing"></div>
+      <div class="pending" id="sharing-pending" hidden></div>
+      <div class="tablebox"><table id="sharing-table" data-source="sharing" data-row-key="arm"></table></div>
+    </div>
+  </section>
+
+  <section id="media">
+    <div class="head">
+      <h2>Media: which engine carries a transcode</h2>
+      <p class="lede">Decode, encode and full transcode run apart, on the CPU or on the GPU's media engines. Engine utilisation confirms each run used the backend it asked for.</p>
+    </div>
+    <div class="grid">
+      <div class="card"><h3>Stages</h3><div class="pending" id="media-pending" hidden></div>
+        <div class="tablebox"><table id="media-table" data-source="media" data-row-key="case"></table></div></div>
+      <div class="card"><h3>Four transcodes at once</h3>
+        <div class="tablebox"><table id="mediap-table" data-source="media_parallel" data-row-key="decode"></table></div></div>
+    </div>
+  </section>
+
+  <section id="inputs">
+    <div class="head">
+      <h2>Input size</h2>
+      <p class="lede">Warm call time scales with the amount of input (images, seconds of audio), while VRAM stays almost flat: the model's weights dominate memory. Pixel count barely matters because the models resize internally.</p>
+    </div>
+    <div class="card"><div class="tablebox"><table id="inputs-table" data-source="inputs" data-row-key="node,input"></table></div></div>
+  </section>
+
+  <section id="profiler">
+    <div class="head">
+      <h2>Profiler effect</h2>
+      <p class="lede">Nsight slows steady-state work beyond the ±3% tolerance set before the runs, so every rate on this page comes from profiler-off runs. Traced runs are used only for what the GPU did inside a call.</p>
+    </div>
+    <div class="card"><div class="tablebox"><table id="profiler-table" data-source="profiler" data-row-key="case"></table></div></div>
+  </section>
+
+  <section id="audit">
+    <div class="head">
+      <h2>Evidence audit of the earlier runs</h2>
+      <p class="lede">Before adding runs, the existing ledger was checked against what the evidence needs. These gaps shaped every experiment above: interleaved order, matched baselines, cache state as a condition, and profiler-off rates.</p>
+    </div>
+    <div class="card"><div class="tablebox"><table id="audit-table" data-source="audit" data-row-key="need"></table></div></div>
+  </section>
+
+  <section id="method">
+    <h2>Method and limits</h2>
+    <ul class="method">
+      <li>Every job runs in its own Docker container under gauge. Container CPU and RAM come from cgroup v2; VRAM per process and device readings (power, clocks, engine use, PCIe) from NVML every 100 ms.</li>
+      <li>Each experiment file states its question, measure, analysis rule, tolerance and stopping rule before it runs. Conditions are interleaved and each round shuffled with a fixed seed; solo references run inside the same file as their co-runs.</li>
+      <li>Page cache and the CUDA JIT cache are set explicitly per run. Each run records its exact command, input hashes and image digest.</li>
+      <li>Ranges in brackets are the minimum and maximum over repeats; most cells have two or three. One GPU model, one machine: ratios are expected to carry over better than absolute numbers.</li>
+      <li>Device readings are whole-GPU. In co-runs they belong to all jobs together; per-job speed comes from each job's own counters.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+// shared helpers: formatting, tooltips, pending lines, marked tables
+window.GP = (() => {
+  const f2 = d3.format('.2f'), f1 = d3.format('.1f'), pct = d3.format('.0%');
+  const num = (v, f = f2) => v == null || Number.isNaN(+v) ? '–' : f(+v);
+  const rows = (id) => { const d = dash.data(id); return d.status === 'ok' && Array.isArray(d.data) ? d.data : null; };
+  const status = (id) => dash.data(id).status;
+  function progressFor(exp) {
+    const p = rows('progress');
+    return p ? p.find((r) => r.experiment === exp) : null;
+  }
+  function pending(el, exp, what) {
+    const p = progressFor(exp);
+    const where = p ? (p.state === 'running' ? `${p.succeeded + p.failed} of ${p.planned_runs} runs done` : 'queued') : 'queued';
+    el.textContent = `${what} fills in when ${exp} finishes (${where}).`;
+    el.hidden = false;
+  }
+  function failed(el) {
+    el.replaceChildren();
+    const s = document.createElement('div');
+    s.className = 'pending';
+    s.textContent = 'Failed to load';
+    el.appendChild(s);
+  }
+  function table(el, data, cols) {
+    const t = d3.select(el);
+    t.selectAll('*').remove();
+    const hr = t.append('thead').append('tr');
+    cols.forEach((c) => hr.append('th').attr('data-field', c.field).attr('class', c.cls || null).text(c.label));
+    const tb = t.append('tbody');
+    data.forEach((r) => {
+      const tr = tb.append('tr');
+      cols.forEach((c) => {
+        const td = tr.append('td').attr('class', c.cls || null);
+        if (c.render) c.render(td, r); else td.text(c.fmt ? c.fmt(r[c.field], r) : (r[c.field] ?? '–'));
+      });
+    });
+  }
+  function heat(td, v, fmt = pct) {
+    td.classed('heat', true).classed('hot', v != null && v >= 0.9);
+    td.append('span').attr('class', 'bar').style('width', `${Math.max(0, Math.min(1, v || 0)) * 100}%`);
+    td.append('span').attr('class', 'v').text(v == null ? '–' : fmt(v));
+  }
+  function tip(box) {
+    let t = box.querySelector(':scope > .tip');
+    if (!t) { t = document.createElement('div'); t.className = 'tip'; t.hidden = true; box.appendChild(t); }
+    return {
+      show(ev, lines) {
+        t.replaceChildren();
+        lines.forEach(([k, v], i) => {
+          const d = document.createElement('div');
+          if (i === 0) { d.className = 'k'; d.textContent = k; } else { d.textContent = `${k}: ${v}`; }
+          t.appendChild(d);
+        });
+        t.hidden = false;
+        const b = box.getBoundingClientRect(), w = t.offsetWidth, h = t.offsetHeight;
+        let x = ev.clientX - b.left + 12, y = ev.clientY - b.top + 12;
+        if (x + w > b.width) x = Math.max(0, ev.clientX - b.left - w - 12);
+        if (y + h > b.height + 40) y = Math.max(0, ev.clientY - b.top - h - 12);
+        t.style.left = `${x}px`; t.style.top = `${y}px`;
+      },
+      hide() { t.hidden = true; },
+    };
+  }
+  // width of a label as drawn, for margins
+  function textWidth(svg, labels) {
+    const g = svg.append('g').attr('opacity', 0);
+    const w = d3.max(labels, (s) => g.append('text').text(s).node().getComputedTextLength()) || 0;
+    g.remove();
+    return w;
+  }
+  return { f1, f2, pct, num, rows, status, pending, failed, table, heat, tip, textWidth, progressFor };
+})();
+</script>
+
+<script>
+// header: progress chips; findings cards
+dash.onData(() => {
+  const el = document.getElementById('progress');
+  const p = GP.rows('progress');
+  el.replaceChildren();
+  if (p) p.forEach((r) => {
+    const c = document.createElement('span');
+    c.className = 'chip';
+    c.dataset.state = r.state;
+    const dot = document.createElement('span'); dot.className = 'dot';
+    const t = document.createElement('span');
+    t.textContent = `${r.experiment} · ${r.state === 'complete' ? 'done' : `${r.succeeded + r.failed}/${r.planned_runs}`}`;
+    c.append(dot, t);
+    el.appendChild(c);
+  });
+
+  const box = document.getElementById('findings-cards');
+  const f = GP.rows('findings');
+  box.replaceChildren();
+  if (!f) { if (GP.status('findings') === 'error') GP.failed(box); return; }
+  f.forEach((r) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const where = `id=${encodeURIComponent(r.id)}`;
+    const fig = document.createElement('div'); fig.className = 'fig';
+    const v = document.createElement('span');
+    Object.assign(v.dataset, { source: 'findings', field: 'figure', where });
+    v.textContent = Math.abs(r.figure) >= 100 ? d3.format(',.0f')(r.figure) : d3.format(',.2~f')(r.figure);
+    const u = document.createElement('small');
+    Object.assign(u.dataset, { source: 'findings', field: 'unit', where });
+    u.textContent = r.unit;
+    fig.append(v, u);
+    const l = document.createElement('div'); l.className = 'flabel';
+    Object.assign(l.dataset, { source: 'findings', field: 'label', where });
+    l.textContent = r.label;
+    const d = document.createElement('p'); d.className = 'muted';
+    Object.assign(d.dataset, { source: 'findings', field: 'detail', where });
+    d.textContent = r.detail;
+    card.append(fig, l, d);
+    box.appendChild(card);
+  });
+});
+</script>
+
+<script>
+// what tops out: solo resource shares
+dash.onData(() => {
+  const el = document.getElementById('shapes-table');
+  const r = GP.rows('shapes');
+  if (!r) { d3.select(el).selectAll('*').remove(); return; }
+  GP.table(el, r, [
+    { field: 'work', label: 'Work' },
+    { field: 'rate', label: 'Rate', cls: 'num', fmt: (v, row) => `${d3.format(',.4~r')(v)} ${row.unit}` },
+    { field: 'power', label: 'Power / limit', render: (td, row) => GP.heat(td, row.power) },
+    { field: 'power_capped', label: 'Time power-capped', render: (td, row) => GP.heat(td, row.power_capped) },
+    { field: 'memctl_busy', label: 'Memory controller busy', render: (td, row) => GP.heat(td, row.memctl_busy) },
+    { field: 'sm_busy', label: 'SM busy', render: (td, row) => GP.heat(td, row.sm_busy) },
+    { field: 'sm_clock', label: 'SM clock / max', render: (td, row) => GP.heat(td, row.sm_clock) },
+    { field: 'cpu_cores', label: 'CPU cores', cls: 'num', fmt: (v) => GP.num(v, GP.f1) },
+    { field: 'n', label: 'Runs', cls: 'num' },
+  ]);
+});
+</script>
+
+<script>
+// capacity: ladder summary table and small multiples
+dash.onData(() => {
+  const tEl = document.getElementById('ladders-table'), pend = document.getElementById('ladders-pending');
+  const charts = document.getElementById('ladder-charts');
+  const lad = GP.rows('ladders'), rungs = GP.rows('capacity');
+  charts.replaceChildren();
+  if (!lad || !lad.length) { d3.select(tEl).selectAll('*').remove(); GP.pending(pend, 'C8 capacity', 'This section'); return; }
+  pend.hidden = true;
+  const fmtRate = (v) => v == null ? '–' : d3.format(',.4~r')(v);
+  GP.table(tEl, lad, [
+    { field: 'ladder', label: 'Task and knob' },
+    { field: 'peak_rate', label: 'Peak', cls: 'num', fmt: (v, r) => `${fmtRate(v)} ${r.unit || ''}` },
+    { field: 'peak_level', label: 'At', cls: 'num' },
+    { field: 'speedup', label: 'Peak vs first step', cls: 'num', fmt: (v) => v == null ? '–' : `${GP.f2(v)}x` },
+    { field: 'plateau_level', label: 'Plateau at', cls: 'num', fmt: (v) => v ?? 'none' },
+    { field: 'limiter', label: 'Tops out first', render: (td, r) => td.append('span').attr('class', `pill ${r.limiter && r.limiter.startsWith('software') ? 'warn' : 'bad'}`).text(r.limiter || '–') },
+    { field: 'wall_at', label: 'Failed at', cls: 'num', fmt: (v) => v ?? '' },
+  ]);
+  if (!rungs) return;
+  const RES = [['power', 'power'], ['memctl_busy', 'memory ctl'], ['sm_busy', 'SM busy'], ['vram', 'VRAM'], ['nvenc', 'NVENC'],
+    ['nvdec', 'NVDEC'], ['cpu', 'CPU'], ['pcie', 'PCIe'], ['sm_clock', 'SM clock']];
+  lad.forEach((L) => {
+    const rs = rungs.filter((r) => r.ladder === L.ladder && r.rate != null).sort((a, b) => a.level - b.level);
+    if (!rs.length) return;
+    const card = document.createElement('div'); card.className = 'card';
+    const h = document.createElement('h3'); h.textContent = L.ladder;
+    const note = document.createElement('p'); note.className = 'muted';
+    note.textContent = `${L.unit} by ${/batch|tokens/.test(L.ladder) ? 'batch or size' : 'concurrent copies'}; red points have a resource at 90% or more`;
+    const box = document.createElement('div'); box.className = 'chart'; box.style.minHeight = '150px';
+    card.append(h, note, box);
+    charts.appendChild(card);
+    const W = Math.max(220, box.clientWidth || 260), H = 150;
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    const yMax = d3.max(rs, (r) => r.rate_max ?? r.rate);
+    const ytick = d3.format('~s');
+    const left = GP.textWidth(svg, [ytick(yMax)]) + 10, m = { t: 10, r: 10, b: 24, l: left };
+    const x = d3.scalePoint(rs.map((r) => r.level), [m.l, W - m.r]).padding(0.3);
+    const y = d3.scaleLinear([0, yMax * 1.08], [H - m.b, m.t]).nice();
+    svg.append('g').selectAll('line').data(y.ticks(3)).join('line').attr('x1', m.l).attr('x2', W - m.r)
+      .attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('text').data(y.ticks(3)).join('text').attr('x', m.l - 6).attr('y', (d) => y(d) + 4)
+      .attr('text-anchor', 'end').text(ytick);
+    svg.append('g').selectAll('text').data(rs).join('text').attr('x', (r) => x(r.level)).attr('y', H - 6)
+      .attr('text-anchor', 'middle').text((r) => r.level);
+    svg.append('path').datum(rs).attr('fill', 'none').attr('stroke', dash.colors[0]).attr('stroke-width', 2)
+      .attr('stroke-linecap', 'round').attr('stroke-linejoin', 'round').attr('d', d3.line((r) => x(r.level), (r) => y(r.rate)));
+    svg.append('g').selectAll('line').data(rs.filter((r) => r.rate_min != null)).join('line')
+      .attr('x1', (r) => x(r.level)).attr('x2', (r) => x(r.level)).attr('y1', (r) => y(r.rate_min)).attr('y2', (r) => y(r.rate_max))
+      .attr('stroke', dash.colors[0]).attr('stroke-width', 1);
+    const hot = (r) => RES.some(([k]) => (r[k] || 0) >= 0.9);
+    const tt = GP.tip(box);
+    svg.append('g').selectAll('circle').data(rs).join('circle').attr('cx', (r) => x(r.level)).attr('cy', (r) => y(r.rate)).attr('r', 4)
+      .attr('fill', (r) => hot(r) ? 'var(--cds-chart-status-critical)' : dash.colors[0])
+      .on('pointermove', (ev, r) => tt.show(ev, [[`${L.ladder}, ${r.level}`], ['Throughput', `${fmtRate(r.rate)} ${r.unit}`],
+        ...RES.filter(([k]) => r[k] != null).map(([k, n]) => [n, GP.pct(r[k])])]))
+      .on('pointerleave', () => tt.hide());
+  });
+});
+</script>
+
+<script>
+// packing: gain per mix
+dash.onData(() => {
+  const box = document.getElementById('packing-chart'), pend = document.getElementById('packing-pending');
+  d3.select(box).selectAll('svg').remove();
+  const r = GP.rows('packing');
+  if (!r || !r.length) { box.style.minHeight = '0'; GP.pending(pend, 'C8 packing', 'This chart'); return; }
+  pend.hidden = true; box.style.minHeight = '';
+  const W = Math.max(300, box.clientWidth), rowH = 30;
+  const svg = d3.select(box).append('svg').attr('width', '100%');
+  const left = GP.textWidth(svg, r.map((d) => d.mix)) + 12, m = { t: 8, r: 48, b: 22, l: Math.min(left, W * 0.5) };
+  const H = m.t + m.b + r.length * rowH;
+  svg.attr('viewBox', `0 0 ${W} ${H}`);
+  const x = d3.scaleLinear([0, Math.max(2, d3.max(r, (d) => d.gain_max))], [m.l, W - m.r]).nice();
+  const y = d3.scaleBand(r.map((d) => d.mix), [m.t, H - m.b]).padding(0.3);
+  svg.append('g').selectAll('line').data(x.ticks(5)).join('line').attr('x1', x).attr('x2', x).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-grid)');
+  svg.append('g').selectAll('text').data(x.ticks(5)).join('text').attr('x', x).attr('y', H - 6).attr('text-anchor', 'middle').text((d) => `${d}x`);
+  const tt = GP.tip(box);
+  svg.append('g').selectAll('rect').data(r).join('rect').attr('x', x(0)).attr('y', (d) => y(d.mix)).attr('height', y.bandwidth())
+    .attr('width', (d) => x(d.gain) - x(0)).attr('rx', 4).attr('fill', (d) => d.packs_well ? dash.colors[0] : 'var(--cds-chart-muted)')
+    .on('pointermove', (ev, d) => tt.show(ev, [[d.mix], ['Packing gain', `${GP.f2(d.gain)}x (${GP.f2(d.gain_min)}–${GP.f2(d.gain_max)})`], ['Shares', d.shares]]))
+    .on('pointerleave', () => tt.hide());
+  svg.append('g').selectAll('text').data(r).join('text').attr('x', m.l - 6).attr('y', (d) => y(d.mix) + y.bandwidth() / 2 + 4).attr('text-anchor', 'end').attr('class', 'strong').text((d) => d.mix);
+  svg.append('g').selectAll('text').data(r).join('text').attr('x', (d) => x(d.gain) + 6).attr('y', (d) => y(d.mix) + y.bandwidth() / 2 + 4).text((d) => `${GP.f2(d.gain)}x`);
+  [1, 1.5].forEach((v, i) => svg.append('line').attr('x1', x(v)).attr('x2', x(v)).attr('y1', m.t).attr('y2', H - m.b)
+    .attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', i ? '4 3' : null));
+});
+</script>
+
+<script>
+// cold vs warm: stacked phases to first result
+dash.onData(() => {
+  const box = document.getElementById('wc-chart'), tEl = document.getElementById('wc-table');
+  d3.select(box).selectAll('svg').remove();
+  const r = GP.rows('warmcold');
+  if (!r) { if (GP.status('warmcold') === 'error') GP.failed(box); d3.select(tEl).selectAll('*').remove(); return; }
+  const P = [['imports_s', 'Interpreter and imports'], ['framework_s', 'Framework import'], ['weights_s', 'Model weights'], ['first_result_s', 'First call (incl. JIT)']];
+  const leg = document.getElementById('wc-legend');
+  leg.replaceChildren();
+  P.forEach(([, n], i) => { const s = document.createElement('span'); const sw = document.createElement('i'); sw.style.background = dash.colors[i]; s.append(sw, n); leg.appendChild(s); });
+  const s2 = document.createElement('span'); const sw2 = document.createElement('i'); sw2.style.background = 'var(--cds-chart-muted)'; s2.append(sw2, 'Whole node run'); leg.appendChild(s2);
+  const order = ['whisper', 'worker', 'node run', 'mask'];
+  const data = r.slice().sort((a, b) => order.indexOf(a.task) - order.indexOf(b.task) || a.condition.localeCompare(b.condition));
+  const total = (d) => d.task === 'node run' ? d.wall_s : P.reduce((s, [k]) => s + (d[k] || 0), 0);
+  const W = Math.max(320, box.clientWidth), rowH = 26;
+  const svg = d3.select(box).append('svg').attr('width', '100%');
+  const left = Math.min(GP.textWidth(svg, data.map((d) => d.condition)) + 12, W * 0.45), m = { t: 6, r: 52, b: 22, l: left };
+  const H = m.t + m.b + data.length * rowH;
+  svg.attr('viewBox', `0 0 ${W} ${H}`);
+  const x = d3.scaleLinear([0, d3.max(data, total)], [m.l, W - m.r]).nice();
+  const y = d3.scaleBand(data.map((d) => d.condition), [m.t, H - m.b]).padding(0.25);
+  svg.append('g').selectAll('line').data(x.ticks(6)).join('line').attr('x1', x).attr('x2', x).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-grid)');
+  svg.append('g').selectAll('text').data(x.ticks(6)).join('text').attr('x', x).attr('y', H - 6).attr('text-anchor', 'middle').text((d) => `${d} s`);
+  const tt = GP.tip(box);
+  data.forEach((d) => {
+    let acc = 0;
+    const segs = d.task === 'node run' ? [['wall_s', 'Whole node run', 'var(--cds-chart-muted)']] : P.map(([k, n], i) => [k, n, dash.colors[i]]);
+    segs.forEach(([k, n, c]) => {
+      const v = d[k] || 0;
+      if (!v) return;
+      svg.append('rect').attr('x', x(acc)).attr('y', y(d.condition)).attr('width', Math.max(0, x(acc + v) - x(acc) - 1)).attr('height', y.bandwidth())
+        .attr('fill', c).attr('rx', 2)
+        .on('pointermove', (ev) => tt.show(ev, [[d.condition], [n, `${GP.f2(v)} s`], ['To first result', `${GP.f1(total(d))} s`], ['Later calls', `${GP.num(d.later_s)} s`]]))
+        .on('pointerleave', () => tt.hide());
+      acc += v;
+    });
+    svg.append('text').attr('x', x(acc) + 6).attr('y', y(d.condition) + y.bandwidth() / 2 + 4).text(`${GP.f1(acc)} s`);
+  });
+  svg.append('g').selectAll('text').data(data).join('text').attr('class', 'strong').attr('x', m.l - 6).attr('y', (d) => y(d.condition) + y.bandwidth() / 2 + 4).attr('text-anchor', 'end').text((d) => d.condition);
+
+  GP.table(tEl, data, [
+    { field: 'condition', label: 'Condition' },
+    { field: 'imports_s', label: 'Imports s', cls: 'num', fmt: (v) => GP.num(v) },
+    { field: 'framework_s', label: 'Framework s', cls: 'num', fmt: (v) => GP.num(v) },
+    { field: 'weights_s', label: 'Weights s', cls: 'num', fmt: (v) => GP.num(v) },
+    { field: 'first_result_s', label: 'First call s', cls: 'num', fmt: (v, d) => v == null ? '–' : `${GP.f2(v)} [${GP.f2(d.first_min)}–${GP.f2(d.first_max)}]` },
+    { field: 'later_s', label: 'Later calls s', cls: 'num', fmt: (v) => GP.num(v) },
+    { field: 'wall_s', label: 'Whole run s', cls: 'num', fmt: (v, d) => v == null ? '–' : `${GP.f2(v)} [${GP.f2(d.wall_min)}–${GP.f2(d.wall_max)}]` },
+    { field: 'n', label: 'Runs', cls: 'num' },
+  ]);
+});
+</script>
+
+<script>
+// interference dumbbells
+dash.onData(() => {
+  const box = document.getElementById('int-chart');
+  d3.select(box).selectAll('svg').remove();
+  const r = GP.rows('interference');
+  if (!r || !r.length) { if (GP.status('interference') === 'error') GP.failed(box); return; }
+  const W = Math.max(320, box.clientWidth), rowH = 40;
+  const svg = d3.select(box).append('svg').attr('width', '100%');
+  const left = Math.min(GP.textWidth(svg, r.map((d) => d.partner)) + 12, W * 0.4), m = { t: 8, r: 20, b: 24, l: left };
+  const H = m.t + m.b + r.length * rowH;
+  svg.attr('viewBox', `0 0 ${W} ${H}`);
+  const x = d3.scaleLinear([0, 1], [m.l, W - m.r]);
+  const y = d3.scaleBand(r.map((d) => d.partner), [m.t, H - m.b]).padding(0.4);
+  svg.append('g').selectAll('line').data(x.ticks(5)).join('line').attr('x1', x).attr('x2', x).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-grid)');
+  svg.append('g').selectAll('text').data(x.ticks(5)).join('text').attr('x', x).attr('y', H - 6).attr('text-anchor', 'middle').text(GP.pct);
+  const tt = GP.tip(box);
+  const cy = (d) => y(d.partner) + y.bandwidth() / 2;
+  r.forEach((d) => {
+    svg.append('line').attr('x1', x(d.llm_keeps)).attr('x2', x(d.partner_keeps ?? d.llm_keeps)).attr('y1', cy(d)).attr('y2', cy(d)).attr('stroke', 'var(--cds-chart-axis)').attr('stroke-width', 2);
+    if (d.llm_min != null && d.llm_max != null) svg.append('line').attr('x1', x(d.llm_min)).attr('x2', x(d.llm_max)).attr('y1', cy(d) - 8).attr('y2', cy(d) - 8).attr('stroke', 'var(--cds-chart-status-critical)');
+    const show = (ev) => tt.show(ev, [[`LLM decode with ${d.partner}`], ['Decode keeps', `${GP.pct(d.llm_keeps)} (${GP.pct(d.llm_min)}–${GP.pct(d.llm_max)})`], ['Partner keeps', d.partner_keeps == null ? '–' : GP.pct(d.partner_keeps)], ['Runs', d.n]]);
+    if (d.partner_keeps != null) svg.append('circle').attr('cx', x(d.partner_keeps)).attr('cy', cy(d)).attr('r', 6).attr('fill', 'var(--cds-chart-muted)').on('pointermove', show).on('pointerleave', () => tt.hide());
+    svg.append('circle').attr('cx', x(d.llm_keeps)).attr('cy', cy(d)).attr('r', 6).attr('fill', 'var(--cds-chart-status-critical)').on('pointermove', show).on('pointerleave', () => tt.hide());
+  });
+  svg.append('g').selectAll('text').data(r).join('text').attr('class', 'strong').attr('x', m.l - 10).attr('y', (d) => cy(d) + 4).attr('text-anchor', 'end').text((d) => d.partner);
+});
+</script>
+
+<script>
+// sharing modes
+dash.onData(() => {
+  const box = document.getElementById('sharing-chart'), pend = document.getElementById('sharing-pending'), tEl = document.getElementById('sharing-table');
+  d3.select(box).selectAll('svg').remove();
+  const r = GP.rows('sharing');
+  if (!r || !r.length) { box.style.minHeight = '0'; d3.select(tEl).selectAll('*').remove(); GP.pending(pend, 'C2 sharing', 'This section'); return; }
+  pend.hidden = true; box.style.minHeight = '';
+  const W = Math.max(320, box.clientWidth), rowH = 30;
+  const svg = d3.select(box).append('svg').attr('width', '100%');
+  const left = Math.min(GP.textWidth(svg, r.map((d) => d.arm)) + 12, W * 0.45), m = { t: 6, r: 70, b: 22, l: left };
+  const H = m.t + m.b + r.length * rowH;
+  svg.attr('viewBox', `0 0 ${W} ${H}`);
+  const x = d3.scaleLinear([0, d3.max(r, (d) => d.agg_max ?? d.agg_tok_s)], [m.l, W - m.r]).nice();
+  const y = d3.scaleBand(r.map((d) => d.arm), [m.t, H - m.b]).padding(0.3);
+  svg.append('g').selectAll('text').data(x.ticks(5)).join('text').attr('x', x).attr('y', H - 6).attr('text-anchor', 'middle').text(d3.format('~s'));
+  const tt = GP.tip(box);
+  svg.append('g').selectAll('rect').data(r).join('rect').attr('x', x(0)).attr('y', (d) => y(d.arm)).attr('height', y.bandwidth())
+    .attr('width', (d) => x(d.agg_tok_s || 0) - x(0)).attr('rx', 4).attr('fill', (d, i) => dash.colors[i % 8])
+    .on('pointermove', (ev, d) => tt.show(ev, [[d.arm], ['Aggregate decode', `${d3.format(',.0f')(d.agg_tok_s)} tok/s`], ['Slowest request', `${GP.f2(d.tail_s)} s`], ['VRAM', `${GP.f2(d.vram_gib)} GiB`]]))
+    .on('pointerleave', () => tt.hide());
+  svg.append('g').selectAll('text').data(r).join('text').attr('class', 'strong').attr('x', m.l - 6).attr('y', (d) => y(d.arm) + y.bandwidth() / 2 + 4).attr('text-anchor', 'end').text((d) => d.arm);
+  svg.append('g').selectAll('text').data(r).join('text').attr('x', (d) => x(d.agg_tok_s || 0) + 6).attr('y', (d) => y(d.arm) + y.bandwidth() / 2 + 4).text((d) => `${d3.format(',.0f')(d.agg_tok_s)} tok/s`);
+  GP.table(tEl, r, [
+    { field: 'arm', label: 'Arm' },
+    { field: 'agg_tok_s', label: 'Aggregate tok/s', cls: 'num', fmt: (v, d) => `${d3.format(',.0f')(v)} [${d3.format(',.0f')(d.agg_min)}–${d3.format(',.0f')(d.agg_max)}]` },
+    { field: 'tail_s', label: 'Slowest request s', cls: 'num', fmt: (v) => GP.num(v) },
+    { field: 'vram_gib', label: 'VRAM GiB', cls: 'num', fmt: (v) => GP.num(v) },
+    { field: 'failed', label: 'Failed', cls: 'num' },
+    { field: 'n', label: 'Runs', cls: 'num' },
+  ]);
+});
+</script>
+
+<script>
+// media, inputs, profiler, audit tables
+dash.onData(() => {
+  const m = GP.rows('media'), mEl = document.getElementById('media-table');
+  if (!m || !m.length) { d3.select(mEl).selectAll('*').remove(); GP.pending(document.getElementById('media-pending'), 'C6 media', 'This table'); }
+  else {
+    document.getElementById('media-pending').hidden = true;
+    GP.table(mEl, m, [
+      { field: 'case', label: 'Stage and engine' },
+      { field: 'wall_s', label: 'Wall s', cls: 'num', fmt: (v) => GP.num(v) }, { field: 'cpu_s', label: 'CPU s', cls: 'num', fmt: (v) => GP.num(v, GP.f1) },
+      { field: 'nvdec_pct', label: 'NVDEC %', cls: 'num', fmt: (v) => GP.num(v, GP.f1) }, { field: 'nvenc_pct', label: 'NVENC %', cls: 'num', fmt: (v) => GP.num(v, GP.f1) },
+      { field: 'backend_ok', label: 'Backend', render: (td, d) => td.append('span').attr('class', `pill ${d.backend_ok ? 'ok' : 'bad'}`).text(d.backend_ok ? 'as asked' : 'check') },
+    ]);
+  }
+  const mp = GP.rows('media_parallel'), mpEl = document.getElementById('mediap-table');
+  if (mp && mp.length) GP.table(mpEl, mp, [
+    { field: 'decode', label: 'Decode' }, { field: 'per_copy_wall_s', label: 'Per copy s', cls: 'num', fmt: (v) => GP.num(v) },
+    { field: 'slowdown_vs_solo', label: 'vs one alone', cls: 'num', fmt: (v) => v == null ? '–' : `${GP.f2(v)}x` },
+    { field: 'cpu_s_all4', label: 'CPU s, all four', cls: 'num', fmt: (v) => GP.num(v, GP.f1) }, { field: 'failed', label: 'Failed', cls: 'num' },
+  ]); else d3.select(mpEl).selectAll('*').remove();
+
+  const inp = GP.rows('inputs');
+  if (inp) GP.table(document.getElementById('inputs-table'), inp, [
+    { field: 'node', label: 'Node' }, { field: 'input', label: 'Input' },
+    { field: 'load_s', label: 'Load s', cls: 'num', fmt: (v) => GP.num(v) }, { field: 'first_s', label: 'First call s', cls: 'num', fmt: (v) => GP.num(v) },
+    { field: 'later_s', label: 'Later calls s', cls: 'num', fmt: (v, d) => `${GP.f2(v)} [${GP.f2(d.later_min)}–${GP.f2(d.later_max)}]` },
+    { field: 'vram_gib', label: 'VRAM GiB', cls: 'num', fmt: (v) => GP.num(v) }, { field: 'n', label: 'Runs', cls: 'num' },
+  ]);
+
+  const pr = GP.rows('profiler');
+  if (pr) GP.table(document.getElementById('profiler-table'), pr, [
+    { field: 'case', label: 'Case' }, { field: 'metric', label: 'Metric' },
+    { field: 'off', label: 'Profiler off', cls: 'num', fmt: (v, d) => `${GP.f2(v)} [${GP.f2(d.off_min)}–${GP.f2(d.off_max)}]` },
+    { field: 'on', label: 'Profiler on', cls: 'num', fmt: (v, d) => `${GP.f2(v)} [${GP.f2(d.on_min)}–${GP.f2(d.on_max)}]` },
+    { field: 'steady_change', label: 'Steady-state change', cls: 'num', render: (td, d) => td.append('span').attr('class', `pill ${Math.abs(d.steady_change) > 0.03 ? 'bad' : 'ok'}`).text(d3.format('+.1%')(d.steady_change)) },
+    { field: 'wall_ratio', label: 'Wall time', cls: 'num', fmt: (v) => `${GP.f2(v)}x` }, { field: 'n', label: 'Runs', cls: 'num' },
+  ]);
+
+  const au = GP.rows('audit');
+  if (au) GP.table(document.getElementById('audit-table'), au, [
+    { field: 'need', label: 'What the evidence needs' },
+    { field: 'status', label: 'Status', render: (td, d) => td.append('span').attr('class', `pill ${d.status === 'yes' ? 'ok' : (d.status === 'no' ? 'bad' : 'warn')}`).text(d.status) },
+    { field: 'evidence', label: 'Evidence', cls: 'wrap' },
+  ]);
+});
+</script>
+
+<script>
+// deep links
+(() => {
+  const named = document.getElementById(location.hash.slice(1));
+  if (named) requestAnimationFrame(() => { named.scrollIntoView(); dash.setLink(named.id); });
+  document.querySelectorAll('.gp nav.toc a').forEach((a) => a.addEventListener('click', () => dash.setLink(a.getAttribute('href').slice(1))));
+})();
+</script>
