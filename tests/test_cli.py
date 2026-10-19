@@ -231,6 +231,9 @@ def test_mcp_server_tools_and_call(settings):
                      "vibe": {"like", "photos", "name", "engine", "guide"}, "audio": {"file", "preset", "check"}, "shots": {"query", "video", "k"}, "workers": set(),
                      "filter_make": {"description", "photos", "name", "start", "rounds", "engine"},
                      "filter_apply": {"name", "photos", "intensity"},
+                     "viz": {"kind", "path", "themes", "params", "then", "name"},
+                     "publish_muksite": {"image", "slug", "name", "caption", "alt", "dark", "size", "fit",
+                                         "overwrite"},
                      "larp": {"task", "image", "video", "pick", "engine"}}
     res = asyncio.run(mcp.call_tool("scout_show_run", {"run_id": 99}))
     assert "no run 99" in str(res)

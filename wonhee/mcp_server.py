@@ -256,6 +256,37 @@ def filter_make(description: str, photos: list[str], name: str, start: str | Non
 
 @mcp.tool()
 @_guard
+def viz(kind: str, path: str | None = None, themes: list[str] | None = None, params: dict | None = None,
+        then: str | None = None, name: str | None = None) -> str:
+    """Picture from data. kind: depgraph | diskviz | history | wavegen. params: rev, include, exclude, focus, hops,
+    chart, layout, title, size, ... (see node_show viz_<kind>). then: look=<preset> | filter=<name> |
+    cutout=<kind>[:<background>]. themes default ["paper"]; ["paper", "dark"] for a light/dark pair."""
+    folder = str(_in_path(path)) if path else None
+    conn, settings = _open()
+    try:
+        return service.viz(conn, settings, _deps(settings), kind, folder, themes=tuple(themes or ["paper"]),
+                           params=params, then=then, name=name)[0]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def publish_muksite(image: str, slug: str, name: str, caption: str, alt: str, dark: str | None = None,
+                    size: str = "hero", fit: str = "partial", overwrite: bool = False) -> str:
+    """Upload a finished still (ref or file, plus an optional dark twin) to muksite's PUBLIC image storage under
+    projects/<slug>/<name>; returns the YAML photos: entry. Only call this when the user asked to publish."""
+    conn, settings = _open()
+    try:
+        return service.publish_muksite(conn, settings, _deps(settings), _ref(image), slug=slug, name=name,
+                                       caption=caption, alt=alt, dark=_ref(dark) if dark else None, size=size,
+                                       fit=fit, overwrite=overwrite)[0]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
 def filter_apply(name: str, photos: list[str] | None = None, intensity: float = 1.0) -> str:
     """Apply a pack or saved filter to photos (intensity 0..2). With no photos, lists the pack and saved filters."""
     photos = [_in_path(p) for p in photos or []]

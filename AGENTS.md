@@ -10,7 +10,7 @@ the house rules. Read this first, then follow the links for the part you are tou
 | Entry points | `wonhee/cli.py`, `wonhee/mcp_server.py` | Thin. They parse args, open the DB, call `service`, and print. Every MCP tool has a CLI twin |
 | Service | `wonhee/service.py` | One function per user-facing action (`audio`, `vibe`, `shots_search`, `node_run`, `chain_run`, …). They return text |
 | Nodes | `wonhee/nodes/*.py`, registered in `nodes/registry.MODULES` | Typed steps: `Node(name, version, inputs, outputs, params, fn, doc, salt=, lane=)`. Chains wire them together. Results are cached by (node, version, inputs, params, salt) |
-| Engines | `wonhee/edit/` (pixels, audio), `wonhee/analyze/` (speech, shots, embeddings) | Plain functions on files and arrays. They know nothing about the DB |
+| Engines | `wonhee/edit/` (pixels, audio; `edit/viz/` draws pictures from data), `wonhee/analyze/` (speech, shots, embeddings), `wonhee/muksite.py` (portfolio upload) | Plain functions on files and arrays. They know nothing about the DB |
 | Store | `wonhee/db/` (`migrations/NNNN_*.sql`, `repo/`, `queries.py`) | SQLite in WAL mode. Blobs are content-addressed under `data/media/` |
 | Warm workers | `wonhee/worker.py` | Long-lived process per lane. It keeps models loaded and runs detached chains from the `job` table |
 | Profiler | `gauge/` (+ `profiling/`) | Runs any job in a container and measures CPU, RAM, VRAM and the GPU trace. See `docs/profiling/GUIDE.md` |

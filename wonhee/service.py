@@ -881,6 +881,81 @@ def filter_apply(conn, settings, deps, name: str, photos: list[Path], *, intensi
             + "".join(f"\n  failed {f}" for f in failed)), out_dir
 
 
+VIZ_KINDS = ("depgraph", "diskviz", "history", "wavegen")
+
+
+def _finish_node(settings, then: str | None) -> dict | None:
+    """--then look=<preset> | filter=<saved or pack filter> | cutout=<person|object>[:<background>]."""
+    if not then:
+        return None
+    what, _, arg = then.partition("=")
+    if what == "look":
+        return {"node": "look_image", "params": {"preset": arg or "moody"}}
+    if what == "filter":
+        from wonhee import filterstore
+        spec, _rec = filterstore.load(settings.home, arg)
+        return {"node": "filter_image", "params": spec.model_dump()}
+    if what == "cutout":
+        kind, _, back = arg.partition(":")
+        return {"node": "mask_cutout", "params": {"kind": kind or "object", "background": back or "transparent"}}
+    raise ValueError(f"--then takes look=<preset>, filter=<name> or cutout=<kind>[:<background>], not {then!r}")
+
+
+def viz(conn, settings, deps, kind: str, path: str | None, *, themes: tuple[str, ...] = ("paper",),
+        params: dict | None = None, then: str | None = None, name: str | None = None, dest: Path | None = None,
+        progress=None) -> tuple[str, Path | None]:
+    """Render a viz node once per theme, optionally finished by a look/filter/cutout node; writes
+    <home>/viz/<date>-<name>/<name>-<theme>.png (or `dest`) and reports each image's ref for `wonhee publish`."""
+    from datetime import date
+
+    from wonhee.media import path_for
+
+    if kind not in VIZ_KINDS:
+        raise ValueError(f"viz kind must be one of {', '.join(VIZ_KINDS)}")
+    finish = _finish_node(settings, then)
+    stem = name or (Path(path).expanduser().resolve().name if path else kind)
+    out_dir = dest or unique_dir(settings.home / "viz", f"{date.today().isoformat()}-{stem}")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    lines, ok = [], 0
+    for theme in themes:
+        p = dict(params or {})
+        if kind != "wavegen":
+            p.update(path=path, theme=theme)
+        nodes = [{"id": "render", "node": f"viz_{kind}", "in": {}, "params": p}]
+        if finish:
+            nodes.append({"id": "finish", "node": finish["node"], "in": {"image": "render.image"},
+                          "params": finish["params"]})
+        rid, text = chain_run(conn, settings, deps, nodes, progress=progress)
+        o = _step_out(conn, rid, nodes[-1]["id"])
+        if o is None:
+            lines.append(f"{theme}: failed (run {rid})\n{text}")
+            continue
+        f = out_dir / f"{stem}-{theme}.png"
+        f.write_bytes(path_for(settings.media_dir, o["image"]).read_bytes())
+        notes = [r["detail"] for st in queries.run_steps(conn, rid) for r in queries.step_flags(conn, st["id"])
+                 if r["code"] in ("VIZ_SOURCE", "VIZ_NO_EDGES")]
+        lines.append(f"{theme}: {f}\n  ref {o['image']}" + "".join(f"\n  {n}" for n in notes))
+        ok += 1
+    return "\n".join(lines), (out_dir if ok else None)
+
+
+def publish_muksite(conn, settings, deps, image: str, *, slug: str, name: str, caption: str, alt: str,
+                    dark: str | None = None, size: str = "hero", fit: str = "partial",
+                    overwrite: bool = False, progress=None) -> tuple[str, bool]:
+    """Upload one still (plus an optional dark-theme twin) to muksite's image storage. `image`/`dark` are refs or
+    local files. Returns (the YAML photos: entry or the failure, ok)."""
+    from wonhee.media import path_for
+
+    inputs = {"image": image} | ({"dark": dark} if dark else {})
+    rid, text = node_run(conn, settings, deps, "publish_muksite", inputs,
+                         {"slug": slug, "name": name, "caption": caption, "alt": alt, "size": size, "fit": fit,
+                          "overwrite": overwrite}, progress=progress)
+    o = _step_out(conn, rid, "publish_muksite")
+    if o is None:
+        return text, False
+    return path_for(settings.media_dir, o["entry"]).read_text(encoding="utf-8"), True
+
+
 def filter_list(settings) -> str:
     from wonhee import filterstore
     from wonhee.edit.filters import PACK

@@ -250,6 +250,39 @@ def _cmd_audio(a, settings) -> int:
     return 0
 
 
+def _cmd_viz(a, settings) -> int:
+    params: dict = {}
+    for flag in ("rev", "title", "size", "layout", "chart", "branch"):
+        v = getattr(a, flag, None)
+        if v is not None:
+            params[flag] = v
+    for flag in ("include", "exclude", "focus"):
+        if getattr(a, flag, None):
+            params[flag] = getattr(a, flag)
+    if a.kind == "depgraph" and a.hops is not None:
+        params["hops"] = a.hops
+    if a.kind == "diskviz" and a.labels:
+        params["labels"] = True
+    params.update(parse_sets(a.set))
+    themes = ("paper", "dark") if a.theme == "both" else (a.theme,)
+    text, out_dir = service.viz(_open(settings), settings, build_deps(settings), a.kind, a.path, themes=themes,
+                                params=params, then=a.then, name=a.name, dest=Path(a.out) if a.out else None,
+                                progress=_progress)
+    print(text)
+    return 0 if out_dir else 1
+
+
+def _cmd_publish(a, settings) -> int:
+    if not a.yes:
+        print(f"This uploads to muksite's public image storage as projects/{a.slug}/{a.name}. Add --yes to go ahead.")
+        return 1
+    text, ok = service.publish_muksite(_open(settings), settings, build_deps(settings), a.image, slug=a.slug,
+                                       name=a.name, caption=a.caption, alt=a.alt, dark=a.dark, size=a.size,
+                                       fit=a.fit, overwrite=a.overwrite, progress=_progress)
+    print(text)
+    return 0 if ok else 1
+
+
 def _cmd_worker(a, settings) -> int:
     from wonhee import worker
 
@@ -403,6 +436,37 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--isolate", action="store_true", help="GPU: split the voice from music / street noise first")
     s.add_argument("--music-db", type=float, metavar="DB", help="with --isolate: keep the music this many dB down, e.g. -15")
     s.set_defaults(fn=_cmd_audio)
+    s = sub.add_parser("viz", help="pictures from data: a repo's dependency graph, disk treemap, commit heatmap or "
+                                   "language mix, or a WaveSim shader still; optional --then finishing")
+    s.add_argument("kind", choices=["depgraph", "diskviz", "history", "wavegen"])
+    s.add_argument("path", nargs="?", help="folder to draw (not used by wavegen)")
+    s.add_argument("--rev", help="draw the path as of this commit or tag")
+    s.add_argument("--include", nargs="+", metavar="GLOB", help="only these files (gitignore-style)")
+    s.add_argument("--exclude", nargs="+", metavar="GLOB", help="leave these out, e.g. private data folders")
+    s.add_argument("--focus", nargs="+", metavar="GLOB", help="depgraph: only these files and their neighbours")
+    s.add_argument("--hops", type=int, help="depgraph: import steps out from --focus (default 1)")
+    s.add_argument("--chart", choices=["commits", "languages"], help="history: which chart (default commits)")
+    s.add_argument("--branch", help="history commits: whose history (default HEAD)")
+    s.add_argument("--layout", choices=["rect", "circle"], help="diskviz layout")
+    s.add_argument("--labels", action="store_true", help="diskviz: bake file names into big cells")
+    s.add_argument("--theme", choices=["paper", "dark", "both"], default="paper")
+    s.add_argument("--size", help="WIDTHxHEIGHT (default 1200x600)")
+    s.add_argument("--title"); s.add_argument("--name", help="output file stem")
+    s.add_argument("--then", metavar="STEP", help="look=<preset> | filter=<name> | cutout=<kind>[:<background>]")
+    s.add_argument("--set", action="append", default=[], metavar="k=v", help="any other node param")
+    s.add_argument("--out", help="folder to write into"); s.set_defaults(fn=_cmd_viz)
+    s = sub.add_parser("publish", help="upload a finished still to a site; prints its YAML entry")
+    ps = s.add_subparsers(dest="site", required=True)
+    n = ps.add_parser("muksite", help="muksite's Supabase image storage (needs SUPABASE_URL, SUPABASE_SERVICE_KEY)")
+    n.add_argument("image", help="ref or file"); n.add_argument("--dark", help="dark-theme twin (ref or file)")
+    n.add_argument("--slug", required=True, help="project id, e.g. awork")
+    n.add_argument("--name", required=True, help="file name without extension, e.g. dependency-graph")
+    n.add_argument("--caption", required=True); n.add_argument("--alt", required=True)
+    n.add_argument("--size", default="hero", choices=["hero", "large", "medium", "small", "wide", "tall"])
+    n.add_argument("--fit", default="partial", choices=["partial", "full"])
+    n.add_argument("--overwrite", action="store_true", help="replace an image already published at that path")
+    n.add_argument("--yes", action="store_true", help="confirm: the image becomes public")
+    n.set_defaults(fn=_cmd_publish)
     s = sub.add_parser("worker", help="warm GPU worker: keeps models loaded, runs detached chains from a queue")
     ws = s.add_subparsers(dest="sub", required=True)
     n = ws.add_parser("serve", help="run in the foreground until stopped (SIGTERM finishes the current job)")

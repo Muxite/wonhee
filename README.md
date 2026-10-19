@@ -87,6 +87,36 @@ and writes an `.srt` plus a subtitled video. Change the `url` param to use it on
 (node, version, inputs, params): rerunning an unchanged node costs nothing and shows `CACHED`.
 Agents use the same through MCP: `nodes_list`, `node_run`, `chain_run(chain, wait=False)`, `chain_show`.
 
+## Pictures from data (viz) and publishing to muksite
+
+wonhee also makes stills from data instead of footage (this absorbed `~/projects/vizkit` on 2026-10-19): a repo's
+file dependency graph, a disk-usage treemap, a commit heatmap, a lines-of-code-per-language bar, and WaveSim shader
+stills. They are ordinary nodes (`viz_depgraph`, `viz_diskviz`, `viz_history`, `viz_wavegen`), so a render chains
+into `look_image`, `filter_image`, `poster` or the new `mask_cutout`, and `publish_muksite` puts the result on the
+portfolio.
+
+    uv sync --extra viz && uv run playwright install chromium-headless-shell   # graphs and treemaps render in Chromium
+    uv run wonhee viz depgraph ~/projects/awork --exclude profiles/ share/ --theme both
+    uv run wonhee viz depgraph ~/projects/webRAG --rev 7c91f087 --theme both        # the repo as it was in March 2026
+    uv run wonhee viz depgraph ~/projects/webRAG/agent/app --focus '**/ledger_*' --hops 1   # one module + neighbours
+    uv run wonhee viz history ~/projects/webRAG --chart commits --title "webRAG commits"
+    uv run wonhee viz depgraph ~/projects/muksite/src --then look=faded              # finish with a look/filter/cutout
+    uv run wonhee publish muksite data/viz/.../x-paper.png --dark data/viz/.../x-dark.png \
+        --slug awork --name dependency-graph --caption "..." --alt "..." --yes
+
+- A working-tree render of a git repo draws only the files git tracks (no ignored data, venvs or submodules);
+  `--set tracked=false` draws everything on disk. `--rev` reads a past commit through `git archive` and never touches
+  the working tree. Every render flags `VIZ_SOURCE` with the path, resolved commit and counts.
+- Python imports resolve from each package's import root, so pointing at a repo root still links `from app.x import`
+  inside `backend/app/`. `VIZ_NO_EDGES` means nothing resolved.
+- `publish muksite` uploads to muksite's Supabase Storage (`portfolio-images/projects/<slug>/<name>[-dark].png`) and
+  prints the YAML `photos:` entry. It needs `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` in `.env`, refuses to replace an
+  existing image without `--overwrite`, and asks for `--yes` because the image becomes public. muksite's
+  `scripts/build_image_variants.py` then makes the WebP variants.
+- `viz_wavegen` needs the WaveSim docker image (`docker build -f wonhee/edit/viz/vendor/wavesim.Dockerfile -t
+  wonhee-wavesim:dev wonhee/edit/viz/vendor`) and the GPU; take the GPU lock (AGENTS.md) before running it.
+- Agents: MCP tools `viz` and `publish_muksite`.
+
 ## Workload profiling (optional)
 
 The repo also carries **gauge**, a profiler that runs one job per Docker container and measures it from the host:
