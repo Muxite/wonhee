@@ -29,7 +29,10 @@ class Settings(BaseSettings):
     local_llm_url: str = "http://localhost:11440"
     local_llm_model: str = "gemma4:e4b"
     local_llm_timeout_s: int = 180
+    local_llm_keep_alive: str = "30m"
     local_llm_ctx: int = 32768  # one fixed window: a changed num_ctx makes Ollama reload the model (~15 s)
+
+    ffmpeg_timeout_s: int = 1800
 
     apify_price_per_1k: float = 2.70    # used only when Apify does not report usage
     brave_endpoint: str = "https://api.search.brave.com/res/v1/web/search"

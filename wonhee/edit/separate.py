@@ -6,11 +6,11 @@ about 10x slower. Audio goes in and out through ffmpeg as raw float32, so any co
 """
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 import numpy as np
 
+from wonhee.fsutil import run_timed
 from wonhee.procenv import clean_env
 
 _sep: dict[str, object] = {}
@@ -33,16 +33,29 @@ def _separator(model: str):
     return _sep[model]
 
 
+def _tail(stderr: bytes | str | None) -> str:
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8", "replace")
+    return (stderr or "").strip()[-400:] or "no stderr"
+
+
 def _decode(src: Path, sr: int) -> np.ndarray:
-    raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", str(src), "-map", "0:a:0", "-ac", "2", "-ar", str(sr),
-                          "-f", "f32le", "-"], env=clean_env(), capture_output=True, check=True).stdout
+    proc = run_timed(["ffmpeg", "-loglevel", "error", "-i", str(src), "-map", "0:a:0", "-ac", "2", "-ar", str(sr),
+                      "-f", "f32le", "-"], env=clean_env(), capture_output=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg decode of {src} failed: {_tail(proc.stderr)}")
+    raw = proc.stdout[: len(proc.stdout) // 8 * 8]  # whole stereo float32 frames only
+    if not raw:
+        raise ValueError(f"{src} has no decodable audio")
     return np.frombuffer(raw, np.float32).reshape(-1, 2).T.copy()
 
 
 def _encode(wav: np.ndarray, sr: int, dest: Path) -> None:
-    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "f32le", "-ar", str(sr), "-ac", "2", "-i", "-",
-                    "-c:a", "pcm_f32le", str(dest)], input=np.ascontiguousarray(wav.T).tobytes(), env=clean_env(),
-                   check=True)
+    proc = run_timed(["ffmpeg", "-loglevel", "error", "-y", "-f", "f32le", "-ar", str(sr), "-ac", "2", "-i", "-",
+                      "-c:a", "pcm_f32le", str(dest)], input=np.ascontiguousarray(wav.T).tobytes(), env=clean_env(),
+                     capture_output=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg encode to {dest} failed: {_tail(proc.stderr)}")
 
 
 def split_voice(src: Path, voice: Path, bed: Path, model: str = "htdemucs") -> None:

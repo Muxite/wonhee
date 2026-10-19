@@ -8,6 +8,7 @@ peak -1.5 dBTP by default, what Instagram / TikTok / YouTube normalise to) witho
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import subprocess
 from pathlib import Path
@@ -16,11 +17,13 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel
 
+from wonhee.fsutil import run_timed, write_atomic_bytes
 from wonhee.procenv import clean_env
 
 Preset = Literal["voice", "mixed", "music"]
 RNN_URL = ("https://raw.githubusercontent.com/GregorR/rnnoise-models/master/"
            "somnolent-hogwash-2018-09-01/sh.rnnn")  # general-purpose speech model, BSD-3
+RNN_SHA256 = "70bb6685eb0c2a1d18e2918dca3fbfbd39317010b1802eb1b6ea73a92f3fdec0"  # of the file fetched 2026-10-18
 
 
 class AudioStats(BaseModel):
@@ -36,13 +39,13 @@ class AudioStats(BaseModel):
 
 
 def _run(args: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-y", *args], env=clean_env(), capture_output=True,
-                          text=True)
+    return run_timed(["ffmpeg", "-hide_banner", "-nostats", "-y", *args], env=clean_env(), capture_output=True,
+                     text=True)
 
 
 def has_audio(src: Path) -> bool:
-    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of",
-                          "csv=p=0", str(src)], env=clean_env(), capture_output=True, text=True)
+    out = run_timed(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of",
+                    "csv=p=0", str(src)], env=clean_env(), capture_output=True, text=True)
     return bool(out.stdout.strip())
 
 
@@ -82,15 +85,22 @@ def measure(src: Path, pre: str = "", target: tuple[float, float, float] = (-14,
 def rnn_model(models_dir: Path) -> Path | None:
     """The RNNoise weights, fetched once; None when offline (afftdn is used instead)."""
     p = models_dir / "rnnoise-sh.rnnn"
-    if p.exists() and p.stat().st_size > 10_000:
-        return p
+    try:
+        if p.exists() and p.stat().st_size > 10_000:
+            return p
+    except OSError:
+        return None
     try:
         r = httpx.get(RNN_URL, follow_redirects=True, timeout=60)
         r.raise_for_status()
     except httpx.HTTPError:
         return None
-    models_dir.mkdir(parents=True, exist_ok=True)
-    p.write_bytes(r.content)
+    if len(r.content) < 10_000 or hashlib.sha256(r.content).hexdigest() != RNN_SHA256:
+        return None  # truncated, an error page, or a changed upstream: fall back to afftdn
+    try:
+        write_atomic_bytes(p, r.content)
+    except OSError:
+        return None
     return p
 
 

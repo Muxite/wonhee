@@ -13,6 +13,7 @@ from wonhee.db import repo
 from wonhee.edit.looks import Preset, filter_chain
 from wonhee.nodes import registry
 from wonhee.nodes.base import Node
+from wonhee.fsutil import run_timed
 from wonhee.procenv import clean_env
 
 
@@ -30,7 +31,7 @@ class VideoLookParams(LookParams):
 
 
 def _ffmpeg(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(["ffmpeg", "-loglevel", "error", "-y", *args], cwd=cwd, env=clean_env(),
+    return run_timed(["ffmpeg", "-loglevel", "error", "-y", *args], cwd=cwd, env=clean_env(),
                           capture_output=True, text=True)
 
 

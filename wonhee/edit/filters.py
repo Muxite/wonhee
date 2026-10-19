@@ -23,7 +23,23 @@ Hue = Literal["none", "red", "orange", "yellow", "green", "teal", "cyan", "blue"
 HUE_DEG = {"red": 25, "orange": 55, "yellow": 90, "green": 150, "teal": 195, "cyan": 225, "blue": 275,
            "violet": 305, "magenta": 335, "pink": 355}
 LeakSide = Literal["left", "right", "top", "bottom", "corner"]
+ColourRange = Literal["red", "orange", "yellow", "green", "aqua", "blue", "purple", "magenta"]
+# per-range LAB hue centre and Gaussian width (deg). HUE_DEG above is for tinting (how a hue name looks); these are
+# where those colours actually sit in photos, so `greens`/`blues` keep their old 130 / 262 centres as aliases of them
+RANGE_DEG = {"red": 25, "orange": 55, "yellow": 90, "green": 130, "aqua": 200, "blue": 262, "purple": 300,
+             "magenta": 340}
+RANGE_W = {"red": 22, "orange": 22, "yellow": 25, "green": 35, "aqua": 30, "blue": 30, "purple": 28, "magenta": 25}
+BIG_PX = 24_000_000  # above this the spatial effects run on a half-size copy and are upsampled as a delta
+STRIP_PX = 4_000_000  # per-pixel stages run in row strips of about this many pixels, so no giant temporaries
 SKIN_DEG, SKIN_WIDTH = 52.0, 24.0  # skin of every tone sits in a narrow hue wedge around orange
+
+
+class RangeAdj(BaseModel):
+    """One colour range's adjustment (like the HSL panel): all 0 = untouched."""
+    model_config = ConfigDict(extra="forbid")
+    hue: float = Field(default=0.0, ge=-1, le=1, description="-1 .. +1 = rotate the hue up to 30 degrees")
+    sat: float = Field(default=0.0, ge=-1, le=1, description="-1 grey .. +1 double colour")
+    lum: float = Field(default=0.0, ge=-1, le=1, description="-1 darker .. +1 brighter (colour only, greys stay)")
 
 
 class Filter(BaseModel):
@@ -41,6 +57,7 @@ class Filter(BaseModel):
     vibrance: float = Field(default=0.0, ge=-1, le=1, description="like saturation but mostly on muted colours")
     greens: float = Field(default=0.0, ge=-1, le=1, description="saturation of greens / foliage only")
     blues: float = Field(default=0.0, ge=-1, le=1, description="saturation of blues / sky only")
+    ranges: dict[ColourRange, RangeAdj] = Field(default_factory=dict, description="per-colour hue / sat / lum")
     mono: bool = Field(default=False, description="black and white (split toning still tints it)")
     shadow_hue: Hue = "none"
     shadow_tone: float = Field(default=0.0, ge=0, le=1, description="how strongly shadows take shadow_hue")
@@ -69,12 +86,14 @@ def scaled(f: Filter, k: float) -> Filter:
     for name in NUMERIC:
         lo, hi = _bounds(name)
         d[name] = float(np.clip(d[name] * k, lo, hi))
+    d["ranges"] = {r: {n: float(np.clip(v * k, -1, 1)) for n, v in adj.items()} for r, adj in d["ranges"].items()}
+    d["mono"] = bool(f.mono and k >= 0.5)  # a switch: half the effect is no effect, so it drops out below half
     return Filter(**d)
 
 
 def _bounds(name: str) -> tuple[float, float]:
     meta = {type(m).__name__: m for m in Filter.model_fields[name].metadata}
-    return float(meta["Ge"].ge), float(meta["Le"].le)
+    return float(getattr(meta.get("Ge"), "ge", -np.inf)), float(getattr(meta.get("Le"), "le", np.inf))
 
 
 # --- tone ------------------------------------------------------------------------------------------------------
@@ -145,13 +164,27 @@ def point(bgr: np.ndarray, f: Filter) -> np.ndarray:
     L = np.interp(L, np.linspace(0, 1, len(curve)), curve).astype(np.float32)
     c = np.hypot(a, b)
     gain = (1 + f.saturation) * (1 + f.vibrance * np.clip(1 - c / 40, 0, 1))
-    if f.greens or f.blues:
+    rot = lum_add = None
+    if f.greens or f.blues or any(r.hue or r.sat or r.lum for r in f.ranges.values()):
         ang = np.degrees(np.arctan2(b, a))
         near = lambda deg, w: np.exp(-(((ang - deg + 180) % 360 - 180) / w) ** 2)  # noqa: E731
-        gain = gain * (1 + f.greens * near(130, 35) + f.blues * near(262, 30))
+        boost = f.greens * near(130, 35) + f.blues * near(262, 30)
+        for name, r in f.ranges.items():
+            w = near(RANGE_DEG[name], RANGE_W[name])
+            boost = boost + r.sat * w
+            if r.hue:
+                rot = r.hue * 30 * w if rot is None else rot + r.hue * 30 * w
+            if r.lum:
+                lum_add = r.lum * w if lum_add is None else lum_add + r.lum * w
+        gain = gain * (1 + boost)
     if f.mono:
         gain = gain * 0
     a, b = a * gain, b * gain
+    if rot is not None:
+        t = np.deg2rad(rot)
+        a, b = a * np.cos(t) - b * np.sin(t), a * np.sin(t) + b * np.cos(t)
+    if lum_add is not None:  # greys (low chroma) stay put
+        L = np.clip(L + 0.15 * lum_add * np.clip(c / 30, 0, 1), 0, 1)
     a = a + 10 * f.tint + 2 * f.temperature
     b = b + 14 * f.temperature
     sh = np.clip((0.5 - L) / 0.35, 0, 1)
@@ -193,7 +226,7 @@ def _glow(x: np.ndarray, k: float) -> np.ndarray:
 def _halation(x: np.ndarray, k: float) -> np.ndarray:
     if not k:
         return x
-    lum = x.max(axis=2)
+    lum = x[..., 0] * 0.114 + x[..., 1] * 0.587 + x[..., 2] * 0.299
     hot = np.clip((lum - 0.7) / 0.3, 0, 1)
     halo = cv2.GaussianBlur(hot, (0, 0), max(x.shape[:2]) / 120)
     tint = np.array([0.08, 0.35, 1.0], np.float32)  # BGR: red-orange
@@ -223,7 +256,7 @@ def _aberration(x: np.ndarray, k: float) -> np.ndarray:
     cx, cy = w / 2, h / 2
     out = x.copy()
     for ch, s in ((2, 1 + 0.006 * k), (0, 1 - 0.006 * k)):  # red out, blue in
-        out[..., ch] = cv2.remap(x[..., ch], (xx - cx) / s + cx, (yy - cy) / s + cy, cv2.INTER_LINEAR,
+        out[..., ch] = cv2.remap(np.ascontiguousarray(x[..., ch]), (xx - cx) / s + cx, (yy - cy) / s + cy, cv2.INTER_LINEAR,
                                  borderMode=cv2.BORDER_REFLECT)
     return out
 
@@ -235,11 +268,20 @@ def _sharpen(x: np.ndarray, k: float) -> np.ndarray:
     return np.clip(x + 0.8 * k * (x - blur), 0, 1)
 
 
-def apply(im: np.ndarray, f: Filter, intensity: float = 1.0, seed: int = 0) -> np.ndarray:
-    """BGR uint8 in, BGR uint8 out."""
-    if intensity != 1.0:
-        f = scaled(f, intensity)
-    x = point(im.astype(np.float32) / 255, f)
+def _point_strips(im: np.ndarray, f: Filter) -> np.ndarray:
+    """point() on a uint8 image as float32 0..1, in row strips when big (it is per pixel, so the result is the same)."""
+    h, w = im.shape[:2]
+    if h * w <= STRIP_PX:
+        return point(im.astype(np.float32) / 255, f)
+    out = np.empty(im.shape, np.float32)
+    step = max(1, STRIP_PX // w)
+    for y in range(0, h, step):
+        out[y:y + step] = point(im[y:y + step].astype(np.float32) / 255, f)
+    return out
+
+
+def _effects(x: np.ndarray, f: Filter) -> np.ndarray:
+    """Every spatial stage up to (not including) grain: float32 0..1 in, uint8 out."""
     x = _clarity(x, f.clarity)
     x = _sharpen(x, f.sharpen)
     x = _glow(x, f.glow)
@@ -248,8 +290,108 @@ def apply(im: np.ndarray, f: Filter, intensity: float = 1.0, seed: int = 0) -> n
     x = _leak(x, f.light_leak, f.leak_hue, f.leak_side)
     out = np.clip(x * 255 + 0.5, 0, 255).astype(np.uint8)
     out = fx.bloom(out, f.bloom)
-    out = fx.vignette(out, f.vignette)
-    return fx.grain(out, f.grain, seed=seed)
+    return fx.vignette(out, f.vignette)
+
+
+def apply(im: np.ndarray, f: Filter, intensity: float = 1.0, seed: int = 0, *, auto: float = 0.0,
+          undertone=None) -> np.ndarray:
+    """BGR uint8 in, BGR uint8 out. `auto` > 0 first normalizes exposure / white balance (see normalize);
+    `undertone` (wonhee.edit.skin.Undertone) nudges skin colour last."""
+    if intensity != 1.0:
+        f = scaled(f, intensity)
+    if auto > 0:
+        im, _ = normalize(im, auto)
+    x = _point_strips(im, f)
+    h, w = x.shape[:2]
+    spatial = any((f.clarity, f.sharpen, f.glow, f.halation, f.aberration, f.light_leak, f.bloom, f.vignette))
+    if h * w > BIG_PX and spatial:
+        # effects on a half-size copy; only their difference is upsampled, so the full-res detail is untouched
+        small = cv2.resize(x, (max(1, w // 2), max(1, h // 2)), interpolation=cv2.INTER_AREA)
+        delta = _effects(small, f).astype(np.float32) / 255 - small
+        x += cv2.resize(delta, (w, h), interpolation=cv2.INTER_LINEAR)
+        del small, delta
+        out = np.clip(x * 255 + 0.5, 0, 255).astype(np.uint8)
+    elif spatial:
+        out = _effects(x, f)
+    else:
+        out = np.clip(x * 255 + 0.5, 0, 255).astype(np.uint8)
+    out = fx.grain(out, f.grain, seed=seed)
+    if undertone is not None:
+        from wonhee.edit import skin  # lazily: skin imports skin_weight from here
+        out = skin.apply_undertone(out, undertone if isinstance(undertone, skin.Undertone)
+                                   else skin.Undertone.model_validate(undertone))
+    return out
+
+
+# --- auto-normalize ----------------------------------------------------------------------------------------------
+
+def _lstar_to_y(L: np.ndarray) -> np.ndarray:
+    return ((L + 16) / 116) ** 3
+
+
+def normalize(im: np.ndarray, amount: float = 0.5) -> tuple[np.ndarray, dict]:
+    """A gentle automatic fix before the look goes on: partial gray-world white balance (mid-tone, low-chroma
+    pixels only, so a red dress is not read as a cast), exposure toward median L* 50 (at most half a stop) and a
+    small black / white point stretch. Photos that already look graded (lifted blacks, split-toned bands, very
+    flat or very contrasty) get 30% of it. Returns (uint8 image, notes); notes are plain JSON-able numbers."""
+    notes: dict = {"graded": False, "exposure": 0.0, "wb_shift": [0.0, 0.0], "stretch": [0.0, 100.0]}
+    amount = float(np.clip(amount, 0, 1))
+    if im.ndim != 3 or im.shape[2] != 3 or amount <= 0 or min(im.shape[:2]) < 8:
+        return im.copy(), notes
+    from wonhee.edit import style  # lazily: style imports skin_weight from here
+    h, w = im.shape[:2]
+    t = im if max(h, w) <= 256 else cv2.resize(im, (max(8, round(w * 256 / max(h, w))),
+                                                      max(8, round(h * 256 / max(h, w)))), interpolation=cv2.INTER_AREA)
+    lab = style.to_lab(t)
+    L, a, b = lab[..., 0], lab[..., 1], lab[..., 2]
+    p1, med, p99 = (float(v) for v in np.percentile(L, (1, 50, 99)))
+    if p99 - p1 < 2:  # flat frame (all black / all white / one colour): nothing to read
+        return im.copy(), notes
+    with np.errstate(all="ignore"):
+        s = style.measure(t)
+    lifted = any("lifted blacks" in x for x in style.hints(s))
+    # split toning = shadows and highlights pushed to opposite hues; a uniform cast just grows with brightness
+    sh, hi = s.bands["shadow"], s.bands["high"]
+    split = sh.share >= 0.05 and hi.share >= 0.05 and ((sh.b * hi.b < 0 and min(abs(sh.b), abs(hi.b)) > 5)
+                                                       or (sh.a * hi.a < 0 and min(abs(sh.a), abs(hi.a)) > 5))
+    spread = s.lum[6] - s.lum[0]
+    graded = bool(lifted or split or spread < 30 or spread > 97)
+    amt = amount * (0.3 if graded else 1.0)
+    notes["graded"] = graded
+    # white balance: neutral-ish mid-tones only
+    shift = np.zeros(2, np.float32)
+    m = (L > 25) & (L < 85) & (np.hypot(a, b) < 45)
+    if m.mean() >= 0.02:
+        shift = -np.clip(0.6 * np.array([a[m].mean(), b[m].mean()], np.float32), -6, 6) * amt
+    # exposure toward median L* 50, with a dead zone and no new clipping
+    stops = 0.0
+    if abs(med - 50) > 5:
+        stops = 3 * np.log2(66 / (med + 16)) * float(np.clip((abs(med - 50) - 5) / 10, 0, 1)) * 0.6 * amt
+        stops = float(np.clip(stops, -0.5, 0.5))
+        if stops > 0:
+            stops = min(stops, max(0.0, -float(np.log2(_lstar_to_y(np.float32(p99))))))
+    d_lo, d_hi = min(p1, 8.0) * 0.5 * amt, min(100 - p99, 8.0) * 0.5 * amt
+    notes.update(exposure=float(stops), wb_shift=[float(shift[0]), float(shift[1])],
+                 stretch=[float(d_lo), float(100 - d_hi)])
+    if abs(stops) + abs(shift).sum() + d_lo + d_hi < 1e-3:
+        return im.copy(), notes
+
+    def fix(strip: np.ndarray) -> np.ndarray:
+        lab = style.to_lab(strip)
+        Ls = lab[..., 0]
+        if stops:
+            Ls = 116 * np.cbrt(_lstar_to_y(Ls) * 2 ** stops) - 16
+        Ls = np.clip((Ls - d_lo) / max(100 - d_lo - d_hi, 1.0) * 100, 0, 100)
+        lab = np.stack([Ls, lab[..., 1] + shift[0], lab[..., 2] + shift[1]], axis=-1).astype(np.float32)
+        return style.from_lab(lab)
+
+    if h * w <= STRIP_PX:
+        return fix(im), notes
+    out = np.empty_like(im)
+    step = max(1, STRIP_PX // w)
+    for y in range(0, h, step):
+        out[y:y + step] = fix(im[y:y + step])
+    return out, notes
 
 
 def cube(f: Filter, size: int = 33, title: str = "wonhee") -> str:
@@ -313,7 +455,7 @@ PACK: dict[str, tuple[str, Filter]] = {
 def checks(src: np.ndarray, out: np.ndarray) -> dict:
     """Before/after numbers for one photo: clipped highlights and crushed shadows (% of pixels), median brightness,
     colourfulness, and how far skin-coloured pixels drifted in hue (degrees)."""
-    a, b = (cv2.cvtColor(cv2.resize(x, (480, round(480 * x.shape[0] / x.shape[1]))).astype(np.float32) / 255,
+    a, b = (cv2.cvtColor(cv2.resize(x, (480, max(1, round(480 * x.shape[0] / x.shape[1])))).astype(np.float32) / 255,
                          cv2.COLOR_BGR2LAB) for x in (src, out))
     sk = skin_weight(a[..., 1], a[..., 2]) > 0.5
     drift = 0.0

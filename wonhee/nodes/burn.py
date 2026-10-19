@@ -1,7 +1,6 @@
 """burn_subtitles node: plain white-with-black-outline lower-third subtitles burned into the video."""
 from __future__ import annotations
 
-import subprocess
 import tempfile
 from pathlib import Path
 
@@ -13,6 +12,7 @@ from wonhee.edit.ass import render_ass
 from wonhee.nodes import registry
 from wonhee.nodes.base import Node
 from wonhee.nodes.subtitles import load_subs
+from wonhee.fsutil import run_timed
 from wonhee.procenv import clean_env
 
 
@@ -40,7 +40,7 @@ def burn_fn(ctx, inputs, p: BurnParams) -> dict[str, str]:
         (tmpd / "subs.ass").write_text(render_ass(subs, info.width, info.height, p.font, p.size_frac,
                                                   p.margin_frac, p.max_chars), encoding="utf-8")
         out = tmpd / "out.mp4"
-        proc = subprocess.run(
+        proc = run_timed(
             ["ffmpeg", "-loglevel", "error", "-y", "-i", str(src.resolve()), "-vf", "ass=subs.ass",
              "-c:v", "libx264", "-crf", str(p.crf), "-pix_fmt", "yuv420p", "-c:a", "copy",
              "-movflags", "+faststart", str(out)],

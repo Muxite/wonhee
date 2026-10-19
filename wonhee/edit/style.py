@@ -18,6 +18,7 @@ from wonhee.edit.filters import skin_weight
 PCTS = (1, 5, 25, 50, 75, 95, 99)
 BANDS = ("shadow", "mid", "high")
 HUES = ("red", "orange", "yellow", "lime", "green", "teal", "cyan", "azure", "blue", "violet", "magenta", "pink")
+MIN_BAND = 0.01  # a tone band with less of the frame than this is treated as empty
 WORK_PX = 1000  # stats are taken on a copy this size, so they do not depend on resolution
 
 
@@ -173,6 +174,8 @@ def match(im: np.ndarray, target: Stats, strength: float = 0.7, *, tone: float =
         out[..., 0] = np.interp(out[..., 0], xs, ys)
         w = band_weights(out[..., 0])
         for band in BANDS:
+            if src.bands[band].share < MIN_BAND or target.bands[band].share < MIN_BAND:
+                continue  # an empty band has no measured cast: shifting it by the target's number adds a false one
             da = (target.bands[band].a - src.bands[band].a) * k * colour
             db = (target.bands[band].b - src.bands[band].b) * k * colour
             out[..., 1] += w[band] * da

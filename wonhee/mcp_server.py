@@ -5,7 +5,7 @@ import functools
 from pathlib import Path
 
 from wonhee import envfile, errlog, llm, service
-from wonhee.config import get_settings
+from wonhee.config import REPO_ROOT, get_settings
 from wonhee.db.connect import open_db
 
 try:  # mcp 1.x
@@ -16,6 +16,41 @@ except ModuleNotFoundError:  # mcp 2.x renamed it
 mcp = _Server("wonhee")
 
 
+def _safe_log(label: str) -> str:
+    try:
+        return str(errlog.log_traceback(get_settings().home, label))
+    except Exception:  # noqa: BLE001 - a broken log must not hide the real answer
+        return "(log unavailable)"
+
+
+def _under(p: Path, roots) -> bool:
+    return any(p == r or r in p.parents for r in roots)
+
+
+def _in_path(p: str) -> Path:
+    """An input file or folder: resolved, and inside the user's home, the repo or the data home."""
+    q = Path(p).expanduser().resolve()
+    if not _under(q, {Path.home().resolve(), REPO_ROOT, get_settings().home.resolve()}):
+        raise ValueError(f"{p}: input paths must be under {Path.home()}")
+    return q
+
+
+def _out_path(p: str) -> Path:
+    """Somewhere to write: resolved, and inside the wonhee data home or the repo's data/ folder."""
+    q = Path(p).expanduser().resolve()
+    if not _under(q, {get_settings().home.resolve(), (REPO_ROOT / "data").resolve()}):
+        raise ValueError(f"{p}: output paths must be under {get_settings().home}")
+    return q
+
+
+def _ref(v):
+    """A port value that is a content:<id>, sha or <id>.<port> reference passes; anything path-like is checked."""
+    from wonhee.nodes.types import CONTENT, SHA
+    if not isinstance(v, str) or CONTENT.match(v) or SHA.match(v):
+        return v
+    return str(_in_path(v)) if ("/" in v or v.startswith("~") or Path(v).exists()) else v
+
+
 def _guard(fn):
     """Expected errors become readable text; unexpected ones are logged and pointed to."""
     @functools.wraps(fn)
@@ -23,13 +58,13 @@ def _guard(fn):
         try:
             return fn(*a, **k)
         except (KeyError, ValueError) as e:
-            errlog.log_traceback(get_settings().home, f"mcp {fn.__name__} (expected)")
+            _safe_log(f"mcp {fn.__name__} (expected)")
             return f"error: {e.args[0] if e.args else e}"
         except llm.LLMError as e:
-            log = errlog.log_traceback(get_settings().home, f"mcp {fn.__name__}")
+            log = _safe_log(f"mcp {fn.__name__}")
             return f"model call failed: {errlog.one_line(e)} (details: {log})"
         except Exception:  # noqa: BLE001
-            log = errlog.log_traceback(get_settings().home, f"mcp {fn.__name__}")
+            log = _safe_log(f"mcp {fn.__name__}")
             return f"unexpected error — see {log}"
     return wrapper
 
@@ -119,6 +154,7 @@ def nodes_list() -> str:
 def node_run(node: str, inputs: dict, params: dict | None = None, wait: bool = True) -> str:
     """Run one node. inputs: port -> content:<id> | blob sha | local file path. wait=False returns a run id at once
     (check with chain_show)."""
+    inputs = {k: _ref(v) for k, v in inputs.items()}
     conn, settings = _open()
     try:
         return service.node_run(conn, settings, _deps(settings), node, inputs, params or {}, wait)[1]
@@ -132,6 +168,9 @@ def chain_run(chain: list | dict, wait: bool = True) -> str:
     """Run a chain: a list of {id, node, in: {port: "<id>.<port>" | ref | path}, params, cache}, or
     {nodes: [...], cost_cap_usd, no_cache}. The whole chain is validated first and nothing runs if it is invalid.
     wait=False returns a run id at once (check with chain_show)."""
+    for n in chain if isinstance(chain, list) else (chain.get("nodes") or []) if isinstance(chain, dict) else []:
+        if isinstance(n, dict) and isinstance(n.get("in"), dict):
+            n["in"] = {k: _ref(v) for k, v in n["in"].items()}
     conn, settings = _open()
     try:
         return service.chain_run(conn, settings, _deps(settings), chain, wait=wait)[1]
@@ -146,6 +185,7 @@ def larp(task: str, image: str | None = None, video: str | None = None, pick: in
     """Frame any mundane task as a professional moment (LinkedIn announcement, founder update, earnings call, ...):
     on-screen lines, captions, hashtags, the fitting text preset / look, and the shot to capture. With an image or
     video (path or sha), also render the chosen line onto it. engine="local" uses the on-box model ($0)."""
+    image, video = (_ref(image) if image else image), (_ref(video) if video else video)
     conn, settings = _open()
     try:
         return service.larp(conn, settings, _deps(settings), task, image=image, video=video, pick=pick, engine=engine)
@@ -188,10 +228,11 @@ def vibe(like: list[str], photos: list[str] | None = None, name: str = "look", e
     keyframes), write a shooting guide for it (remote vision, ~$0.003, guide=False skips), and edit each photo
     toward it: a vision model picks clamped knobs (engine local = $0), the edit is deterministic (tone and
     per-band colour match, subject mask, fisheye / blur / bloom / vignette / grain). No image generation."""
-    from pathlib import Path
+    like = [_ref(x) for x in like]
+    photos = [_in_path(p) for p in photos or []]
     conn, settings = _open()
     try:
-        return service.vibe(conn, settings, _deps(settings), like, [Path(p) for p in photos or []], name=name,
+        return service.vibe(conn, settings, _deps(settings), like, photos, name=name,
                             engine=engine, guide=guide)[0]
     finally:
         conn.close()
@@ -204,10 +245,10 @@ def filter_make(description: str, photos: list[str], name: str, start: str | Non
     """Make a photo filter from a description of a vibe ("late-summer film, a bit faded"), tune it on 1-3 photos
     (render, measure, a vision model scores before|after and moves a few clamped knobs) and save it by name for
     later. start = an existing pack or saved filter to tweak instead. engine local = $0. No image generation."""
-    from pathlib import Path
+    photos = [_in_path(p) for p in photos]
     conn, settings = _open()
     try:
-        return service.filter_make(conn, settings, _deps(settings), description, [Path(p) for p in photos],
+        return service.filter_make(conn, settings, _deps(settings), description, photos,
                                    name=name, rounds=rounds, engine=engine, start=start)[0]
     finally:
         conn.close()
@@ -217,12 +258,12 @@ def filter_make(description: str, photos: list[str], name: str, start: str | Non
 @_guard
 def filter_apply(name: str, photos: list[str] | None = None, intensity: float = 1.0) -> str:
     """Apply a pack or saved filter to photos (intensity 0..2). With no photos, lists the pack and saved filters."""
-    from pathlib import Path
+    photos = [_in_path(p) for p in photos or []]
     conn, settings = _open()
     try:
         if not photos:
             return service.filter_list(settings)
-        return service.filter_apply(conn, settings, _deps(settings), name, [Path(p) for p in photos],
+        return service.filter_apply(conn, settings, _deps(settings), name, photos,
                                     intensity=intensity)[0]
     finally:
         conn.close()
@@ -234,10 +275,10 @@ def audio(file: str, preset: str = "voice", check: bool = False) -> str:
     """Measure a clip's audio (LUFS, true peak, range, speech-to-noise) and, unless check, clean it on the box:
     rumble cut, RNNoise denoise, compression, two-pass loudness to -14 LUFS / -1.5 dBTP. Writes <file>.clean.mp4.
     preset: voice | mixed | music."""
-    from pathlib import Path
+    src = _in_path(file)
     conn, settings = _open()
     try:
-        return service.audio(conn, settings, _deps(settings), Path(file), preset=preset, check_only=check)
+        return service.audio(conn, settings, _deps(settings), src, preset=preset, check_only=check)
     finally:
         conn.close()
 
@@ -247,9 +288,10 @@ def audio(file: str, preset: str = "voice", check: bool = False) -> str:
 def export(ref: str, dest: str) -> str:
     """Copy a stored result into a local folder for posting: a video or image (one file), an images manifest or
     content:<id> photo post (01.jpg, 02.jpg, ...). Returns the written paths."""
+    out = _out_path(dest)
     conn, settings = _open()
     try:
-        return "\n".join(str(p) for p in service.export(conn, settings, ref, Path(dest)))
+        return "\n".join(str(p) for p in service.export(conn, settings, ref, out))
     finally:
         conn.close()
 

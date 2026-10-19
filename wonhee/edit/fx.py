@@ -7,6 +7,8 @@ sharp while the background moves.
 """
 from __future__ import annotations
 
+import zlib
+
 import cv2
 import numpy as np
 
@@ -81,12 +83,20 @@ def vignette(im: np.ndarray, amount: float = 0.5) -> np.ndarray:
 
 
 def grain(im: np.ndarray, amount: float = 0.3, seed: int = 0) -> np.ndarray:
-    """Luma grain, fixed by `seed` so a re-render is identical."""
+    """Luma grain: strongest in the midtones, weak in deep shadows and clipped highlights, and sized with the
+    image (~0.6 px blur at 1080). A fixed `seed` re-renders identically; seed 0 derives one from the picture, so
+    different photos do not share a noise pattern."""
     if amount <= 0:
         return im
+    if not seed:
+        thumb = cv2.resize(im, (16, 16), interpolation=cv2.INTER_AREA)
+        seed = zlib.crc32(thumb.tobytes()) or 1
     rng = np.random.default_rng(seed)
     n = rng.normal(0, 18 * amount, im.shape[:2]).astype(np.float32)
-    n = cv2.GaussianBlur(n, (0, 0), 0.6)[..., None]
+    n = cv2.GaussianBlur(n, (0, 0), max(0.4, 0.6 * max(im.shape[:2]) / 1080))
+    y = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255 if im.ndim == 3 else im.astype(np.float32) / 255
+    wgt = 0.1 + 0.9 * np.clip(4 * y * (1 - y), 0, 1) ** 0.8
+    n = (n * wgt)[..., None] if im.ndim == 3 else n * wgt
     return np.clip(im.astype(np.float32) + n, 0, 255).astype(np.uint8)
 
 

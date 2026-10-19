@@ -1,7 +1,6 @@
 """carousel / content_images nodes: build a graded, captioned slide set; pull a stored post's images."""
 from __future__ import annotations
 
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import Literal
@@ -19,6 +18,7 @@ from wonhee.edit.text import Preset as TextPreset
 from wonhee.nodes import registry
 from wonhee.nodes.base import Node
 from wonhee.nodes.images import Images, Slide, load_images, save_images
+from wonhee.fsutil import run_timed
 from wonhee.procenv import clean_env
 
 
@@ -47,7 +47,7 @@ def _grade(slides: list[Path], out_dir: Path, p: CarouselParams, height: int) ->
         stamp.write_text(p.datestamp, encoding="utf-8")
     vf = filter_chain(p.look or "none", p.look_intensity, video=False, grain=p.grain, datestamp_file=stamp,
                       height=height).replace("format=yuvj444p", "format=rgb24")
-    proc = subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-start_number", "1", "-i",
+    proc = run_timed(["ffmpeg", "-loglevel", "error", "-y", "-start_number", "1", "-i",
                            str(slides[0].parent / "s%03d.png"), "-vf", vf, "-start_number", "1",
                            str(out_dir / "g%03d.png")], env=clean_env(), capture_output=True, text=True)
     graded = [out_dir / f"g{i:03d}.png" for i in range(1, len(slides) + 1)]

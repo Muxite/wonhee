@@ -6,6 +6,7 @@ out any salient thing (a plush on a desk, a laptop, a drink).
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -31,6 +32,7 @@ MODELS: dict[str, Spec] = {
     "object": Spec("isnet-general-use.onnx", 1024, (0.5, 0.5, 0.5), (1.0, 1.0, 1.0)),
 }
 _sessions: dict[str, object] = {}
+_sess_lock = threading.Lock()
 
 
 def model_path(models_dir: Path, kind: str) -> Path:
@@ -50,10 +52,12 @@ def model_path(models_dir: Path, kind: str) -> Path:
 
 
 def _session(models_dir: Path, kind: str):
-    if kind not in _sessions:
-        import onnxruntime as ort
-        _sessions[kind] = ort.InferenceSession(str(model_path(models_dir, kind)), providers=["CPUExecutionProvider"])
-    return _sessions[kind]
+    with _sess_lock:  # two threads must not both download / build the same session
+        if kind not in _sessions:
+            import onnxruntime as ort
+            _sessions[kind] = ort.InferenceSession(str(model_path(models_dir, kind)),
+                                                   providers=["CPUExecutionProvider"])
+        return _sessions[kind]
 
 
 def subject(im: np.ndarray, models_dir: Path, kind: Kind = "person", feather: float = 0.004) -> np.ndarray:
@@ -79,6 +83,8 @@ def subject(im: np.ndarray, models_dir: Path, kind: Kind = "person", feather: fl
 DINO_ID = "IDEA-Research/grounding-dino-tiny"
 SAM_ID = "facebook/sam2.1-hiera-base-plus"
 _gpu: dict[str, object] = {}
+_gpu_lock = threading.Lock()
+_gpu_ready = False  # set last: a half-loaded dict is never handed out
 
 
 def gpu_available() -> bool:
@@ -97,14 +103,20 @@ def _pretrained(cls, model_id: str):
 
 
 def _gpu_models():
-    if not _gpu:
-        import torch
-        from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor, Sam2Model, Sam2Processor
-        _gpu["torch"] = torch
-        _gpu["dp"] = _pretrained(AutoProcessor, DINO_ID)
-        _gpu["dm"] = _pretrained(AutoModelForZeroShotObjectDetection, DINO_ID).to("cuda").eval()
-        _gpu["sp"] = _pretrained(Sam2Processor, SAM_ID)
-        _gpu["sm"] = _pretrained(Sam2Model, SAM_ID).to("cuda").eval()
+    global _gpu_ready
+    if _gpu_ready:
+        return _gpu
+    with _gpu_lock:
+        if not _gpu_ready:
+            import torch
+            from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor, Sam2Model, Sam2Processor
+            loaded = {"torch": torch,  # a local dict, published only once every model is up (a failure leaves none)
+                      "dp": _pretrained(AutoProcessor, DINO_ID),
+                      "dm": _pretrained(AutoModelForZeroShotObjectDetection, DINO_ID).to("cuda").eval(),
+                      "sp": _pretrained(Sam2Processor, SAM_ID),
+                      "sm": _pretrained(Sam2Model, SAM_ID).to("cuda").eval()}
+            _gpu.update(loaded)
+            _gpu_ready = True
     return _gpu
 
 
@@ -140,6 +152,8 @@ def subject_text(im: np.ndarray, prompt: str, feather: float = 0.003) -> np.ndar
         out = g["sm"](**inputs, multimask_output=False)
     masks = g["sp"].post_process_masks(out.pred_masks.cpu(), inputs["original_sizes"], binarize=True)[0]
     m = np.asarray(masks).astype(np.float32).reshape(-1, im.shape[0], im.shape[1]).max(axis=0)
+    if not m.any():  # SAM found no pixels: treat as no mask so callers fall back
+        return None
     if feather > 0:
         m = cv2.GaussianBlur(m, (0, 0), max(1.0, feather * max(im.shape[:2])))
     return np.clip(m, 0, 1)

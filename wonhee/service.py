@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from wonhee.db import queries, repo
+from wonhee.fsutil import unique_dir, write_atomic, write_atomic_bytes
 from wonhee.intent.compiler import CompileResult, compile_message
 from wonhee.intent.schemas import ScoutRequest
 from wonhee.pipeline.orchestrator import run_stages
@@ -300,7 +301,7 @@ def larp(conn, settings, deps, task: str, *, image: str | None = None, video: st
     step = queries.current_step(conn, rid, "larp")
     if step is None or step["status"] not in ("ok", "weak"):
         return text
-    data = json.loads(path_for(settings.media_dir, queries.step_outputs(conn, step["id"])["lines"]["ref"]).read_text())
+    data = json.loads(path_for(settings.media_dir, queries.step_outputs(conn, step["id"])["lines"]["ref"]).read_text(encoding="utf-8"))
     fr = data["framings"]
     chosen = pick if pick is not None and 0 <= pick < len(fr) else data["best"]
     out = [f"task: {data['task']}", ""]
@@ -351,7 +352,7 @@ def _teardowns(conn, settings, deps, content_ids, since, relation, progress):
                 continue
             if step["status"] in ("ok", "weak"):
                 ref = queries.step_outputs(conn, step["id"])["teardown"]["ref"]
-                done[c] = json.loads(path_for(settings.media_dir, ref).read_text())
+                done[c] = json.loads(path_for(settings.media_dir, ref).read_text(encoding="utf-8"))
             elif step["status"] == "failed":
                 bad = c
         if bad is None:
@@ -388,10 +389,9 @@ def inspire(conn, settings, deps, content_ids: list[int] | None = None, since: s
     md = report.build(tds, metrics, missing)
     md += "\n" + looks.section(conn, settings.media_dir, [t["content_id"] for t in tds],
                                {t["content_id"]: t["summary"] for t in tds})
-    out_dir = settings.home / "inspire" / f"{date.today().isoformat()}-run{last_run}"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "report.md").write_text(md, encoding="utf-8")
-    (out_dir / "teardowns.json").write_text(json.dumps(tds, ensure_ascii=False, indent=1), encoding="utf-8")
+    out_dir = unique_dir(settings.home / "inspire", f"{date.today().isoformat()}-run{last_run}")
+    write_atomic(out_dir / "report.md", md)
+    write_atomic(out_dir / "teardowns.json", json.dumps(tds, ensure_ascii=False, indent=1))
     head = md.split("## Best to replicate")[0].strip()
     return (f"{head}\n\n{len(tds)} teardown(s), {len(missing)} failed or not reached; last run "
             f"{last_run} (${_run_cost(conn, last_run):.3f}). Full report: {out_dir / 'report.md'}"), out_dir / "report.md"
@@ -419,7 +419,7 @@ def ideate(conn, settings, deps, *, n: int = 20, focus: str | None = None, engin
     step = queries.current_step(conn, rid, "ideate")
     if step is None or step["status"] not in ("ok", "weak"):
         return text, None
-    data = json.loads(path_for(settings.media_dir, queries.step_outputs(conn, step["id"])["ideas"]["ref"]).read_text())
+    data = json.loads(path_for(settings.media_dir, queries.step_outputs(conn, step["id"])["ideas"]["ref"]).read_text(encoding="utf-8"))
     flags = [f"{r['code']}: {r['detail']}" for r in conn.execute(
         "SELECT code, detail FROM step_flag WHERE step_id=? AND code IN ('UNKNOWN_REF','IDEA_COPY')", (step["id"],))]
     header = (f"Sources: {len(tds)} inspiration teardowns, {len(items)} brief items "
@@ -428,10 +428,9 @@ def ideate(conn, settings, deps, *, n: int = 20, focus: str | None = None, engin
     if flags:
         header += "\n\nDropped by checks:\n" + "\n".join(f"- {f}" for f in flags)
     md = ix.report(data, {t["content_id"]: t["summary"] for t in tds}, {i.id: i.text for i in items}, header)
-    out_dir = settings.home / "ideate" / f"{date.today().isoformat()}-run{rid}"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "ideas.md").write_text(md, encoding="utf-8")
-    (out_dir / "ideas.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    out_dir = unique_dir(settings.home / "ideate", f"{date.today().isoformat()}-run{rid}")
+    write_atomic(out_dir / "ideas.md", md)
+    write_atomic(out_dir / "ideas.json", json.dumps(data, ensure_ascii=False, indent=1))
     head = md.split("\n## ")[0].strip()
     return f"{head}\n\nFull list: {out_dir / 'ideas.md'}", out_dir / "ideas.md"
 
@@ -487,16 +486,18 @@ def vibe(conn, settings, deps, refs: list[str], photos: list[Path], *, name: str
     if out is None:
         return text, None
     prof_sha = out["profile"]
-    prof = style.Profile.model_validate_json(path_for(d, prof_sha).read_text())
+    prof = style.Profile.model_validate_json(path_for(d, prof_sha).read_text(encoding="utf-8"))
     runs, gd = [rid], None
     if guide:
         rid, text = node_run(conn, settings, deps, "shot_guide", {"images": refs_sha, "profile": prof_sha},
                              {"engine": guide_engine}, progress=progress)
         runs.append(rid)
         if (o := _step_out(conn, rid, "shot_guide")) is not None:
-            gd = ShotGuide.model_validate_json(path_for(d, o["guide"]).read_text())
-    out_dir = settings.home / "vibe" / f"{date.today().isoformat()}-{re.sub(r'[^a-z0-9-]+', '-', name.lower())}"
-    out_dir.mkdir(parents=True, exist_ok=True)
+            gd = ShotGuide.model_validate_json(path_for(d, o["guide"]).read_text(encoding="utf-8"))
+    slug = re.sub(r"[^a-z0-9-]+", "-", name.lower()).strip("-")
+    if not slug:
+        raise ValueError(f"name {name!r} has no letters or digits to build a folder name from")
+    out_dir = unique_dir(settings.home / "vibe", f"{date.today().isoformat()}-{slug}")
     rows, pairs = [], []
     for n, photo in enumerate(photos, 1):
         sha = repo.save_file(conn, d, Path(photo).expanduser(), "image", "image/jpeg")
@@ -504,7 +505,7 @@ def vibe(conn, settings, deps, refs: list[str], photos: list[Path], *, name: str
                              {"engine": engine}, progress=progress)
         runs.append(rid)
         o = _step_out(conn, rid, "vibe_review")
-        review = json.loads(path_for(d, o["review"]).read_text()) if o else None
+        review = json.loads(path_for(d, o["review"]).read_text(encoding="utf-8")) if o else None
         params = {**(review["params"] if review else VibeParams().model_dump()), **(overrides or {})}
         rid, text = node_run(conn, settings, deps, "vibe_image", {"image": sha, "profile": prof_sha}, params,
                              progress=progress)
@@ -515,7 +516,7 @@ def vibe(conn, settings, deps, refs: list[str], photos: list[Path], *, name: str
             continue
         dest = out_dir / f"{n:02d}-{Path(photo).stem}.jpg"
         dest.write_bytes(path_for(d, o2["image"]).read_bytes())
-        notes = json.loads(path_for(d, o2["notes"]).read_text()) if o2.get("notes") else None
+        notes = json.loads(path_for(d, o2["notes"]).read_text(encoding="utf-8")) if o2.get("notes") else None
         rows.append((photo, review, params, dest, None, notes))
         pairs.append((style.load(photo), style.load(dest)))
     if pairs:
@@ -559,7 +560,7 @@ def vibe(conn, settings, deps, refs: list[str], photos: list[Path], *, name: str
             md.append(f"Mask: {notes['mask']}, policy {notes['mask_policy']}, used step **{notes['step']}**"
                       + (f" (subject brightness L* {sl[0]} -> {sl[1]})" if sl else "") + ".")
         md.append("")
-    (out_dir / "report.md").write_text("\n".join(md), encoding="utf-8")
+    write_atomic(out_dir / "report.md", "\n".join(md))
     summary = (f"Look '{name}' from {prof.n} reference(s): {'; '.join(prof.hints)}.\n"
                f"{len(pairs)} of {len(photos)} photo(s) edited, ${cost:.3f}. Report: {out_dir / 'report.md'}")
     return summary, out_dir
@@ -581,7 +582,7 @@ def audio(conn, settings, deps, src: Path, *, preset: str = "voice", check_only:
     o = _step_out(conn, rid, "audio_check")
     if o is None:
         return text
-    chk = json.loads(path_for(settings.media_dir, o["report"]).read_text())
+    chk = json.loads(path_for(settings.media_dir, o["report"]).read_text(encoding="utf-8"))
     s = chk["stats"]
     lines = [f"{Path(src).name}: {s['lufs']:.1f} LUFS, true peak {s['true_peak']:.1f} dBTP, range {s['lra']:.1f} LU, "
              f"speech/noise {_db(s['snr'])} dB",
@@ -593,13 +594,22 @@ def audio(conn, settings, deps, src: Path, *, preset: str = "voice", check_only:
     o = _step_out(conn, rid, "audio_clean")
     if o is None:
         return "\n".join(lines + [text])
-    rep = json.loads(path_for(settings.media_dir, o["report"]).read_text())
+    rep = json.loads(path_for(settings.media_dir, o["report"]).read_text(encoding="utf-8"))
     a = rep["after"]
     dest = dest or Path(src).with_name(Path(src).stem + ".clean.mp4")
-    dest.write_bytes(path_for(settings.media_dir, o["video"]).read_bytes())
+    write_atomic_bytes(dest, path_for(settings.media_dir, o["video"]).read_bytes())
     lines.append(f"cleaned ({rep['denoiser']}): {a['lufs']:.1f} LUFS, true peak {a['true_peak']:.1f} dBTP, "
                  f"range {a['lra']:.1f} LU, speech/noise {_db(a['snr'])} dB -> {dest}")
     return "\n".join(lines)
+
+
+def _audio_ext(mime: str | None) -> str:
+    m = (mime or "").lower()
+    for key, ext in (("mpeg", ".mp3"), ("mp4", ".m4a"), ("aac", ".aac"), ("ogg", ".ogg"), ("opus", ".opus"),
+                     ("flac", ".flac"), ("wav", ".wav")):
+        if key in m:
+            return ext
+    return ".m4a"
 
 
 def export(conn, settings, ref: str, dest: Path) -> list[Path]:
@@ -623,8 +633,8 @@ def export(conn, settings, ref: str, dest: Path) -> list[Path]:
                            "WHERE b.sha256=?", (ref,)).fetchone()
         if row is None:
             raise ValueError(f"{ref}: not in the media store")
-        if row["kind"] in ("video", "image"):
-            files = [(ref, ".mp4" if row["kind"] == "video" else ".jpg")]
+        if row["kind"] in ("video", "image", "audio"):
+            files = [(ref, {"video": ".mp4", "image": ".jpg", "audio": _audio_ext(row["mime"])}[row["kind"]])]
         else:
             try:
                 images = Images.model_validate_json(path_for(settings.media_dir, ref).read_bytes())
@@ -633,6 +643,11 @@ def export(conn, settings, ref: str, dest: Path) -> list[Path]:
             files = [(s.sha, ".jpg") for s in images.items]
     else:
         raise ValueError(f"{ref}: want a 64-hex sha or content:<id>")
+    if dest.exists() and not dest.is_dir():
+        raise ValueError(f"{dest} is a file; export wants a folder")
+    for sha, _ in files:
+        if not path_for(settings.media_dir, sha).is_file():
+            raise ValueError(f"{ref}: stored file {sha[:12]} is missing from the media store")
     dest.mkdir(parents=True, exist_ok=True)
     out = []
     for i, (sha, ext) in enumerate(files, 1):

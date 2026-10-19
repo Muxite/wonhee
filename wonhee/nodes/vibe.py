@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 from pathlib import Path
 from typing import Literal
 
@@ -157,6 +158,9 @@ class VibeParams(BaseModel):
     ink: str = Field(default="#e8141c", pattern=r"^#[0-9a-fA-F]{6}$")
     paper: str = Field(default="#f6f1e7", pattern=r"^#[0-9a-fA-F]{6}$")
     crop: Crop = "none"
+    auto: float = Field(default=0.5, ge=0, le=1)  # correct-first (white balance, exposure, stretch) before the match
+    undertone: Literal["none", "cool", "neutral", "warm", "rose", "gold"] = "none"  # skin tint, after the grade
+    undertone_strength: float = Field(default=0.5, ge=0, le=1)
 
 
 def crop_to(im: np.ndarray, aspect: str) -> np.ndarray:
@@ -173,23 +177,53 @@ def crop_to(im: np.ndarray, aspect: str) -> np.ndarray:
     return im[y:y + nh]
 
 
+_err = threading.local()  # the last mask failure, read by grade() into notes (subject_mask's signature stays put)
+
+
+def _fail(stage: str, e: Exception) -> None:
+    msg = f"{stage}: {type(e).__name__}: {e}"[:80]
+    _err.msg = f"{_err.msg}; {msg}"[:160] if getattr(_err, "msg", None) else msg
+
+
+def _sane(m: np.ndarray | None) -> bool:
+    return m is not None and 0.01 < float(m.mean()) < 0.9
+
+
 def subject_mask(im: np.ndarray, p: VibeParams, models_dir: Path, guard: bool = False
                  ) -> tuple[np.ndarray | None, str]:
     """The hard subject mask and how it was made. GPU (Grounding-DINO + SAM 2.1) from a text prompt when torch and
-    a GPU are present; otherwise, or when the prompt finds nothing, the CPU ONNX models. `guard`: with no subject
-    named, look for a person anyway (on the GPU only), to check they stay readable."""
+    a GPU are present; otherwise, or when the prompt finds nothing or the GPU fails (OOM, offline), the CPU ONNX
+    models; if those fail too, no mask (the reason goes to `_err`). `guard`: with no subject named, look for a
+    person anyway (on the GPU only), to check they stay readable."""
+    _err.msg = None
     if p.mask == "none" and not p.mask_prompt:
         if not (guard and mk.gpu_available()):
             return None, "none"
-        m = mk.subject_text(im, "person")
-        return (m, "sam2:person") if m is not None and 0.01 < float(m.mean()) < 0.9 else (None, "none")
+        try:
+            m = mk.subject_text(im, "person")
+            return (m, "sam2:person") if _sane(m) else (None, "none")
+        except Exception as e:  # noqa: BLE001 - OOM, from_pretrained offline, anything: the guard is best effort
+            _fail("gpu", e)
+        try:
+            m = mk.subject(im, models_dir, "person")
+            return (m, "onnx:person") if _sane(m) else (None, "none")
+        except Exception as e:  # noqa: BLE001
+            _fail("onnx", e)
+            return None, "none"
     prompt = p.mask_prompt or ("person" if p.mask == "person" else None)
     if prompt and mk.gpu_available():
-        m = mk.subject_text(im, prompt)
-        if m is not None:
-            return m, f"sam2:{prompt}"
+        try:
+            m = mk.subject_text(im, prompt)
+            if m is not None:
+                return m, f"sam2:{prompt}"
+        except Exception as e:  # noqa: BLE001
+            _fail("gpu", e)
     kind = "person" if p.mask == "person" else "object"
-    return mk.subject(im, models_dir, kind), f"onnx:{kind}"
+    try:
+        return mk.subject(im, models_dir, kind), f"onnx:{kind}"
+    except Exception as e:  # noqa: BLE001
+        _fail("onnx", e)
+        return None, "none"
 
 
 def _subject_pixels(im: np.ndarray, m: np.ndarray) -> np.ndarray:
@@ -203,62 +237,154 @@ def _subject_pixels(im: np.ndarray, m: np.ndarray) -> np.ndarray:
     return sel if sel.sum() > 50 else np.ones_like(sel)
 
 
-def _subject_l(im: np.ndarray, where: np.ndarray) -> tuple[float, float]:
-    """L* at the 50th and 95th percentile of the judged pixels."""
+def _subject_l(im: np.ndarray, where: np.ndarray) -> tuple[float, float, float]:
+    """L* at the 50th and 95th percentile of the judged pixels, and the share of them above L* 98 (clipped)."""
     v = style.to_lab(style._small(im))[..., 0][where]
-    return float(np.percentile(v, 50)), float(np.percentile(v, 95))
+    return float(np.percentile(v, 50)), float(np.percentile(v, 95)), float((v > 98.0).mean())
 
 
-def readable(before: tuple[float, float], after: tuple[float, float]) -> bool:
-    """The subject still reads: not sunk into the dark, not newly blown out. A subject that was already dark only
-    has to stay about where it was."""
-    dark = after[0] < min(0.85 * before[0], max(25.0, 0.6 * before[0]))
-    blown = after[1] > 97.0 and before[1] < 94.0
-    return not dark and not blown
+def _dark_floor(b50: float) -> float:
+    """The lowest median L* the subject may end at: a dark subject only has to stay about where it was, and nothing
+    may lose more than 25 L* in absolute terms."""
+    return max(min(0.85 * b50, max(25.0, 0.6 * b50)), b50 - 25.0)
+
+
+def _blown_excess(before: tuple, after: tuple) -> float:
+    """0 when no new blow-out; else how far past the limits. Catches a bright subject (flash) pushed to white even
+    though it started above L* 94."""
+    clip = (after[2] - before[2]) if len(before) > 2 and len(after) > 2 else 0.0
+    hi = after[1] - 97.0 if after[1] > 97.0 and after[1] - before[1] > 1.5 else 0.0
+    return max(hi / 3.0, (clip - 0.02) * 20.0 if clip > 0.02 else 0.0, 0.0)
+
+
+def readable(before: tuple, after: tuple) -> bool:
+    """The subject still reads: not sunk into the dark, not newly blown out. Tuples are (p50, p95[, clipped share])."""
+    return after[0] >= _dark_floor(before[0]) and _blown_excess(before, after) <= 0
+
+
+def badness(before: tuple, after: tuple) -> float:
+    """How far past the readable limits (0 = readable); picks the least-bad step when the ladder runs out."""
+    return max(0.0, _dark_floor(before[0]) - after[0]) / 10.0 + _blown_excess(before, after)
+
+
+def _smooth(x: np.ndarray, lo: float, hi: float) -> np.ndarray:
+    """smoothstep: 1 at or below lo, 0 at or above hi."""
+    t = np.clip((hi - x) / (hi - lo), 0, 1)
+    return (t * t * (3 - 2 * t)).astype(np.float32)
+
+
+def _range_mask(im: np.ndarray, graded: np.ndarray, feather: float) -> np.ndarray:
+    """Where the grade crushes skin: source skin x the dark band of the graded result (a range mask, no model)."""
+    src, out = style.to_lab(im), style.to_lab(graded)
+    w = filters.skin_weight(src[..., 1], src[..., 2]) * _smooth(out[..., 0], 20.0, 45.0)
+    if feather > 0:
+        w = cv2.GaussianBlur(w, (0, 0), max(1.0, feather * max(w.shape) * 0.5))
+    return np.clip(w, 0, 1).astype(np.float32)
+
+
+def _plain(x):
+    """notes go to JSON: numpy scalars become Python float / bool / int."""
+    if isinstance(x, dict):
+        return {str(k): _plain(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_plain(v) for v in x]
+    if isinstance(x, (np.bool_, bool)):
+        return bool(x)
+    if isinstance(x, (np.floating, float)):
+        return float(x)
+    if isinstance(x, (np.integer, int)):
+        return int(x)
+    return x if isinstance(x, str) or x is None else str(x)
+
+
+def _correct(im: np.ndarray, amount: float) -> tuple[np.ndarray, dict]:
+    """Correct-first (white balance, exposure, stretch) from filters.normalize; absent or 0 = the photo as is."""
+    fn = getattr(filters, "normalize", None)
+    if fn is None or amount <= 0:
+        return im, {}
+    out, n = fn(im, amount)
+    return out, _plain(n)
 
 
 def grade(im: np.ndarray, prof: style.Profile | None, p: VibeParams, models_dir: Path
           ) -> tuple[np.ndarray, np.ndarray | None, dict]:
     """The tone and colour move under the mask policy. Returns (image, the mask actually blended or None, notes).
 
-    The ladder for `auto`: 1 the grade as asked, 2 the same with a 40% smaller tone move, 3 a soft mask at 60% of
-    `mask_opacity`, 4 a soft mask at `mask_opacity`. The first step that keeps the subject readable wins."""
+    The ladder for `auto`: 1 the grade as asked, 2 the same with a 40% smaller tone move, 3 `range`: the grade
+    held back (and lifted) only on skin the grade would crush into the dark, 4 a soft person mask at 60% of
+    `mask_opacity`, 5 the same at `mask_opacity`. Steps 4-5 need a mask (GPU or ONNX); without one the ladder is
+    1-3, judged on the whole frame. The first step that keeps the subject readable wins; if none does, the
+    least-bad one is returned with notes["unreadable"]. Readability is measured on the corrected image."""
     notes: dict = {"mask_policy": p.mask_policy, "mask": "none", "step": "global"}
     if prof is None or p.strength <= 0:
         return im, None, notes
+    im, correct = _correct(im, p.auto)
+    if correct:
+        notes["correct"] = correct
 
-    def run(mask, tone_k):
+    def run(mask, tone_k, lift=0.0, hold=None):
         return style.match(im, prof.stats, p.strength, tone=p.tone * tone_k, colour=p.colour, mask=mask,
-                           subject_strength=p.subject_strength,
-                           subject_lift=p.subject_lift if mask is not None else 0.0, skin_protect=p.skin_protect)
+                           subject_strength=p.subject_strength if hold is None else hold,
+                           subject_lift=lift if mask is not None else 0.0, skin_protect=p.skin_protect)
 
+    _err.msg = None
     raw, how = (None, "none") if p.mask_policy == "off" else subject_mask(im, p, models_dir,
                                                                            guard=p.mask_policy == "auto")
-    if raw is None:
-        return run(None, 1.0), None, notes
-    notes["mask"] = how
-    soft = mk.soften(raw, im, p.feather, p.mask_opacity)
+    if getattr(_err, "msg", None):
+        notes["mask_error"] = _err.msg
+    if raw is not None:
+        notes["mask"] = how
+    soft = mk.soften(raw, im, p.feather, p.mask_opacity) if raw is not None else None
     if p.mask_policy == "always":
+        if soft is None:
+            return run(None, 1.0), None, _plain(notes)
         notes["step"] = "mask"
-        return run(soft, 1.0), soft, notes
-    where = _subject_pixels(im, raw)
+        return run(soft, 1.0, p.subject_lift), soft, _plain(notes)
+    if p.mask_policy == "off":
+        return run(None, 1.0), None, _plain(notes)
+    where = _subject_pixels(im, raw if raw is not None else np.ones(im.shape[:2], np.float32))
     before = _subject_l(im, where)
-    half = mk.soften(raw, im, p.feather, p.mask_opacity * 0.6)
-    out = None
-    for step, mask, tone_k in (("global", None, 1.0), ("gentler", None, 0.6), ("soft mask", half, 1.0),
-                               ("mask", soft, 1.0)):
-        out = run(mask, tone_k)
+    tried: list[tuple[float, str, np.ndarray, np.ndarray | None, tuple]] = []
+    notes["tried"] = []
+
+    def attempt(step, out, kept) -> bool:
         after = _subject_l(out, where)
         notes.update(step=step, subject_L=[round(before[0], 1), round(after[0], 1)])
-        if readable(before, after):
-            return out, mask, notes
-    return out, soft, notes
+        notes["tried"].append(step)
+        tried.append((badness(before, after), step, out, kept, after))
+        return readable(before, after)
+
+    out = run(None, 1.0)
+    if attempt("global", out, None):
+        return out, None, _plain(notes)
+    glob = out
+    out = run(None, 0.6)
+    if attempt("gentler", out, None):
+        return out, None, _plain(notes)
+    w = _range_mask(im, glob, p.feather)
+    if w.max() >= 0.1:  # no crushed skin: this step would equal `global`
+        # only crushed skin is touched, so it is held back harder than a person mask does
+        out = run(w, 1.0, max(p.subject_lift, 0.15), hold=p.subject_strength * 0.5)
+        if attempt("range", out, None):  # kept=None: blur effects are not exempted on those pixels
+            return out, None, _plain(notes)
+    if raw is not None:
+        for step, m in (("soft mask", mk.soften(raw, im, p.feather, p.mask_opacity * 0.6)), ("mask", soft)):
+            out = run(m, 1.0, p.subject_lift)
+            if attempt(step, out, m):
+                return out, m, _plain(notes)
+    _, step, out, kept, after = min(tried, key=lambda t: t[0])  # first of equals: the gentlest
+    notes.update(step=step, unreadable=True, subject_L=[round(before[0], 1), round(after[0], 1)])
+    return out, kept, _plain(notes)
 
 
 def render_notes(im: np.ndarray, prof: style.Profile | None, p: VibeParams, models_dir: Path
                  ) -> tuple[np.ndarray, dict]:
     im = crop_to(im, p.crop)
     im, m, notes = grade(im, prof, p, models_dir)
+    if p.undertone != "none":
+        from wonhee.edit import skin
+        im = skin.apply_undertone(im, skin.Undertone(tone=p.undertone, strength=p.undertone_strength))
+        notes["undertone"] = p.undertone
     im = fx.motion_blur(im, p.motion_blur, p.motion_angle, keep=m)
     im = fx.bloom(im, p.bloom)
     if p.fisheye > 0:
@@ -370,14 +496,14 @@ registry.register(Node("shot_guide", 1, {"images": "images", "profile": "text"},
                        shot_guide_fn, "How to shoot for a look: lens, angle, light, motion, places like it; a "
                        "vision model grounded on the measured profile.",
                        salt=lambda s: {"llm_model": s.llm_model, "local_llm_model": s.local_llm_model}))
-registry.register(Node("vibe_review", 3, {"image": "image", "profile": "text"}, {"review": "text"}, ReviewParams,
+registry.register(Node("vibe_review", 4, {"image": "image", "profile": "text"}, {"review": "text"}, ReviewParams,
                        vibe_review_fn, "A vision model picks the edit knobs (clamped) for one photo toward a look, "
                        "plus what to change when reshooting.",
                        salt=lambda s: {"llm_model": s.llm_model, "local_llm_model": s.local_llm_model}))
-registry.register(Node("vibe_image", 3, {"image": "image", "profile": "text?"},
+registry.register(Node("vibe_image", 4, {"image": "image", "profile": "text?"},
                        {"image": "image", "notes": "text"}, VibeParams,
                        vibe_image_fn, "Move a photo toward a look profile: tone and per-band colour match with skin "
                        "protection, a soft subject mask only when needed (mask_policy), lens effects (fisheye, "
                        "edge/motion blur, bloom, vignette, grain), halftone or "
                        "duotone print, crop. Deterministic.",
-                       salt=lambda s: {"gpu_masks": mk.gpu_available()}))
+                       salt=lambda s: {"gpu_masks": mk.gpu_available(), "dino": mk.DINO_ID, "sam": mk.SAM_ID}))

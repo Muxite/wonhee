@@ -182,6 +182,8 @@ def test_mask_policy_tries_without_a_mask_first(monkeypatch, tmp_path):
     assert notes["step"] == "global" and m is None  # readable without a mask: none blended
     hard = vibe.VibeParams(strength=1.0, tone=1.5)
     _, m, notes = vibe.grade(im, prof, hard, tmp_path)
-    assert notes["step"] in ("soft mask", "mask") and m is not None and m.max() <= 0.65 + 1e-6
+    # the range step (skin only, mask not handed on) now sits before the person-mask rungs
+    assert notes["step"] in ("range", "soft mask", "mask")
+    assert (m is None) == (notes["step"] == "range") and (m is None or m.max() <= 0.65 + 1e-6)
     _, m, notes = vibe.grade(im, prof, vibe.VibeParams(strength=1.0, tone=1.5, mask_policy="off"), tmp_path)
     assert m is None and notes["mask"] == "none"

@@ -5,11 +5,11 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from wonhee.fsutil import run_timed
 from wonhee.procenv import clean_env
 
 
@@ -63,7 +63,7 @@ class Probe:
 
 def has_audio(path: Path) -> bool:
     """True if the file has at least one audio stream (IG strips muted-song audio entirely)."""
-    proc = subprocess.run(
+    proc = run_timed(
         ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
          "-of", "csv=p=0", str(path)],
         capture_output=True, text=True, env=clean_env(),
@@ -73,26 +73,37 @@ def has_audio(path: Path) -> bool:
     return bool(proc.stdout.strip())
 
 
-def probe(path: Path) -> Probe:
+def _num(x) -> float | None:
     try:
-        proc = subprocess.run(
-            ["ffprobe", "-v", "error", "-print_format", "json", "-show_format", "-show_streams", str(path)],
-            capture_output=True, text=True, env=clean_env(),
-        )
-    except FileNotFoundError:
-        raise RuntimeError("ffprobe not found on PATH (install ffmpeg; see `wonhee doctor`)") from None
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    return v if v == v and abs(v) != float("inf") else None
+
+
+def probe(path: Path) -> Probe:
+    proc = run_timed(
+        ["ffprobe", "-v", "error", "-print_format", "json", "-show_format", "-show_streams", str(path)],
+        capture_output=True, text=True, env=clean_env(),
+    )
     if proc.returncode != 0:
         tail = "\n".join(proc.stderr.strip().splitlines()[-5:])
         raise RuntimeError(f"ffprobe failed on {path}: {tail}")
-    out = proc.stdout
-    info = json.loads(out)
+    try:
+        info = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        raise RuntimeError(f"ffprobe gave unreadable output for {path}") from None
     v = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), {})
-    dur = info.get("format", {}).get("duration")
+    dur = _num(info.get("format", {}).get("duration"))
+    if dur is None:
+        dur = _num(v.get("duration"))
     fps = None
-    if v.get("avg_frame_rate") and v["avg_frame_rate"] != "0/0":
-        n, d = v["avg_frame_rate"].split("/")
-        fps = float(n) / float(d) if float(d) else None
+    rate = str(v.get("avg_frame_rate") or "")
+    n, _, d = rate.partition("/")
+    n, d = _num(n), _num(d) if d else 1.0
+    if n and d:
+        fps = n / d
     return Probe(
-        duration_ms=int(float(dur) * 1000) if dur else None,
+        duration_ms=int(dur * 1000) if dur else None,
         width=v.get("width"), height=v.get("height"), fps=fps,
     )

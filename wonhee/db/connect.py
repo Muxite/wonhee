@@ -1,10 +1,13 @@
 """One way to open the database, so every connection has the same pragmas and functions."""
 from __future__ import annotations
 
+import logging
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
+
+log = logging.getLogger(__name__)
 
 
 def _hamming(a: str | None, b: str | None) -> int | None:
@@ -32,8 +35,11 @@ def tx(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     conn.execute("BEGIN IMMEDIATE")
     try:
         yield conn
-    except BaseException:
-        conn.execute("ROLLBACK")
+    except BaseException as e:
+        try:
+            conn.execute("ROLLBACK")
+        except sqlite3.Error as rb:
+            log.warning("rollback failed after %r: %s", e, rb)  # the original error matters more
         raise
     conn.execute("COMMIT")
 

@@ -14,17 +14,45 @@ from wonhee.nodes.chain import ChainError
 READ_ONLY_PREFIXES = ("select", "with", "pragma")
 
 
+def parse_value(v: str):
+    """int, then float, then true/false, then a JSON list/object, else the string as given."""
+    t = v.strip()
+    if "_" not in t:
+        for conv in (int, float):
+            try:
+                x = conv(t)
+            except ValueError:
+                continue
+            if x == x and abs(x) != float("inf"):
+                return x
+    if t.lower() in ("true", "false"):
+        return t.lower() == "true"
+    if t[:1] in "[{":
+        try:
+            return json.loads(t)
+        except json.JSONDecodeError:
+            pass
+    return v
+
+
 def parse_sets(items: list[str]) -> dict:
     out: dict = {}
     for item in items or []:
         if "=" not in item:
             raise ValueError(f"expected k=v, got {item!r}")
         k, v = item.split("=", 1)
-        try:
-            out[k.strip()] = json.loads(v)
-        except json.JSONDecodeError:
-            out[k.strip()] = v
+        out[k.strip()] = parse_value(v)
     return out
+
+
+_conns: list = []
+
+
+def _open(settings):
+    """open_db whose connection main() closes when the command ends."""
+    conn = open_db(settings)
+    _conns.append(conn)
+    return conn
 
 
 def build_deps(settings: Settings):
@@ -56,14 +84,14 @@ def _cmd_doctor(a, settings) -> int:
 
 
 def _cmd_ask(a, settings) -> int:
-    conn = open_db(settings)
+    conn = _open(settings)
     r = service.ask(conn, settings, a.text, a.intent)
     print(f"{r.message}\n[intent {r.intent_id}: {r.status}]")
     return 0
 
 
 def _cmd_scout(a, settings) -> int:
-    conn = open_db(settings)
+    conn = _open(settings)
     r = service.ask(conn, settings, a.text)
     while True:
         print(f"{r.message}\n[intent {r.intent_id}: {r.status}]")
@@ -84,20 +112,20 @@ def _cmd_scout(a, settings) -> int:
 
 
 def _cmd_go(a, settings) -> int:
-    conn = open_db(settings)
+    conn = _open(settings)
     print(service.go(conn, settings, build_deps(settings), a.intent_id, progress=_progress)[1])
     return 0
 
 
 def _cmd_resume(a, settings) -> int:
-    conn = open_db(settings)
+    conn = _open(settings)
     print(service.resume(conn, settings, build_deps(settings), a.run_id, a.from_stage, parse_sets(a.set),
                          progress=_progress))
     return 0
 
 
 def _cmd_show(a, settings) -> int:
-    conn = open_db(settings)
+    conn = _open(settings)
     if a.what == "run":
         print(service.show_run(conn, a.id, settings.media_dir))
     else:
@@ -106,7 +134,7 @@ def _cmd_show(a, settings) -> int:
 
 
 def _cmd_grab(a, settings) -> int:
-    conn = open_db(settings)
+    conn = _open(settings)
     relation = "ours" if a.mine else "friend" if a.friend else "external"
     run_id, text = service.grab(conn, settings, build_deps(settings), a.urls, relation, progress=_progress,
                                 refetch=a.refetch)
@@ -136,7 +164,7 @@ def _cmd_node(a, settings) -> int:
                 raise ValueError(f"expected port=ref|path, got {item!r}")
             k, v = item.split("=", 1)
             inputs[k.strip()] = v
-        conn = open_db(settings)
+        conn = _open(settings)
         _, text = service.node_run(conn, settings, build_deps(settings), a.name, inputs, parse_sets(a.set),
                                    wait=not a.detach, progress=_progress, no_cache=a.no_cache)
         print(text)
@@ -144,7 +172,7 @@ def _cmd_node(a, settings) -> int:
 
 
 def _cmd_chain(a, settings) -> int:
-    conn = open_db(settings)
+    conn = _open(settings)
     if a.sub == "run":
         raw = sys.stdin.read() if a.file == "-" else Path(a.file).read_text()
         try:
@@ -162,25 +190,25 @@ def _cmd_chain(a, settings) -> int:
 
 
 def _cmd_account(a, settings) -> int:
-    print(service.mark_account(open_db(settings), a.handle, a.relation))
+    print(service.mark_account(_open(settings), a.handle, a.relation))
     return 0
 
 
 def _cmd_larp(a, settings) -> int:
-    print(service.larp(open_db(settings), settings, build_deps(settings), a.task, image=a.image, video=a.video,
+    print(service.larp(_open(settings), settings, build_deps(settings), a.task, image=a.image, video=a.video,
                        pick=a.pick, engine=a.engine, registers=a.register or None))
     return 0
 
 
 def _cmd_inspire(a, settings) -> int:
-    text, _ = service.inspire(open_db(settings), settings, build_deps(settings), a.ids or None, a.since,
+    text, _ = service.inspire(_open(settings), settings, build_deps(settings), a.ids or None, a.since,
                               a.relation, progress=_progress)
     print(text)
     return 0
 
 
 def _cmd_ideate(a, settings) -> int:
-    text, _ = service.ideate(open_db(settings), settings, build_deps(settings), n=a.n, focus=a.focus, engine=a.engine,
+    text, _ = service.ideate(_open(settings), settings, build_deps(settings), n=a.n, focus=a.focus, engine=a.engine,
                              content_ids=a.ids or None, since=a.since, relation=a.relation, progress=_progress)
     print(text)
     return 0
@@ -205,19 +233,16 @@ def _cmd_filter(a, settings) -> int:
 
 
 def _cmd_vibe(a, settings) -> int:
-    over = {}
-    for kv in a.set or []:
-        k, _, v = kv.partition("=")
-        over[k] = v if not v.replace(".", "", 1).lstrip("-").isdigit() else float(v)
-    text, _ = service.vibe(open_db(settings), settings, build_deps(settings), a.like, [Path(p) for p in a.photos],
+    over = parse_sets(a.set)
+    text, out_dir = service.vibe(_open(settings), settings, build_deps(settings), a.like, [Path(p) for p in a.photos],
                            name=a.name, engine=a.engine, guide=not a.no_guide, guide_engine=a.guide_engine,
                            overrides=over, progress=_progress)
     print(text)
-    return 0
+    return 0 if out_dir else 1
 
 
 def _cmd_audio(a, settings) -> int:
-    conn, deps = open_db(settings), build_deps(settings)
+    conn, deps = _open(settings), build_deps(settings)
     text = service.audio(conn, settings, deps, Path(a.file), preset=a.preset, check_only=a.check, isolate=a.isolate,
                          music_db=a.music_db,
                          dest=Path(a.out) if a.out else None, progress=_progress)
@@ -226,7 +251,7 @@ def _cmd_audio(a, settings) -> int:
 
 
 def _cmd_export(a, settings) -> int:
-    for p in service.export(open_db(settings), settings, a.ref, Path(a.dest)):
+    for p in service.export(_open(settings), settings, a.ref, Path(a.dest)):
         print(p)
     return 0
 
@@ -236,7 +261,7 @@ def _cmd_sql(a, settings) -> int:
     if not q.lower().startswith(READ_ONLY_PREFIXES) or (q.lower().startswith("pragma") and "=" in q):
         print("db sql is read-only: only SELECT, WITH and read-form PRAGMA queries are allowed", file=sys.stderr)
         return 2
-    conn = open_db(settings)
+    conn = _open(settings)
     conn.execute("PRAGMA query_only = ON")
     try:
         print(_table(conn.execute(q)))
@@ -391,6 +416,12 @@ def main(argv: list[str] | None = None) -> int:
         log = errlog.log_traceback(settings.home if settings else None, f"wonhee {_argv(argv)}")
         print(f"unexpected error — see {log}", file=sys.stderr)
         return 1
+    finally:
+        while _conns:
+            try:
+                _conns.pop().close()
+            except Exception:  # noqa: BLE001 - closing must not mask the real result
+                pass
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@ from wonhee.edit.text import Position, TextSpec, render_layer
 from wonhee.edit.text import Preset as TextPreset
 from wonhee.nodes import registry
 from wonhee.nodes.base import Node
+from wonhee.fsutil import run_timed
 from wonhee.procenv import clean_env
 
 
@@ -50,7 +51,7 @@ def _graph(p: TextParams, video: bool, window: str = "") -> str:
 
 
 def _ffmpeg(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(["ffmpeg", "-loglevel", "error", "-y", *args], cwd=cwd, env=clean_env(),
+    return run_timed(["ffmpeg", "-loglevel", "error", "-y", *args], cwd=cwd, env=clean_env(),
                           capture_output=True, text=True)
 
 
