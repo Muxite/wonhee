@@ -16,12 +16,20 @@ FFMPEG_IMAGE = "linuxserver/ffmpeg:7.1.1"
 MEDIA_DIR = paths.DATA / "media"
 SOURCE = "src_1080p30_120s.mp4"  # noisy test pattern, so encoders can't cheat on flat frames
 SOURCE_S = 120
+# The same clip stream-copied 4 times (no re-encode). Looping the short clip with -stream_loop fails under NVDEC: the
+# decoder restarts at each loop and ffmpeg's forced filter-graph rebuild cannot link scale_cuda (runs 848, 881).
+SOURCE_LONG, SOURCE_LONG_S = "src_1080p30_480s.mp4", 480
 
 
 def prepare_media() -> Path:
     """Generate the shared source clip once (CPU, outside any measured run)."""
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     out = MEDIA_DIR / SOURCE
+    long = MEDIA_DIR / SOURCE_LONG
+    if out.exists() and not long.exists():
+        subprocess.run(["docker", "run", "--rm", "-v", f"{MEDIA_DIR}:/media", FFMPEG_IMAGE, "-hide_banner", "-y",
+                        "-stream_loop", "3", "-i", f"/media/{SOURCE}", "-c", "copy", "-t", str(SOURCE_LONG_S),
+                        f"/media/{SOURCE_LONG}"], check=True)
     if not out.exists():
         subprocess.run(["docker", "run", "--rm", "-v", f"{MEDIA_DIR}:/media", FFMPEG_IMAGE, "-hide_banner", "-y",
                         "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30,noise=alls=20:allf=t+u",
@@ -86,13 +94,12 @@ def transcode_cmd(p) -> list[str]:
         dec, vf = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"], f"scale_cuda=-2:{p.height}"
     else:
         dec, vf = [], f"scale=-2:{p.height}"
-    # longer than the 120 s source: loop it (a long, steady co-tenant for interference runs)
-    loop = ["-stream_loop", str(math.ceil(p.seconds / SOURCE_S) - 1)] if p.seconds > SOURCE_S else []
-    if loop and p.decode == "cuvid":
-        # at each loop the hardware decoder restarts and ffmpeg rebuilds the filter graph, which cannot link
-        # scale_cuda back up (run 848: "Impossible to convert between the formats"); keep the graph as built
-        loop = ["-reinit_filter", "0", *loop]
-    inp = [*dec, *loop, "-i", f"/media/{SOURCE}", "-t", str(p.seconds)]
+    # longer than the 120 s source: the 480 s copy of it, looped only beyond that (CPU decode only: see SOURCE_LONG)
+    src, src_s = (SOURCE_LONG, SOURCE_LONG_S) if p.seconds > SOURCE_S else (SOURCE, SOURCE_S)
+    if p.seconds > src_s and p.decode == "cuvid":
+        raise ValueError(f"decode=cuvid cannot loop its input; use seconds <= {SOURCE_LONG_S}")
+    loop = ["-stream_loop", str(math.ceil(p.seconds / src_s) - 1)] if p.seconds > src_s else []
+    inp = [*dec, *loop, "-i", f"/media/{src}", "-t", str(p.seconds)]
     if p.mode == "decode":
         return head + inp + ["-an", "-f", "null", "-"]
     return head + inp + ["-vf", vf, "-c:v", p.codec, "-preset", p.preset, "-an", "-f", "null", "-"]
