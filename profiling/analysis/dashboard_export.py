@@ -19,6 +19,7 @@ import yaml  # noqa: E402
 
 import audit as AU  # noqa: E402
 import capacity as CA  # noqa: E402
+import observer as OB  # noqa: E402
 import round2 as R2  # noqa: E402
 from gauge import paths  # noqa: E402
 from gauge.cli import expand  # noqa: E402
@@ -214,6 +215,39 @@ def resident_rows(r2) -> list[dict]:
              "n": (v or {}).get("n")} for t, v in r2["C0 resident"]["results"].items() if v]
 
 
+def observer_rows(conn) -> list[dict]:
+    """One row per observer effect measured: what was measured, its size, and the verdict."""
+    rows_ = OB.done(conn)
+    o1 = OB.o1_nsight(rows_, OB.launch_rates(conn))
+    out = []
+    for p in o1["pairs"]:
+        if p["steady_change"] is not None:
+            out.append({"effect": "Nsight in the container", "condition": f"{p['workload']} ({p['mode']})",
+                        "value": r3(p["steady_change"] * 100, 1), "unit": "% steady-state rate",
+                        "detail": f"wall +{p['wall_added_s']:.1f} s ({p['wall_ratio']:.2f}x); {p['launches_per_s'] or 0:,.0f} kernel launches/s",
+                        "verdict": "negligible" if abs(p["steady_change"]) <= 0.01 else "measurable"})
+    o2 = OB.o2_sampler(rows_)
+    out.append({"effect": "Host sampler CPU", "condition": "every run, 100 ms", "value": r3(o2["cpu_ms_per_sample"]["median"], 2),
+                "unit": "ms CPU per sample", "detail": f"{o2['collector_vs_workload_cpu']['median'] * 100:.1f}% of the job's own CPU; never charged to the job; {o2['missed_samples']} of {o2['samples']} samples missed",
+                "verdict": "negligible"})
+    o3 = OB.o3_floor(rows_, conn)
+    for k, s in o3["conditions"].items():
+        if s:
+            out.append({"effect": "Idle power floor", "condition": k, "value": r3(s["median"], 1), "unit": "W",
+                        "detail": f"unobserved idle {o3['unobserved_idle_w']} W; range {s['min']:.1f}-{s['max']:.1f} W, n={s['n']}",
+                        "verdict": "negligible" if s["median"] - o3["unobserved_idle_w"] <= 1.0 else "measurable"})
+    o4 = OB.o4_harness(conn)
+    for k, s in o4["variants"].items():
+        out.append({"effect": "Container launch", "condition": k, "value": r3(s["median"], 1), "unit": "ms to first output",
+                    "detail": f"{s['added_vs_native_ms']:+.0f} ms vs native" if s["added_vs_native_ms"] is not None else "",
+                    "verdict": "baseline" if k == "native" else "measurable"})
+    o6 = OB.o6_interval(rows_, conn)
+    for k, v in o6["change_vs_1s_sampling"].items():
+        out.append({"effect": "Sampler interval", "condition": k, "value": r3(v * 100, 2), "unit": "% vs 1 s sampling",
+                    "detail": "C9, profiler off, 3 repeats per cell", "verdict": o6["verdicts"][k]})
+    return out
+
+
 def capacity_rows(conn) -> tuple[list[dict], list[dict], list[dict]]:
     summ = CA.summarize(CA.rungs(conn))
     rungs, lad = [], []
@@ -275,6 +309,13 @@ def findings(tables: dict) -> list[dict]:
         out.append({"id": "nvdec", "figure": r3(mpar["cpu"]["cpu_s_all4"] / mpar["cuvid"]["cpu_s_all4"], 1), "unit": "x",
                     "label": "less CPU for 4 parallel transcodes with NVDEC",
                     "detail": f"{mpar['cpu']['cpu_s_all4']:.0f} vs {mpar['cuvid']['cpu_s_all4']:.0f} CPU-s at about the same speed per copy ({mpar['cpu']['per_copy_wall_s']:.1f} vs {mpar['cuvid']['per_copy_wall_s']:.1f} s)"})
+    ob = {(r["effect"], r["condition"]): r for r in tables["observer"]}
+    floor = next((r for (e, c), r in ob.items() if e == "Idle power floor" and "C9" in c and "metrics" in c), None)
+    quiet = next((r for (e, c), r in ob.items() if e == "Idle power floor" and "C9" in c and "none" in c and "100 ms" in c), None)
+    if floor and quiet:
+        out.append({"id": "observer", "figure": r3(floor["value"] - quiet["value"], 1), "unit": "W",
+                    "label": "added to the idle GPU by Nsight's GPU-metrics collection",
+                    "detail": f"{floor['value']:.1f} W vs {quiet['value']:.1f} W with only gauge's sampler, which matches the unobserved idle"})
     if tables["packing"]:
         best = tables["packing"][0]
         out.append({"id": "packing", "figure": best["gain"], "unit": "x", "label": f"useful work when packing {best['mix']}",
@@ -294,7 +335,8 @@ def main() -> int:
     tables = {"progress": progress(conn), "audit": audit_rows(conn), "profiler": profiler_rows(r2),
               "warmcold": warmcold_rows(r2), "inputs": input_rows(r2), "interference": interference_rows(r2),
               "shapes": shape_rows(conn), "sharing": sharing_rows(r2), "media": stages, "media_parallel": par,
-              "capacity": rungs, "ladders": lad, "packing": pack, "resident": resident_rows(r2)}
+              "capacity": rungs, "ladders": lad, "packing": pack, "resident": resident_rows(r2),
+              "observer": observer_rows(conn)}
     tables["findings"] = findings(tables)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

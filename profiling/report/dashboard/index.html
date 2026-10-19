@@ -66,7 +66,7 @@
     <nav class="toc" aria-label="Sections">
       <a href="#findings">Findings</a><a href="#limits">What tops out</a><a href="#capacity">Capacity</a><a href="#packing">Packing</a>
       <a href="#warmcold">Cold vs warm</a><a href="#interference">Interference</a><a href="#sharing">Sharing modes</a>
-      <a href="#media">Media</a><a href="#inputs">Input size</a><a href="#profiler">Profiler effect</a><a href="#audit">Evidence audit</a><a href="#method">Method</a><a href="#explorer">Explorer</a><a href="#run-explorer">Run explorer</a><a href="#energy">Energy</a><a href="#all-runs">All runs</a>
+      <a href="#media">Media</a><a href="#inputs">Input size</a><a href="#profiler">Profiler effect</a><a href="#observer">Observer effect</a><a href="#audit">Evidence audit</a><a href="#method">Method</a><a href="#explorer">Explorer</a><a href="#run-explorer">Run explorer</a><a href="#energy">Energy</a><a href="#all-runs">All runs</a>
     </nav>
   </header>
 
@@ -183,6 +183,18 @@
       <p class="lede">Nsight slows steady-state work beyond the ±3% tolerance set before the runs, so every rate on this page comes from profiler-off runs. Traced runs are used only for what the GPU did inside a call.</p>
     </div>
     <div class="card"><div class="tablebox"><table id="profiler-table" data-source="profiler" data-row-key="case"></table></div></div>
+  </section>
+
+  <section id="observer">
+    <div class="head">
+      <h2>Observer effect: how much measuring changed the results</h2>
+      <p class="lede">Every way the measurement itself could move a number: Nsight inside the container, gauge's host sampler, the idle power floor, container launch, and the sampler's polling rate (C9). Verdicts use the tolerances set before the runs: within ±1% of a rate, or ±1 W of power.</p>
+    </div>
+    <div class="card">
+      <div class="controls" style="display:flex;gap:var(--cds-gap-sm);flex-wrap:wrap"><label class="muted" for="ob-filter">Filter</label>
+        <input type="search" id="ob-filter" placeholder="Nsight, sampler, floor, launch" style="font:inherit;font-size:var(--cds-font-size-caption);padding:4px 8px;border-radius:var(--cds-radius);border:1px solid var(--color-border-line);background:var(--color-bg);color:var(--color-fg)"></div>
+      <div class="tablebox" style="max-height:30rem;overflow:auto"><table id="observer-table" data-source="observer" data-row-key="effect,condition"></table></div>
+    </div>
   </section>
 
   <section id="audit">
@@ -597,6 +609,19 @@ dash.onData(() => {
     { field: 'n', label: 'Runs', cls: 'num' },
   ]);
 
+  window.GPObserver = () => {
+  const ob = GP.rows('observer');
+  if (ob) {
+    const q = (document.getElementById('ob-filter').value || '').trim().toLowerCase();
+    GP.table(document.getElementById('observer-table'), ob.filter((r) => !q || `${r.effect} ${r.condition} ${r.detail}`.toLowerCase().includes(q)), [
+      { field: 'effect', label: 'Effect' }, { field: 'condition', label: 'Condition' },
+      { field: 'value', label: 'Size', cls: 'num', fmt: (v, d) => `${d3.format(',.4~r')(v)} ${d.unit}` },
+      { field: 'verdict', label: 'Verdict', render: (td, d) => td.append('span').attr('class', `pill ${d.verdict === 'negligible' || d.verdict === 'baseline' ? 'ok' : (d.verdict === 'measurable' ? 'bad' : 'warn')}`).text(d.verdict) },
+      { field: 'detail', label: 'Detail', cls: 'wrap' },
+    ]);
+  }
+  };
+  window.GPObserver();
   const au = GP.rows('audit');
   if (au) GP.table(document.getElementById('audit-table'), au, [
     { field: 'need', label: 'What the evidence needs' },
@@ -604,6 +629,10 @@ dash.onData(() => {
     { field: 'evidence', label: 'Evidence', cls: 'wrap' },
   ]);
 });
+</script>
+
+<script>
+document.getElementById('ob-filter').addEventListener('input', () => window.GPObserver && window.GPObserver());
 </script>
 
 <script>

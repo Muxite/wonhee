@@ -180,6 +180,8 @@ def o6_interval(rows, conn) -> dict:
     for r in rows:
         if (json.loads(r["spec_json"]).get("provenance") or {}).get("experiment") != "C9 observer":
             continue
+        if json.loads(r["spec_json"]).get("profile", "none") != "none":
+            continue  # the interval contrast is profiler-off only; the Nsight idle runs belong to O3
         s = json.loads(r["sj"])
         iv = s.get("sampling_interval_ms")
         if r["workload"] == "micro.idle":
@@ -193,13 +195,22 @@ def o6_interval(rows, conn) -> dict:
     out = collections.defaultdict(dict)
     for (wl, unit, iv), vals in by.items():
         out[f"{wl} ({unit})"][f"{iv:.0f} ms"] = stat(vals)
-    verdict = {}
+    verdict, calls = {}, {}
     for k, d in out.items():
         base = d.get("1000 ms")
         for iv, s in d.items():
-            if base and s and iv != "1000 ms":
-                verdict[f"{k} @ {iv}"] = s["median"] / base["median"] - 1
-    return {"by_workload": out, "change_vs_1s_sampling": verdict}
+            if not (base and s and iv != "1000 ms"):
+                continue
+            ch = s["median"] / base["median"] - 1
+            verdict[f"{k} @ {iv}"] = ch
+            # pre-registered tolerance: +-1% (power: +-1 W); overlapping ranges with a non-monotonic change -> inconclusive
+            if "W at idle" in k:
+                ok = abs(s["median"] - base["median"]) <= 1.0
+            else:
+                ok = abs(ch) <= 0.01
+            overlap = s["min"] <= base["max"] and base["min"] <= s["max"]
+            calls[f"{k} @ {iv}"] = "negligible" if ok else ("inconclusive (spread exceeds tolerance)" if overlap else "measurable")
+    return {"by_workload": out, "change_vs_1s_sampling": verdict, "verdicts": calls}
 
 
 def markdown(res: dict) -> str:
@@ -240,7 +251,9 @@ def markdown(res: dict) -> str:
         L.append("\n## O6 sampler interval (C9)\n")
         for k, d in res["o6"]["by_workload"].items():
             L.append(f"- {k}: " + "; ".join(f"{iv}: {fmt(s, 2)}" for iv, s in sorted(d.items(), key=lambda kv: float(kv[0].split()[0]))))
-        L.append("\nChange vs 1 s sampling: " + ", ".join(f"{k} {v * 100:+.2f}%" for k, v in res["o6"]["change_vs_1s_sampling"].items()))
+        L.append("\n| condition | change vs 1 s sampling | verdict (pre-registered: +-1%, power +-1 W) |\n|---|---|---|")
+        for k, v in res["o6"]["change_vs_1s_sampling"].items():
+            L.append(f"| {k} | {v * 100:+.2f}% | {res['o6']['verdicts'][k]} |")
     return "\n".join(L) + "\n"
 
 
