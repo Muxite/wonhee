@@ -55,8 +55,8 @@ Model-backed workers stay up with the model loaded. Pure-ffmpeg workers can be o
 | 2 | **timeline ops**: `cut`, `trim`, `speed`, `grade`, `reframe_9x16`, `text`, `audio` | none (data) | `timeline` → `timeline` | the spec's R1 ops, rewritten as transforms | Agents compose edits for free and validate them before any pixels move |
 | 3 | **text_layers** | cpu-light | `timeline` → PNG layers | `slopcut/text.py` + Noto Color Emoji + bundled OFL script fonts | Emoji-correct overlays in the reference style; libass can't do colour emoji |
 | 4 | **proxy** | nvenc | `video` → 360p, 2–5 fps `video` + keyframes | ffmpeg CUVID decode + `scale_cuda` | Every analysis node reads a small file; full decode happens once |
-| 5 | **warm whisper** | cuda | `video` → `subtitles` | existing `analyze/speech.py` in a server loop | Removes the ~15 s per-call model load. Add a music gate (watchouts §Audio) |
-| 6 | **shot_index** | cuda | proxy → per-shot embeddings + tags | SigLIP2 | Lets the planner ask "shots with a bus at sunset" across all footage |
+| 5 | ~~warm whisper~~ **done 2026-10-19** as the general warm worker (`wonhee worker serve`, see below) | cuda | any `lane="cuda"` node | `wonhee/worker.py` | Removes the per-call model load. Still to do: a music gate (watchouts §Audio) |
+| 6 | ~~shot_index~~ **done 2026-10-19** (`wonhee shots index / search`) | cuda | `video` → per-shot SigLIP2 vectors + tags | `nodes/shots.py` | Reads the full video today; switch its input to the proxy (#4) once that exists |
 | 7 | **local_vision** | llm | keyframes → descriptions, on-screen text | gemma3:12b or ministral-3:14b via Ollama, batched per reel | Removes the paid vision call from `screen_text`; batches all of a reel's keyframes in one request |
 | 8 | **check** | cpu-light | `video` → findings | spec R3 + a safe-zone check on text boxes | Catches the expensive mistakes (black frames, loudness, letterboxing) before a human looks |
 | 9 | **caption_writer** | llm | plan + style → caption, hashtags | spec R6 style memory | One call per reel; uses the voice style |
@@ -65,8 +65,33 @@ Model-backed workers stay up with the model loaded. Pure-ffmpeg workers can be o
 
 ## Worker contract
 
+Built 2026-10-19 as `wonhee/worker.py` (one process per lane, SQLite `job` and `worker` tables, migration 0013). These are the rules it follows, and the rules any new lane should follow.
+
 - One image per lane family, built from `profiling/images/…`. Models mount read-only from the host caches (`~/.cache/huggingface`, the Ollama volume). The CUDA JIT cache is a shared volume (`gauge-cuda-cache` at `/root/.nv`), or each fresh container spends about 60 s compiling.
 - The worker loads its model once, then loops: claim job → run node fn → write blobs to the media store → write the result row → next.
 - Jobs come from wonhee's SQLite (a `job` table: chain step, lane, node, cache key, status, attempts, timeout). Claim with an atomic `UPDATE … WHERE status='queued' … RETURNING`. No extra broker is needed on one box.
 - Health: a worker reports `lane`, `node versions`, `model`, `loaded_at` and `jobs_done`. The scheduler stops sending work to a worker that misses its heartbeat.
 - Profile every worker once with `wonhee profile run …` alone and next to its usual neighbour before setting its lane limit.
+
+### Running the cuda worker as a user service
+
+```ini
+# ~/.config/systemd/user/wonhee-worker.service
+[Unit]
+Description=wonhee warm GPU worker
+
+[Service]
+WorkingDirectory=%h/projects/wonhee
+ExecStart=%h/.local/bin/uv run wonhee worker serve --lane cuda --preload whisper,mask
+Restart=on-failure
+KillSignal=SIGTERM
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target
+```
+
+Then run `systemctl --user enable --now wonhee-worker`. Choose `--preload` from X9, the resident VRAM budget in `docs/profiling/DATA_CARD.md`.
+SIGTERM lets the current job finish. A worker killed mid-job is noticed after 60 s without a heartbeat, and its job is requeued.
+The worker does not hold the machine's gpu-lock, because it would hold it forever. Stop it before timed sweeps that need a quiet GPU.
+

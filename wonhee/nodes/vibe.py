@@ -506,4 +506,5 @@ registry.register(Node("vibe_image", 4, {"image": "image", "profile": "text?"},
                        "protection, a soft subject mask only when needed (mask_policy), lens effects (fisheye, "
                        "edge/motion blur, bloom, vignette, grain), halftone or "
                        "duotone print, crop. Deterministic.",
-                       salt=lambda s: {"gpu_masks": mk.gpu_available(), "dino": mk.DINO_ID, "sam": mk.SAM_ID}))
+                       salt=lambda s: {"gpu_masks": mk.gpu_available(), "dino": mk.DINO_ID, "sam": mk.SAM_ID},
+                       lane="cuda"))

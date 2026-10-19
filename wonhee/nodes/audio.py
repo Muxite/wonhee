@@ -114,4 +114,4 @@ registry.register(Node("audio_check", 2, {"video": "video"}, {"report": "text"},
 registry.register(Node("audio_clean", 3, {"video": "video"}, {"video": "video", "report": "text"}, CleanParams,
                        audio_clean_fn, "Local audio clean-up: rumble cut, RNNoise denoise, compression, two-pass "
                        "loudness to -14 LUFS / -1.5 dBTP; isolate=true splits the voice from music and street noise on the GPU "
-                       "(Demucs) first, music_db puts the music back underneath; video copied untouched."))
+                       "(Demucs) first, music_db puts the music back underneath; video copied untouched.", lane="cuda"))

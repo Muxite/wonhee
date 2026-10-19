@@ -259,7 +259,8 @@ def _missing_refs(conn, chain) -> list[str]:
 
 def chain_run(conn, settings, deps, chain_obj, *, wait: bool = True, progress=None,
               no_cache: bool = False) -> tuple[int, str]:
-    """Validate, record and run a chain. wait=False starts a detached child and returns at once."""
+    """Validate, record and run a chain. wait=False returns at once: the run goes to a live warm worker of the
+    chain's lane (wonhee/worker.py) when there is one, otherwise to a detached child process."""
     from wonhee.nodes import detach, registry
     from wonhee.nodes.chain import Chain, ChainError, parse_chain, validate
     from wonhee.nodes.runner import stages_for_chain
@@ -282,6 +283,12 @@ def chain_run(conn, settings, deps, chain_obj, *, wait: bool = True, progress=No
     project_id = repo.create_project(conn, title, "chain", intent_id)
     run_id = repo.start_run(conn, project_id, chain.cost_cap_usd if chain.cost_cap_usd is not None else settings.cost_cap_usd)
     if not wait:
+        from wonhee import worker
+        lane = worker.lane_of([cn.node for cn in chain.nodes])
+        if lane and worker.live(conn, lane):
+            job = worker.enqueue(conn, run_id, lane)
+            return run_id, (f"run {run_id} queued as job {job} for the warm {lane} worker; check with: "
+                            f"wonhee chain show {run_id} (workers: wonhee worker status)")
         log = detach.spawn(settings, run_id)
         return run_id, (f"run {run_id} started in the background; check with: wonhee chain show {run_id} "
                         f"(log: {log})")
@@ -655,6 +662,48 @@ def export(conn, settings, ref: str, dest: Path) -> list[Path]:
         shutil.copyfile(path_for(settings.media_dir, sha), p)
         out.append(p)
     return out
+
+
+def shots_index(conn, settings, deps, src: Path, progress=None) -> str:
+    """Index a video's shots for search (shot_index node): cut, embed keyframes, tag."""
+    import json
+
+    from wonhee.media import path_for
+
+    sha = repo.save_file(conn, settings.media_dir, Path(src).expanduser(), "video", "video/mp4")
+    rid, text = node_run(conn, settings, deps, "shot_index", {"video": sha}, {}, progress=progress)
+    o = _step_out(conn, rid, "shot_index")
+    if o is None:
+        return text
+    m = json.loads(path_for(settings.media_dir, o["index"]).read_text(encoding="utf-8"))
+    lines = [f"{Path(src).name}: {len(m['shots'])} shots indexed ({sha[:12]})"]
+    for sh in m["shots"]:
+        tags = ", ".join(t for t, _ in sh["tags"])
+        lines.append(f"  {sh['ord']:>3}  {sh['start_ms'] / 1000:6.1f}-{sh['end_ms'] / 1000:6.1f}s  {tags}")
+    return "\n".join(lines)
+
+
+def shots_search(conn, settings, query: str, k: int = 8) -> str:
+    """Shots across all indexed footage, best match to a description first (cosine of SigLIP2 vectors)."""
+    import numpy as np
+
+    from wonhee.analyze import embed
+    from wonhee.media import path_for
+
+    rows = conn.execute("SELECT media_sha256, ord, start_ms, end_ms, keyframe_sha256, tags, vec FROM shot_embedding"
+                        " WHERE model=?", (embed.MODEL_ID,)).fetchall()
+    if not rows:
+        return "no shots indexed yet; run: wonhee shots index <video>"
+    mat = np.stack([np.frombuffer(r["vec"], "<f2") for r in rows]).astype(np.float32)
+    q = embed.text_vecs([query])[0].astype(np.float32)
+    best = np.argsort(-(mat @ q))[:k]
+    out = [f"{len(rows)} shots searched for {query!r}:"]
+    for i in best:
+        r = rows[int(i)]
+        out.append(f"  {float(mat[i] @ q):.3f}  {r['media_sha256'][:12]} shot {r['ord']} "
+                   f"{r['start_ms'] / 1000:.1f}-{r['end_ms'] / 1000:.1f}s  "
+                   f"{path_for(settings.media_dir, r['keyframe_sha256'])}")
+    return "\n".join(out)
 
 
 def node_run(conn, settings, deps, node: str, inputs: dict | None = None, params: dict | None = None,

@@ -250,6 +250,35 @@ def _cmd_audio(a, settings) -> int:
     return 0
 
 
+def _cmd_worker(a, settings) -> int:
+    from wonhee import worker
+
+    if a.sub == "status":
+        print(worker.status(_open(settings)))
+        return 0
+    import signal
+
+    preload = [m for m in (a.preload or "").split(",") if m]
+    w = worker.Worker(settings, lane=a.lane, preload=preload, **({"name": a.name} if a.name else {}))
+    signal.signal(signal.SIGTERM, lambda *_: w.stop.set())  # systemd stop: finish the current job, then exit
+    try:
+        n = w.serve(build_deps(settings), max_jobs=a.max_jobs, drain=a.drain, progress=_progress)
+    except KeyboardInterrupt:
+        w.stop.set()
+        n = w.done
+    print(f"worker {w.name}: {n} jobs")
+    return 0
+
+
+def _cmd_shots(a, settings) -> int:
+    conn = _open(settings)
+    if a.sub == "index":
+        print(service.shots_index(conn, settings, build_deps(settings), Path(a.video), progress=_progress))
+    else:
+        print(service.shots_search(conn, settings, a.query, k=a.k))
+    return 0
+
+
 def _cmd_export(a, settings) -> int:
     for p in service.export(_open(settings), settings, a.ref, Path(a.dest)):
         print(p)
@@ -374,6 +403,22 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--isolate", action="store_true", help="GPU: split the voice from music / street noise first")
     s.add_argument("--music-db", type=float, metavar="DB", help="with --isolate: keep the music this many dB down, e.g. -15")
     s.set_defaults(fn=_cmd_audio)
+    s = sub.add_parser("worker", help="warm GPU worker: keeps models loaded, runs detached chains from a queue")
+    ws = s.add_subparsers(dest="sub", required=True)
+    n = ws.add_parser("serve", help="run in the foreground until stopped (SIGTERM finishes the current job)")
+    n.add_argument("--lane", choices=["cuda"], default="cuda")
+    n.add_argument("--preload", metavar="LIST", help="comma list of whisper,mask,separate,embed to load at start")
+    n.add_argument("--name", help="worker name (default host-pid)")
+    n.add_argument("--max-jobs", type=int, help="exit after this many jobs")
+    n.add_argument("--drain", action="store_true", help="exit when the queue is empty")
+    n.set_defaults(fn=_cmd_worker)
+    ws.add_parser("status", help="workers, heartbeats and the job queue").set_defaults(fn=_cmd_worker)
+    s = sub.add_parser("shots", help="index footage into shots (SigLIP2) and search them by description")
+    ss = s.add_subparsers(dest="sub", required=True)
+    n = ss.add_parser("index", help="cut, embed and tag one video's shots"); n.add_argument("video")
+    n.set_defaults(fn=_cmd_shots)
+    n = ss.add_parser("search", help='best-matching shots, e.g. "bus at sunset"'); n.add_argument("query")
+    n.add_argument("-k", type=int, default=8); n.set_defaults(fn=_cmd_shots)
     s = sub.add_parser("export", help="copy a result (video, image, images manifest, content:<id>) into a folder")
     s.add_argument("ref", help="64-hex sha or content:<id>"); s.add_argument("dest"); s.set_defaults(fn=_cmd_export)
     s = sub.add_parser("profile", help="workload profiler (gauge): `wonhee profile doctor`, `... run <workload>`; "

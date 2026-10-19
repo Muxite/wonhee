@@ -228,7 +228,7 @@ def test_mcp_server_tools_and_call(settings):
                      "nodes_list": set(), "node_run": {"node", "inputs", "params", "wait"},
                      "chain_run": {"chain", "wait"}, "chain_show": {"run_id"}, "export": {"ref", "dest"}, "inspire": {"content_ids", "since", "relation"},
                      "ideate": {"n", "focus", "engine", "content_ids", "since"},
-                     "vibe": {"like", "photos", "name", "engine", "guide"}, "audio": {"file", "preset", "check"},
+                     "vibe": {"like", "photos", "name", "engine", "guide"}, "audio": {"file", "preset", "check"}, "shots": {"query", "video", "k"}, "workers": set(),
                      "filter_make": {"description", "photos", "name", "start", "rounds", "engine"},
                      "filter_apply": {"name", "photos", "intensity"},
                      "larp": {"task", "image", "video", "pick", "engine"}}

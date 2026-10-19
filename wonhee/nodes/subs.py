@@ -121,7 +121,8 @@ def srt_fn(ctx, inputs, p: SrtParams) -> dict[str, str]:
 
 registry.register(Node("speech_subs", 1, {"video": "video"}, {"subtitles": "subtitles"}, NoParams, speech_fn,
                        "Subtitles from the spoken audio (reuses a stored transcript).",
-                       salt=lambda s: {"whisper_model": s.whisper_model, "compute_type": s.whisper_compute_type}))
+                       salt=lambda s: {"whisper_model": s.whisper_model, "compute_type": s.whisper_compute_type},
+                       lane="cuda"))
 registry.register(Node("merge_subs", 4, {"a": "subtitles", "b": "subtitles"}, {"subtitles": "subtitles"},
                        MergeParams, merge_fn, "Merge two subtitle sets, dropping near-duplicate lines from b."))
 registry.register(Node("to_srt", 1, {"subtitles": "subtitles"}, {"file": "file"}, SrtParams, srt_fn,

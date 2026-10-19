@@ -285,6 +285,38 @@ def audio(file: str, preset: str = "voice", check: bool = False) -> str:
 
 @mcp.tool()
 @_guard
+def shots(query: str = "", video: str = "", k: int = 8) -> str:
+    """Shot search over all indexed footage. With video: index that file first (cut into shots, SigLIP2 vector and
+    tags per keyframe; needs the GPU group). With query: the k shots best matching a description, e.g.
+    "bus at sunset", each with its keyframe path."""
+    conn, settings = _open()
+    try:
+        parts = []
+        if video:
+            parts.append(service.shots_index(conn, settings, _deps(settings), _in_path(video)))
+        if query:
+            parts.append(service.shots_search(conn, settings, query, k=k))
+        return "\n\n".join(parts) or "error: give a query, a video, or both"
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def workers() -> str:
+    """Warm GPU workers and the job queue. A detached node_run whose chain needs the GPU goes to a live worker
+    (models already loaded, no per-call load) and otherwise to a cold background process. Start one with
+    `wonhee worker serve --lane cuda --preload whisper,mask`."""
+    from wonhee import worker
+    conn, _ = _open()
+    try:
+        return worker.status(conn)
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
 def export(ref: str, dest: str) -> str:
     """Copy a stored result into a local folder for posting: a video or image (one file), an images manifest or
     content:<id> photo post (01.jpg, 02.jpg, ...). Returns the written paths."""

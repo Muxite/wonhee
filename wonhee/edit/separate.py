@@ -6,6 +6,7 @@ about 10x slower. Audio goes in and out through ffmpeg as raw float32, so any co
 """
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,7 @@ from wonhee.fsutil import run_timed
 from wonhee.procenv import clean_env
 
 _sep: dict[str, object] = {}
+_sep_lock = threading.Lock()  # a warm worker may load from more than one thread; build each model once
 
 
 def available() -> bool:
@@ -26,11 +28,12 @@ def available() -> bool:
 
 
 def _separator(model: str):
-    if model not in _sep:
-        import torch
-        from demucs.api import Separator
-        _sep[model] = Separator(model=model, device="cuda" if torch.cuda.is_available() else "cpu")
-    return _sep[model]
+    with _sep_lock:
+        if model not in _sep:
+            import torch
+            from demucs.api import Separator
+            _sep[model] = Separator(model=model, device="cuda" if torch.cuda.is_available() else "cpu")
+        return _sep[model]
 
 
 def _tail(stderr: bytes | str | None) -> str:
