@@ -66,6 +66,10 @@ Before the look goes on, each photo is gently corrected first (exposure and whit
 
 Tweak it later with `--from rainy-cafe "a bit warmer, less grain"`. Export it with `wonhee filter show rainy-cafe --cube rainy-cafe.cube` to use the same colour in CapCut / VN / Resolve on video. Glow, grain and the other texture effects don't fit in a LUT; add them in the app. The auto-correct step and skin undertone are per photo, so they aren't in the LUT either.
 
+### Calibrate the reviewer
+
+A small vision model cannot see every knob (it may never notice `aberration` or `rolloff`). `wonhee filter calibrate --on a.jpg b.jpg --n 40` moves one knob at a time on your photos ("some" or "a lot"; "a little" is too subtle to be fair), shows the model the before|after and asks which knob moved. The result is a seen rate and a direction rate per knob, saved to `data/filters/_calibration.json` for that model. From then on `filter make` tells the reviewer not to use knobs it saw less than 40% of the time (needs 2+ trials), drops any move it still makes on them, and lists them in the report. Exposure, contrast, temperature and saturation are never hidden, and never more than half the knobs. Change the model and the file no longer applies until you re-run it. No file, no change in behaviour. Idea from MonetGPT (SIGGRAPH 2025).
+
 **Masks are a last resort.** The `vibe` edit first tries the grade without a mask, then a gentler one. It only blends in a soft mask (edge-aware, feathered, at most 65% strength) if your face would end up too dark or blown out. Skin protection keeps skin colour natural under colour grades without any mask. `--set mask_policy=off` never masks; `--set mask_policy=always` always uses the soft mask.
 
 ## Formats to reuse for jokes

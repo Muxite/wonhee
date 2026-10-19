@@ -812,6 +812,7 @@ def filter_make(conn, settings, deps, description: str, photos: list[Path], *, n
             tweaks = old["description"].split("; then: ")[1:][-3:]
             if tweaks:
                 past = "The user's past tweaks to this filter: " + "; ".join(tweaks)
+    hidden = _hidden_knobs(settings, engine)
     params = {"description": change, "engine": engine, **({"start": base.model_dump_json()} if base else {})}
     rid, text = node_run(conn, settings, deps, "filter_draft", {}, params, progress=progress)
     runs = [rid]
@@ -845,7 +846,8 @@ def filter_make(conn, settings, deps, description: str, photos: list[Path], *, n
         fact_text = "; ".join(f"photo {i + 1}: {F.verdicts(f)}" for i, f in enumerate(facts))
         rid, text = node_run(conn, settings, deps, "filter_review", {"sheet": sheet_sha},
                              {"description": description, "filter": spec.model_dump_json(), "facts": fact_text,
-                              "history": past[:600], "engine": engine}, progress=progress)
+                              "history": past[:600], "engine": engine,
+                              **({"hidden": hidden} if hidden else {})}, progress=progress)
         runs.append(rid)
         o = _step_out(conn, rid, "filter_review")
         rev = json.loads(path_for(d, o["review"]).read_text(encoding="utf-8")) if o else None
@@ -871,6 +873,8 @@ def filter_make(conn, settings, deps, description: str, photos: list[Path], *, n
              f"  base: {draft.get('base')} + {', '.join(draft.get('moves') or []) or 'no moves'}",
              f"  best round {best_round} of {len(history)}, score {score}/5, ${cost:.3f}",
              f"  knobs: {describe(spec)}"]
+    if hidden:
+        lines.append(f"  hidden knobs (the reviewer model could not see them in calibration): {', '.join(hidden)}")
     for h in history:
         lines.append(f"  round {h['round']}: {h['score']}/5 {h['verdict']}"
                      + (f" -> {', '.join(h['moves'])}" if h["moves"] else "")
@@ -1007,6 +1011,123 @@ def publish_muksite(conn, settings, deps, image: str, *, slug: str, name: str, c
     if o is None:
         return text, False
     return path_for(settings.media_dir, o["entry"]).read_text(encoding="utf-8"), True
+
+
+def _hidden_knobs(settings, engine: str) -> list[str]:
+    """Knobs the reviewer model failed to identify in `wonhee filter calibrate` (seen < 40% over >= 2 trials).
+    Core knobs are never hidden and at most half of all knobs are, worst first. [] with no usable calibration."""
+    from wonhee import filterstore
+    from wonhee.nodes.filter import CORE, KNOBS
+
+    model = settings.local_llm_model if engine == "local" else settings.llm_model
+    cal = filterstore.calibration(settings.home, model, engine)
+    if cal is None or cal.get("guessing"):
+        return []
+    bad = []
+    for k, v in cal["knobs"].items():
+        try:
+            if k in KNOBS and k not in CORE and v["trials"] >= 2 and v["seen_rate"] < 0.4:
+                bad.append((v["seen_rate"], k))
+        except (KeyError, TypeError):
+            continue
+    return [k for _, k in sorted(bad)[:len(KNOBS) // 2]]
+
+
+def filter_calibrate(conn, settings, deps, photos: list[Path], *, n: int = 40, engine: str = "local", seed: int = 0,
+                     progress=None) -> tuple[str, Path | None]:
+    """Measure which knobs the reviewer model can see: move one knob on a photo, show it before|after, ask which
+    knob moved. Per knob: how often it named the knob (and range) and, when right, the direction. Writes
+    <home>/filters/_calibration.json; `filter make` then hides the knobs it cannot see (seen < 40%) from the
+    reviewer. Puzzles use 'some' and 'a lot' only ('a little' is too subtle to be a fair question)."""
+    import json
+    import random
+    import tempfile
+    from datetime import datetime, timezone
+    from typing import get_args
+
+    import numpy as np
+
+    from wonhee import filterstore
+    from wonhee.edit import filters as F
+    from wonhee.edit import style
+    from wonhee.media import path_for
+    from wonhee.nodes.filter import KNOBS, RANGE_KNOBS, Move, apply_moves
+
+    if not photos:
+        return "give at least one photo to build the puzzles from (--on a.jpg b.jpg)", None
+    d = settings.media_dir
+    shas = [repo.save_file(conn, d, Path(p).expanduser(), "image", "image/jpeg") for p in photos]
+    srcs = [style.load(path_for(d, s)) for s in shas]
+    rng, colours = random.Random(seed), list(get_args(F.ColourRange))
+    n = max(1, min(n, 400))
+    puzzles = []
+    for i in range(n):
+        knob = KNOBS[i % len(KNOBS)]
+        lo, hi = (0, 1) if knob in RANGE_KNOBS or knob == "mono" else F._bounds(knob)
+        up_ok, down_ok = hi > 0, lo < 0
+        direction = "up" if knob == "mono" or not down_ok else "down" if not up_ok else rng.choice(["up", "down"])
+        puzzles.append(Move(knob=knob, direction=direction, amount=rng.choice(["some", "a lot"]),
+                            range=rng.choice(colours) if knob in RANGE_KNOBS else None))
+    if any(m.knob in RANGE_KNOBS for m in puzzles):  # range knobs hold their direction over -1..1
+        puzzles = [m.model_copy(update={"direction": rng.choice(["up", "down"])}) if m.knob in RANGE_KNOBS else m
+                   for m in puzzles]
+    stats: dict[str, dict] = {}
+    answers: dict[str, int] = {}
+    skipped = 0
+    invisible: dict[str, int] = {}
+    with tempfile.TemporaryDirectory(prefix="wonhee-calib-") as tmp:
+        for i, m in enumerate(puzzles):
+            src = srcs[i % len(srcs)]
+            spec, _ = apply_moves(F.Filter(), [m])
+            sheet = Path(tmp) / f"puzzle-{i}.jpg"
+            out = F.apply(src, spec, auto=0)
+            if float((np.abs(out.astype(np.int16) - src).max(axis=2) > 3).mean()) < 0.002:  # nothing visibly moved:
+                invisible[m.knob] = invisible.get(m.knob, 0) + 1     # not a fair question, so not asked
+                continue
+            _filter_sheet([(src, out)], sheet)
+            sha = repo.save_file(conn, d, sheet, "image", "image/jpeg")
+            rid, _ = node_run(conn, settings, deps, "filter_identify", {"sheet": sha}, {"engine": engine},
+                              progress=progress)
+            o = _step_out(conn, rid, "filter_identify")
+            st = stats.setdefault(m.knob, {"trials": 0, "seen": 0, "dir": 0})
+            if o is None:
+                skipped += 1  # the model failed to answer: not a trial
+                continue
+            a = json.loads(path_for(d, o["answer"]).read_text(encoding="utf-8"))
+            st["trials"] += 1
+            answers[str(a.get("knob"))] = answers.get(str(a.get("knob")), 0) + 1
+            seen = a.get("knob") == m.knob and (m.knob not in RANGE_KNOBS or a.get("range") == m.range)
+            st["seen"] += seen
+            st["dir"] += seen and a.get("direction") == m.direction
+    model = settings.local_llm_model if engine == "local" else settings.llm_model
+    # a model that names the same knob for most puzzles scores 100% on that knob by luck and 0% on the rest:
+    # that measures its habit, not its eyes, so such a run hides nothing
+    guess = bool(answers) and max(answers.values()) > 0.5 * sum(answers.values())
+    knobs = {k: {"trials": v["trials"], "seen_rate": round(v["seen"] / v["trials"], 3) if v["trials"] else 0.0,
+                 "direction_rate": round(v["dir"] / v["seen"], 3) if v["seen"] else 0.0}
+             for k, v in stats.items() if v["trials"]}
+    if not knobs:
+        return f"the model answered none of the {n} puzzles ({skipped} failed); nothing saved", None
+    path = write_atomic(filterstore.folder(settings.home) / "_calibration.json", json.dumps(
+        {"model": model, "engine": engine, "n": n, "date": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+         "knobs": knobs, "answers": answers, "guessing": guess}, indent=1))
+    hidden = _hidden_knobs(settings, engine)
+    lines = [f"Reviewer calibration for {model} ({engine}), {n} puzzles on {len(photos)} photo(s)"
+             + (f", {skipped} unanswered" if skipped else ""),
+             f"  {'knob':<16}{'trials':>7}{'seen':>7}{'dir':>7}"]
+    for k, v in sorted(knobs.items(), key=lambda kv: (kv[1]["seen_rate"], kv[0])):
+        lines.append(f"  {k:<16}{v['trials']:>7}{v['seen_rate']:>7.0%}{v['direction_rate']:>7.0%}")
+    if guess:
+        top = max(answers, key=answers.get)
+        lines.append(f"  the model named '{top}' for {answers[top] / sum(answers.values()):.0%} of puzzles: it is "
+                     "guessing, not seeing, so nothing is hidden")
+    lines.append(f"  hidden from the reviewer next time: {', '.join(hidden) or 'none'}"
+                 " (seen < 40% over >= 2 trials; exposure, contrast, temperature and saturation are never hidden)")
+    if invisible:
+        lines.append(f"  not asked (no visible change from a neutral filter): {', '.join(sorted(invisible))}")
+    lines.append("  'a little' moves are not asked: too subtle to be a fair question")
+    lines.append(f"  saved: {path}")
+    return "\n".join(lines), path
 
 
 def filter_list(settings) -> str:

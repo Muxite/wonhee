@@ -128,3 +128,17 @@ def usual_intensity(home: Path, name: str) -> float | None:
     """Median of the last 10 logged intensities, or None with no history."""
     xs = [float(e["intensity"]) for e in uses(home, name)[-10:] if isinstance(e.get("intensity"), (int, float))]
     return round(statistics.median(xs), 3) if xs else None
+
+
+# --- reviewer calibration: which knobs the local vision model can actually see (wonhee filter calibrate) ----------
+
+def calibration(home: Path, model: str, engine: str = "local") -> dict | None:
+    """The calibration for this model + engine, or None (missing, unreadable, or measured on another model)."""
+    try:
+        c = json.loads((folder(home) / "_calibration.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(c, dict) or c.get("model") != model or c.get("engine", "local") != engine \
+            or not isinstance(c.get("knobs"), dict):
+        return None
+    return c

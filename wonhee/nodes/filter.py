@@ -78,16 +78,22 @@ class Move(BaseModel):
                                                                   "which colour range to adjust")
 
 
-def knob_help() -> str:
+CORE = {"exposure", "contrast", "temperature", "saturation"}  # never hidden from the reviewer
+
+
+def knob_help(hidden=()) -> str:
     out = []
+    hidden = set(hidden) - CORE
     for k in KNOBS:
-        if k in RANGE_KNOBS:
+        if k in RANGE_KNOBS or k in hidden:
             continue
         f = F.Filter.model_fields[k]
         rng = "on/off" if k == "mono" else "{:g}..{:g}".format(*F._bounds(k))
         out.append(f"{k} ({rng}): {f.description or k}")
-    out.append("range_hue / range_sat / range_lum (-1..1): shift one colour range's hue / saturation / brightness; "
-               "set `range` to one of " + ", ".join(get_args(F.ColourRange)))
+    ranges = [k for k in RANGE_KNOBS if k not in hidden]
+    if ranges:
+        out.append(" / ".join(ranges) + " (-1..1): shift one colour range's hue / saturation / brightness; "
+                   "set `range` to one of " + ", ".join(get_args(F.ColourRange)))
     return "; ".join(out)
 
 
@@ -210,6 +216,7 @@ class ReviewParams(BaseModel):
     filter: str = Field(max_length=4000)  # the current Filter JSON
     facts: str = Field(default="", max_length=3000)  # measured checks from the renders
     history: str = Field(default="", max_length=600)  # how the user has tweaked this filter before
+    hidden: list[str] = Field(default_factory=list, max_length=40)  # knobs the reviewer model cannot see (calibration)
     engine: Engine = "local"
 
 
@@ -219,6 +226,8 @@ REVIEW_PX = 1024
 def filter_review_fn(ctx, inputs, p: ReviewParams) -> dict[str, str]:
     d = ctx.settings.media_dir
     cur = F.Filter.model_validate_json(p.filter)
+    hidden = set(p.hidden) - CORE
+    ban = (f"Do not use these knobs: {', '.join(sorted(hidden))}.\n\n" if hidden else "")
     with tempfile.TemporaryDirectory(prefix="wonhee-freview-") as tmp:
         thumb = Path(tmp) / "sheet.jpg"
         cv2.imwrite(str(thumb), style._small(style.load(path_for(d, inputs["sheet"])), REVIEW_PX),
@@ -226,8 +235,8 @@ def filter_review_fn(ctx, inputs, p: ReviewParams) -> dict[str, str]:
         raw = _ask(ctx, p.engine, Adjust, SYSTEM_REVIEW,
                    f"The vibe: {p.description}\n\nCurrent filter (others neutral): {describe(cur)}\n\n"
                    f"Measured: {p.facts}\n\n" + (f"{p.history}\n\n" if p.history else "")
-                   + f"Knobs: {knob_help()}", [thumb], "FilterAdjust")
-    new, done = apply_moves(cur, raw.moves[:4])
+                   + ban + f"Knobs: {knob_help(hidden)}", [thumb], "FilterAdjust")
+    new, done = apply_moves(cur, [m for m in raw.moves if m.knob not in hidden][:4])
     body = {"score": min(max(raw.score, 1), 5), "verdict": raw.verdict, "done": new == cur, "moves": done,
             "filter": new.model_dump()}
     return {"review": save_text(ctx.conn, d, json.dumps(body, indent=1))}
@@ -241,6 +250,6 @@ registry.register(Node("filter_image", 2, {"image": "image"}, {"image": "image"}
 registry.register(Node("filter_draft", 3, {}, {"filter": "text"}, DraftParams, filter_draft_fn,
                        "A text model turns a vibe description into filter numbers (or tweaks a saved filter); "
                        "clamped.", salt=_salt))
-registry.register(Node("filter_review", 4, {"sheet": "image"}, {"review": "text"}, ReviewParams, filter_review_fn,
+registry.register(Node("filter_review", 5, {"sheet": "image"}, {"review": "text"}, ReviewParams, filter_review_fn,
                        "A vision model scores before|after pairs against the vibe and moves a few knobs (clamped, "
                        "step-limited).", salt=_salt))

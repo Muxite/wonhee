@@ -8,7 +8,7 @@ NODES: dict[str, Node] = {}
 # Node modules register themselves at import; each later task appends its module here.
 MODULES: list[str] = ["wonhee.nodes.subs", "wonhee.nodes.grab", "wonhee.nodes.translate", "wonhee.nodes.screen", "wonhee.nodes.burn",
            "wonhee.nodes.look", "wonhee.nodes.text", "wonhee.nodes.carousel",
-           "wonhee.nodes.teardown", "wonhee.nodes.larp", "wonhee.nodes.ideate", "wonhee.nodes.vibe", "wonhee.nodes.filter", "wonhee.nodes.poster",
+           "wonhee.nodes.teardown", "wonhee.nodes.larp", "wonhee.nodes.ideate", "wonhee.nodes.vibe", "wonhee.nodes.filter", "wonhee.nodes.filter_probe", "wonhee.nodes.poster",
            "wonhee.nodes.audio", "wonhee.nodes.shots", "wonhee.nodes.viz", "wonhee.nodes.publish"]
 _loaded = False
 

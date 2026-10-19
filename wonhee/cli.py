@@ -222,7 +222,10 @@ def _cmd_filter(a, settings) -> int:
         print(service.filter_show(settings, a.name, cube=Path(a.cube) if a.cube else None))
         return 0
     conn, deps = _open(settings), build_deps(settings)
-    if a.sub == "apply":
+    if a.sub == "calibrate":
+        text, out = service.filter_calibrate(conn, settings, deps, [Path(p) for p in (a.on or [])], n=a.n,
+                                             engine=a.engine, progress=_progress)
+    elif a.sub == "apply":
         text, out = service.filter_apply(conn, settings, deps, a.name, [Path(p) for p in a.photos],
                                          intensity=a.intensity, dest=Path(a.out) if a.out else None,
                                          progress=_progress)
@@ -431,6 +434,12 @@ def _parser() -> argparse.ArgumentParser:
     n.add_argument("--from", dest="start", metavar="FILTER", help="tweak this pack or saved filter instead")
     n.add_argument("--rounds", type=int, default=3, help="render-review-adjust rounds (default 3)")
     n.add_argument("--engine", choices=["local", "remote"], default="local", help="local = on-box model, $0")
+    n.set_defaults(fn=_cmd_filter)
+    n = s.add_parser("calibrate", help="measure which knobs the reviewer model can see (hidden from it if not): "
+                                       "wonhee filter calibrate --on a.jpg b.jpg --n 40")
+    n.add_argument("--on", nargs="+", metavar="PHOTO", help="photos to build the puzzles from (required)")
+    n.add_argument("--n", type=int, default=40, help="number of puzzles (default 40)")
+    n.add_argument("--engine", choices=["local", "remote"], default="local")
     n.set_defaults(fn=_cmd_filter)
     s = sub.add_parser("audio", help="check or clean a clip's audio on the box: denoise, peaks, -14 LUFS loudness")
     s.add_argument("file"); s.add_argument("--preset", choices=["voice", "mixed", "music"], default="voice")
