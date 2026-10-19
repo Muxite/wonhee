@@ -1,0 +1,5 @@
+# Fill the persistent CUDA JIT cache (volume gauge-cuda-cache) for every wonhee GPU stack before the contrasts,
+# so "jit_cache: shared" means a populated cache. Not analysed.
+experiment: warmup
+jobs:
+  - {workload: wonhee.gpu, fixed: {repeat: 1, images: 2, clip_s: 10, jit_cache: shared}, grid: {task: [whisper, mask, separate, embed]}}

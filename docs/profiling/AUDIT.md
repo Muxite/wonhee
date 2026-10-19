@@ -6,11 +6,11 @@
 
 | Need | Status | Evidence |
 |---|---|---|
-| Immutable run manifest | **Partly** | Every run has an image digest, its validated params, a prediction frozen before launch, and its initial state (free VRAM, GPU processes, temperature). 289 of 317 runs have a host fingerprint (driver 595.91.07 throughout). **Missing:** the exact argv (it is rebuilt from today's code), input hashes (media files and GGUF blobs are named, not hashed), and cache or JIT state as a field |
+| Immutable run manifest | **Partly** | Every run has its validated params, a prediction frozen before launch, and its initial state (free VRAM, GPU processes, temperature). 289 of 317 runs have a host fingerprint (driver 595.91.07 throughout). **Missing:** the exact argv (it is rebuilt from today's code), input hashes (media files and GGUF blobs are named, not hashed), and cache or JIT state as a field. **The "image digest" is the local image ID**, which cannot be pulled again. Every gauge image had been pruned by 2026-10-19, and `llama.cpp:full-cuda` is a floating tag, so the exact software of the old runs cannot be restored |
 | Raw exports | **Yes** | All 130 profiled runs keep their `.nsys-rep` file and a SQLite export. 313 runs have 100 ms samples |
 | Failed / OOM runs kept | **Yes** | 4 `cuda_oom` and 5 abandoned runs stay in the ledger. Censored runs are never used as "fits" labels |
 | Phase-level timing | **Partly** | 189 runs have phase marks, but they come from LLM and training workloads only. The wonhee nodes (whisper, subtitle burn) report one end-to-end time |
-| Matching baselines | **Partly** | Of 79 co-run members, 58 have solo references with the same params and profile mode, and 26 of 36 groups are referenced on both sides |
+| Matching baselines | **Partly** | Of 79 co-run members, 76 have solo references with the same params and profile mode. Only 58 had them when the analysis accepted traced references alone; profiler-off runs now count too, still never mixed across modes. 26 of 36 groups are referenced on both sides |
 | Alternating or randomized order | **No** | 81 of 92 repeated conditions ran back to back |
 | Repeats | **Thin** | Of 109 solo conditions, 17 ran once, 76 twice and 16 three or more times. The median repeat spread is 3.3% of runtime; the 90th percentile is 22% |
 | Uncertainty shown | **No** | The report shows medians, with spread only in the per-run tables |
@@ -35,6 +35,12 @@
 4. **"Throttled" means the power limit.** All 874 throttled samples show reason 0x4, the software power cap. None is thermal. Start temperatures ranged 31–51 °C.
 5. **One light GPU tenant was resident in 280 of 317 runs.** It is the same 234 MiB process each time (display compositor and streamer). X0b found the same measurement floor without it, so it is recorded but not a confound for these workloads.
 
+6. **Found while piloting round 2 (runs 318–332): the "cold whisper" cost is mostly CUDA JIT, not model load.**
+   - In a fresh container, whisper's (ctranslate2) first call took **10.5 s** against **0.4 s** for the second. The model load took 3 s.
+   - With a populated, persistent JIT cache, the first call took **1.0 s**, and a 10 s clip went from about 17 s to about 7 s end to end.
+   - The PyTorch masks moved by only 0.3–0.8 s; their cold cost is framework import (about 4 s) plus weights (about 8 s).
+   - So the old "whisper ≈ 15 s flat" (X3) mostly measured JIT compilation in fresh containers. JIT cache state is now a recorded condition (`jit_cache`).
+
 ## The plan's questions against existing records
 
 | # | Question | Status | Existing evidence | Smallest contrast still needed |
@@ -52,5 +58,6 @@
 
 - **Interleave conditions.** `gauge sweep --order interleave --seed N` runs repeat 1 of every condition, then repeat 2, and so on. With `--seed`, each round is shuffled.
 - **Pre-register every contrast.** Each sweep file states its question, contrast, analysis rule, tolerance and stopping condition, and the decision it changes, before it runs.
-- **Treat state as part of the condition.** Cache state is controlled (evict the file, or warm it up first) and recorded in the run's provenance, never left to run order.
+- **Treat state as part of the condition.** Page cache (`cache: cold | warm`) and the CUDA JIT cache (`jit_cache: none | shared`) are set explicitly per run, never left to run order.
+- **Record what can be restored.** Each run now also records the image's registry digest, its exact argv, and sha256 of its media inputs.
 - **Show the spread.** Results report n, median and min–max (or a bootstrap interval) next to every ratio.

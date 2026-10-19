@@ -11,8 +11,11 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-ROOT = Path("/tmp/gauge-mps")
+from gauge import paths  # noqa: E402
+
+ROOT = Path("/tmp/gauge-mps")  # the pipe stays short (unix socket paths max out at 108 bytes)
 PIPE, LOG = ROOT / "pipe", ROOT / "log"
+KEEP = paths.DATA / "mps-logs"  # daemon output per session, next to the ledger: proof clients really joined
 NAME = "gauge-mps"
 IMAGE = "gauge/torch:1"  # any CUDA image: the toolkit mounts the driver's MPS binaries with the compute capability
 ENV = {"CUDA_MPS_PIPE_DIRECTORY": str(PIPE), "CUDA_MPS_LOG_DIRECTORY": str(LOG)}
@@ -53,8 +56,15 @@ def start(wait_s: float = 15) -> None:
 
 
 def stop() -> None:
+    """Quit the daemon and keep what it printed (-f logs to stdout, not to LOG) in LOG/control-<time>.log: it is
+    the evidence that clients really connected, rather than silently getting their own context."""
     if running():
         _ctl("quit")
+        time.sleep(1)
+    logs = subprocess.run(["docker", "logs", NAME], capture_output=True, text=True)
+    if logs.returncode == 0 and (logs.stdout or logs.stderr):
+        KEEP.mkdir(parents=True, exist_ok=True)
+        (KEEP / f"control-{int(time.time())}.log").write_text(logs.stdout + logs.stderr)
     subprocess.run(["docker", "rm", "-f", NAME], capture_output=True)
 
 
@@ -67,6 +77,6 @@ def daemon():
         stop()
 
 
-def server_log_tail(n: int = 20) -> list[str]:
-    f = LOG / "control.log"
-    return f.read_text(errors="replace").splitlines()[-n:] if f.exists() else []
+def last_log(n: int = 30) -> list[str]:
+    logs = sorted(KEEP.glob("control-*.log"))
+    return logs[-1].read_text(errors="replace").splitlines()[-n:] if logs else []

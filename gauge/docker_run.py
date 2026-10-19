@@ -39,8 +39,12 @@ def docker_argv(name: str, image: str, cmd: list[str], *, cidfile: Path, gpu: bo
 
 
 def image_digest(image: str) -> str | None:
-    r = subprocess.run(["docker", "image", "inspect", "--format", "{{.Id}}", image], capture_output=True, text=True)
-    return r.stdout.strip() or None
+    """The local image ID, plus the registry digest when the image came from a registry ("id@repo@sha256:..."):
+    the ID alone cannot be pulled again once the image is pruned."""
+    r = subprocess.run(["docker", "image", "inspect", "--format", "{{.Id}}|{{join .RepoDigests \",\"}}", image],
+                       capture_output=True, text=True)
+    iid, _, repo = r.stdout.strip().partition("|")
+    return (f"{iid}@{repo}" if repo else iid) or None
 
 
 def _ts(s: str | None) -> float | None:

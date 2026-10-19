@@ -10,10 +10,17 @@ SEED=${SEED:-20261019}
 X=profiling/sweeps/x
 g() { echo "== gauge $*"; uv run gauge "$@" || echo "!! failed: gauge $*"; }
 
-g build                                                  # images: wonhee-gpu, torch (stressor), wonhee
+# only the images this round uses (gauge build would also rebuild the unused CPU wonhee and stress images)
+docker build -q -t gauge/torch:1 profiling/images/torch >/dev/null || exit 1
+docker build -q -t gauge/wonhee-gpu:1 -f profiling/images/wonhee-gpu/Dockerfile . >/dev/null || exit 1
+for i in ghcr.io/ggml-org/llama.cpp:full-cuda linuxserver/ffmpeg:7.1.1; do
+  docker image inspect "$i" >/dev/null 2>&1 || docker pull -q "$i" || exit 1
+done
 gpu=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader | wc -l)
 [ "$gpu" -eq 0 ] || echo "!! $gpu other GPU process(es) resident: runs record them, but the GPU is not quiet"
 
+# populate the shared CUDA JIT cache once per stack (labelled "warmup": the analysis ignores it)
+g sweep $X/warmup.yaml --order file
 g sweep $X/c1_profiler.yaml --seed $SEED                 # C1 profiler on/off: decides how every later run is read
 g sweep $X/c7_warm_cold.yaml --seed $SEED                # C7 cold vs warm, cache controlled
 g sweep $X/c5_inputs.yaml --seed $SEED                   # C5 input size per GPU node

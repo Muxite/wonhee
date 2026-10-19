@@ -13,5 +13,5 @@ jobs:
   - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 512, reps: 3}, repeats: 5, profile: none}
   - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 512, reps: 3}, repeats: 5, profile: trace}
   - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 512, reps: 3}, repeats: 5, profile: metrics}
-  - {workload: wonhee.gpu, fixed: {task: mask, images: 4, repeat: 4, cache: warm}, repeats: 3, profile: none}
-  - {workload: wonhee.gpu, fixed: {task: mask, images: 4, repeat: 4, cache: warm}, repeats: 3, profile: trace}
+  - {workload: wonhee.gpu, fixed: {task: mask, images: 4, repeat: 4, cache: warm, jit_cache: shared}, repeats: 3, profile: none}
+  - {workload: wonhee.gpu, fixed: {task: mask, images: 4, repeat: 4, cache: warm, jit_cache: shared}, repeats: 3, profile: trace}

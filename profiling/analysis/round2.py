@@ -285,7 +285,9 @@ def c7(conn) -> dict:
     runs = [r for r in load(conn, "C7 warm-cold") if r["ok"]]
     cells = collections.defaultdict(list)
     for r in runs:
-        name = "node run speech_subs (cold path)" if r["workload"] == "wonhee.speech_subs" else f"{r.p['task']} ({r.p.get('cache', 'as_is')})"
+        jit = f"jit {r.p.get('jit_cache', 'none')}"
+        name = (f"node run speech_subs ({jit})" if r["workload"] == "wonhee.speech_subs"
+                else f"{r.p['task']} (page {r.p.get('cache', 'as_is')}, {jit})")
         cells[name].append(r)
     rows, res = [], {}
     for name, rs in sorted(cells.items()):
@@ -299,12 +301,17 @@ def c7(conn) -> dict:
                  "wall_s": stat(r["summary"].get("runtime_s") for r in rs)}
             rows.append([name, fmt(d["started_s"]), fmt(d["load_s"]), fmt(d["first_job_s"]), fmt(d["later_job_s"]), fmt(d["wall_s"])])
         else:
-            d = {"started_s": stat(r.mark("started") for r in rs), "load_s": stat(r.phase("load") for r in rs),
+            fw = lambda r: (r.mark("model_loaded") or 0) - (r.mark("framework_ready") or 0)  # noqa: E731 - weights only
+            d = {"started_s": stat(r.mark("started") for r in rs),
+                 "framework_s": stat((r.mark("framework_ready") or 0) - (r.mark("started") or 0) for r in rs),
+                 "weights_s": stat(fw(r) for r in rs),
                  "first_call_s": stat((r.phase("spans") or [None])[0] for r in rs),
-                 "later_call_s": stat(warm_spans(r) for r in rs), "wall_s": stat(r["summary"].get("runtime_s") for r in rs)}
-            rows.append([name, fmt(d["started_s"]), fmt(d["load_s"]), fmt(d["first_call_s"]), fmt(d["later_call_s"]), fmt(d["wall_s"])])
+                 "later_call_s": stat(warm_spans(r) for r in rs), "tail_s": stat(r.phase("tail") for r in rs),
+                 "wall_s": stat(r["summary"].get("runtime_s") for r in rs)}
+            rows.append([name, fmt(d["started_s"]), f"{fmt(d['framework_s'])} + {fmt(d['weights_s'])}",
+                         fmt(d["first_call_s"]), fmt(d["later_call_s"]), fmt(d["wall_s"])])
         res[name] = d
-    md = table(["condition (40 s clip / 4 images)", "interpreter+imports s", "model load s", "first result s", "later results s", "wall s"], rows)
+    md = table(["condition (40 s clip / 4 images)", "interpreter+imports s", "framework + weights s", "first result s", "later results s", "wall s"], rows)
     return {"meta": meta("c7_warm_cold.yaml"), "results": res, "md": md}
 
 

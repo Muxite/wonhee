@@ -18,6 +18,7 @@ from gauge.workloads.media import MEDIA_DIR
 from gauge import paths
 
 MB = 2**20
+JIT_ENV = {"CUDA_CACHE_MAXSIZE": str(4 * 2**30)}  # the 256 MiB default JIT cache can evict kernels between runs
 IMAGE = "gauge/wonhee:1"
 WONHEE_REPO = paths.REPO
 HF_CACHE = Path.home() / ".cache" / "huggingface"
@@ -64,6 +65,7 @@ class SpeechParams(BaseModel):
     clip_s: Literal[CLIP_SECONDS] = 20  # type: ignore[valid-type]
     whisper_model: Literal["tiny", "base", "small", "turbo"] = "turbo"
     compute_type: Literal["float16", "int8_float16"] = "float16"
+    jit_cache: Literal["none", "shared"] = "none"  # see GpuParams
 
 
 WHISPER = {"tiny": (39e6, 0.004), "base": (74e6, 0.006), "small": (244e6, 0.012), "turbo": (809e6, 0.02)}
@@ -80,8 +82,12 @@ def speech_prior(p) -> dict:
 
 
 register(Workload(
-    name="wonhee.speech_subs", params=SpeechParams, gpu=True, **COMMON,
-    param_env=lambda p: {"WONHEE_WHISPER_MODEL": p.whisper_model, "WONHEE_WHISPER_COMPUTE_TYPE": p.compute_type},
+    # same image as wonhee.gpu since 2026-10-19, so the cold node path and the bench differ only in how they run
+    name="wonhee.speech_subs", params=SpeechParams, gpu=True, **{**COMMON, "image": "gauge/wonhee-gpu:1",
+                                                                    "build": "wonhee-gpu"},
+    param_env=lambda p: {"WONHEE_WHISPER_MODEL": p.whisper_model, "WONHEE_WHISPER_COMPUTE_TYPE": p.compute_type,
+                         **JIT_ENV},
+    param_mounts=lambda p: ("gauge-cuda-cache:/root/.nv",) if p.jit_cache == "shared" else (),
     command=lambda p: ["wonhee", "node", "run", "speech_subs", "--in", f"video=/media/wonhee_{p.clip_s}s.mp4",
                        "--no-cache"],
     size_params=("clip_s", "whisper_model", "compute_type"), size=lambda p: clip_duration(p.clip_s),
@@ -131,6 +137,9 @@ class GpuParams(BaseModel):
     repeat: int = 2
     hold: float = 0  # > 0: load, one call, then stay resident this long (no timed compute)
     cache: Literal["as_is", "cold", "warm"] = "as_is"  # model files' page-cache state before loading
+    # CUDA JIT cache (~/.nv/ComputeCache): "none" = a fresh container compiles PTX for this GPU on first use;
+    # "shared" = the persistent gauge-cuda-cache volume, as a long-lived host or worker would have it
+    jit_cache: Literal["none", "shared"] = "none"
 
 
 # (load_s, VRAM bytes) guesses per task; calibration replaces them
@@ -161,7 +170,8 @@ def gpu_cmd(p) -> list[str]:
 
 
 register(Workload(
-    name="wonhee.gpu", params=GpuParams, **COMMON_GPU, command=gpu_cmd,
+    name="wonhee.gpu", params=GpuParams, **{**COMMON_GPU, "env": {**COMMON_GPU["env"], **JIT_ENV}}, command=gpu_cmd,
+    param_mounts=lambda p: ("gauge-cuda-cache:/root/.nv",) if p.jit_cache == "shared" else (),
     size_params=("clip_s", "images", "px"), size=lambda p: clip_duration(p.clip_s) if p.task in ("whisper", "separate")
     else p.images * p.px ** 2, prior=gpu_prior,
     features=lambda p: {**p.model_dump(), "audio_s": clip_duration(p.clip_s)},

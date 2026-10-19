@@ -1,19 +1,21 @@
 # C7  Readiness vs steady state  (plan question 7)
-# The same whisper work four ways, with cache state controlled rather than left to run order:
-#   cold process, model files evicted from page cache   (load from disk)
-#   cold process, model files read into page cache      (load from memory)
-#   warm worker: one process, one load, 6 jobs          (wonhee worker)
-#   wonhee node run speech_subs, the real cold path     (CLI + DB + node, as users run it today)
-# Phases from marks: started (launch + interpreter + imports), model_loaded, first compute span, later spans.
+# The same whisper and mask work with state controlled, not left to run order. Two state axes:
+#   page cache  cold = model files evicted (load from disk) | warm = read in first (load from memory)
+#   CUDA JIT    none = fresh container compiles PTX for this GPU on first use | shared = persistent cache volume
+# plus the warm worker (one process, one load, 6 jobs) and `wonhee node run speech_subs` as users run it today.
+# Pilot (runs 325-332): whisper first call 10.5 s with a fresh JIT cache vs 1.0 s shared; masks (PyTorch, native
+# kernels for this GPU) ~0.3-0.8 s difference. round2.sh pre-populates the shared JIT cache before this file.
+# Phases from marks: started (interpreter + wonhee imports), framework_ready (torch/transformers), model_loaded,
+# first compute span (first result), later spans (steady state), tail (teardown).
 experiment: C7 warm-cold
-question: "What does a cold call pay before useful work, and how much of it does a warm worker remove?"
-measure: "phase_s.load, spans[0] (first result) vs spans[1:] (subsequent), container start -> 'started', wall time per job"
-analysis: "medians with min-max over 3 repeats; readiness = launch + load + first result; steady = median later span"
-tolerance: "none: descriptive decomposition"
+question: "What does a cold call pay before useful work (launch, imports, JIT, load, first call), and what does a warm worker remove?"
+measure: "mark times and phase_s: framework, load, spans[0] vs median spans[1:], tail; wall per job"
+analysis: "medians with min-max over 3 repeats; readiness = everything before the first result; steady = median later span"
+tolerance: "none: descriptive decomposition; a state axis 'matters' if it moves readiness by >1 s"
 stop: "3 repeats per cell"
-decision: "which state fields (page cache, residency, JIT) must accompany any timing record"
+decision: "which state fields (page cache, JIT cache, residency) must accompany any timing record"
 jobs:
-  - {workload: wonhee.gpu, fixed: {task: whisper, clip_s: 40, repeat: 3}, grid: {cache: [cold, warm]}, repeats: 3}
-  - {workload: wonhee.gpu, fixed: {task: mask, images: 4, repeat: 3}, grid: {cache: [cold, warm]}, repeats: 3}
-  - {workload: wonhee.gpu, fixed: {task: worker, clip_s: 40, repeat: 6}, grid: {cache: [cold, warm]}, repeats: 3}
-  - {workload: wonhee.speech_subs, fixed: {clip_s: 40, whisper_model: turbo}, repeats: 3}
+  - {workload: wonhee.gpu, fixed: {task: whisper, clip_s: 40, repeat: 3}, grid: {cache: [cold, warm], jit_cache: [none, shared]}, repeats: 3}
+  - {workload: wonhee.gpu, fixed: {task: mask, images: 4, repeat: 3}, grid: {cache: [cold, warm], jit_cache: [none, shared]}, repeats: 3}
+  - {workload: wonhee.gpu, fixed: {task: worker, clip_s: 40, repeat: 6, cache: warm}, grid: {jit_cache: [none, shared]}, repeats: 3}
+  - {workload: wonhee.speech_subs, fixed: {clip_s: 40, whisper_model: turbo}, grid: {jit_cache: [none, shared]}, repeats: 3}
