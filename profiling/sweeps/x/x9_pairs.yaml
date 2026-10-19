@@ -1,11 +1,12 @@
 # X9d the new GPU nodes next to an LLM decode (bandwidth-bound) and next to NVENC (other engine).
-# Same shape as X5: slowdown and tokens/s ratio vs the traced solos in x9_solos.yaml.
+# Partners are long (4k decode tokens, an 8 min looped encode) so they outlast the wonhee job's load and compute;
+# interference.overlap_frac checks it. Same shape as X5: slowdown and tokens/s ratio vs the traced solos in x9_solos.yaml.
 experiment: X9 pairs
 profile: trace
-repeats: 2
+repeats: 3
 pairs:
-  - ["wonhee.gpu:task=mask,engine=sam2,images=4,repeat=6", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=1024,reps=2"]
-  - ["wonhee.gpu:task=separate,clip_s=100", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=1024,reps=2"]
-  - ["wonhee.gpu:task=embed,images=64,batch=32,repeat=10", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=1024,reps=2"]
-  - ["wonhee.gpu:task=mask,engine=sam2,images=4,repeat=6", "ffmpeg.transcode:seconds=40,height=1080,codec=h264_nvenc,preset=p4"]
-  - ["wonhee.gpu:task=separate,clip_s=100", "ffmpeg.transcode:seconds=40,height=1080,codec=h264_nvenc,preset=p4"]
+  - ["wonhee.gpu:task=mask,engine=sam2,images=4,repeat=6", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=4096,reps=2"]
+  - ["wonhee.gpu:task=separate,clip_s=100,repeat=3", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=4096,reps=2"]
+  - ["wonhee.gpu:task=embed,images=64,batch=32,repeat=10", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=4096,reps=2"]
+  - ["wonhee.gpu:task=mask,engine=sam2,images=4,repeat=6", "ffmpeg.transcode:seconds=480,height=1080,codec=h264_nvenc,preset=p4"]
+  - ["wonhee.gpu:task=separate,clip_s=100,repeat=3", "ffmpeg.transcode:seconds=480,height=1080,codec=h264_nvenc,preset=p4"]

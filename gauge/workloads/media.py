@@ -1,6 +1,7 @@
 """Media family: ffmpeg transcode (CPU libx264 vs GPU NVENC) over a fixed pre-generated source clip."""
 from __future__ import annotations
 
+import math
 import subprocess
 from pathlib import Path
 from typing import Literal
@@ -14,6 +15,7 @@ MB = 2**20
 FFMPEG_IMAGE = "linuxserver/ffmpeg:7.1.1"
 MEDIA_DIR = paths.DATA / "media"
 SOURCE = "src_1080p30_120s.mp4"  # noisy test pattern, so encoders can't cheat on flat frames
+SOURCE_S = 120
 
 
 def prepare_media() -> Path:
@@ -74,7 +76,9 @@ def transcode_cmd(p) -> list[str]:
         dec, vf = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"], f"scale_cuda=-2:{p.height}"
     else:
         dec, vf = [], f"scale=-2:{p.height}"
-    return ["ffmpeg", "-hide_banner", "-nostats", *dec, "-i", f"/media/{SOURCE}", "-t", str(p.seconds),
+    # longer than the 120 s source: loop it (a long, steady co-tenant for interference runs)
+    loop = ["-stream_loop", str(math.ceil(p.seconds / SOURCE_S) - 1)] if p.seconds > SOURCE_S else []
+    return ["ffmpeg", "-hide_banner", "-nostats", *dec, *loop, "-i", f"/media/{SOURCE}", "-t", str(p.seconds),
             "-vf", vf, "-c:v", p.codec, "-preset", p.preset, "-an", "-f", "null", "-"]
 
 

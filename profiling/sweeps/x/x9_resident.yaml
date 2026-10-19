@@ -2,4 +2,4 @@
 # with activations and workspaces. Plus the traced solo references for x9_pairs.yaml.
 experiment: X9 resident
 jobs:
-  - {workload: wonhee.gpu, fixed: {hold: 60}, grid: {task: [whisper, mask, separate, embed]}, repeats: 1}
+  - {workload: wonhee.gpu, fixed: {hold: 60}, grid: {task: [whisper, mask, separate, embed]}, repeats: 2}

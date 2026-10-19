@@ -4,7 +4,7 @@
 experiment: X11 mps
 sharing: mps
 profile: trace
-repeats: 2
+repeats: 3
 pairs:
   - ["llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=256,reps=2", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=256,reps=2"]
   - ["llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=256,reps=2", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=256,reps=2", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=256,reps=2", "llamacpp.phase:model=qwen2.5:3b,phase=decode,tokens=256,reps=2"]

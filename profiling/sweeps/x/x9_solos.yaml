@@ -1,8 +1,8 @@
 # X9c solo references for x9_pairs.yaml, traced the same way so profiler overhead cancels.
 experiment: X9 pairs
 jobs:
-  - {workload: wonhee.gpu, fixed: {task: mask, engine: sam2, images: 4, repeat: 6}, repeats: 2, profile: trace}
-  - {workload: wonhee.gpu, fixed: {task: separate, clip_s: 100}, repeats: 2, profile: trace}
-  - {workload: wonhee.gpu, fixed: {task: embed, images: 64, batch: 32, repeat: 10}, repeats: 2, profile: trace}
-  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 1024, reps: 2}, repeats: 2, profile: trace}
-  - {workload: ffmpeg.transcode, fixed: {seconds: 40, height: 1080, codec: h264_nvenc, preset: p4}, repeats: 2, profile: trace}
+  - {workload: wonhee.gpu, fixed: {task: mask, engine: sam2, images: 4, repeat: 6}, repeats: 3, profile: trace}
+  - {workload: wonhee.gpu, fixed: {task: separate, clip_s: 100, repeat: 3}, repeats: 3, profile: trace}
+  - {workload: wonhee.gpu, fixed: {task: embed, images: 64, batch: 32, repeat: 10}, repeats: 3, profile: trace}
+  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 4096, reps: 2}, repeats: 3, profile: trace}
+  - {workload: ffmpeg.transcode, fixed: {seconds: 480, height: 1080, codec: h264_nvenc, preset: p4}, repeats: 3, profile: trace}

@@ -75,3 +75,15 @@ def test_sweep_experiment_key_reaches_provenance():
     from gauge.cli import expand
     jobs = expand({"experiment": "X8 new nodes", "jobs": [{"workload": "wonhee.gpu", "grid": {"task": ["mask"]}}]})
     assert jobs == [("wonhee.gpu", {"task": "mask"}, {"provenance": {"experiment": "X8 new nodes"}})]
+
+
+def test_overlap_frac_uses_the_compute_window():
+    from gauge.interference import overlap_frac
+
+    def run(start, end, marks=None):
+        return {"container_started": start, "workload_finished": end,
+                "sj": __import__("json").dumps({"marks": marks or []})}
+    me = run(0, 30, [{"mark": "compute_started", "t": 10}, {"mark": "compute_finished", "t": 30}])
+    assert overlap_frac(me, [run(0, 20)]) == pytest.approx(0.5)  # partner left halfway through my compute
+    assert overlap_frac(me, [run(0, 15), run(12, 40)]) == pytest.approx(1.0)
+    assert overlap_frac(run(0, 10), [run(20, 30)]) == 0

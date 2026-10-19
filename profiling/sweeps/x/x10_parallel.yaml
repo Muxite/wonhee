@@ -1,6 +1,6 @@
 # X10b the same 60 s encode as 2/4/8 parallel copies, CPU decode vs NVDEC. Per-clip wall time and CPU-s.
 experiment: X10 cuvid
-repeats: 2
+repeats: 3
 pairs:
   - ["ffmpeg.transcode:seconds=60,codec=h264_nvenc,preset=p5,height=1080,decode=cpu", "ffmpeg.transcode:seconds=60,codec=h264_nvenc,preset=p5,height=1080,decode=cpu"]
   - ["ffmpeg.transcode:seconds=60,codec=h264_nvenc,preset=p5,height=1080,decode=cuvid", "ffmpeg.transcode:seconds=60,codec=h264_nvenc,preset=p5,height=1080,decode=cuvid"]
