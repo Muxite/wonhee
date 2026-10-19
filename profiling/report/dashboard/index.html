@@ -66,7 +66,7 @@
     <nav class="toc" aria-label="Sections">
       <a href="#findings">Findings</a><a href="#limits">What tops out</a><a href="#capacity">Capacity</a><a href="#packing">Packing</a>
       <a href="#warmcold">Cold vs warm</a><a href="#interference">Interference</a><a href="#sharing">Sharing modes</a>
-      <a href="#media">Media</a><a href="#inputs">Input size</a><a href="#profiler">Profiler effect</a><a href="#audit">Evidence audit</a><a href="#method">Method</a>
+      <a href="#media">Media</a><a href="#inputs">Input size</a><a href="#profiler">Profiler effect</a><a href="#audit">Evidence audit</a><a href="#method">Method</a><a href="#explorer">Explorer</a><a href="#run-explorer">Run explorer</a><a href="#energy">Energy</a><a href="#all-runs">All runs</a>
     </nav>
   </header>
 
@@ -600,5 +600,466 @@ dash.onData(() => {
   const named = document.getElementById(location.hash.slice(1));
   if (named) requestAnimationFrame(() => { named.scrollIntoView(); dash.setLink(named.id); });
   document.querySelectorAll('.gp nav.toc a').forEach((a) => a.addEventListener('click', () => dash.setLink(a.getAttribute('href').slice(1))));
+})();
+</script>
+
+<style>
+.gx { max-width: 72rem; margin: var(--cds-gap-xl) auto 0; font-family: var(--font-anthropic-sans); display: grid; gap: var(--cds-gap-xl); }
+.gx h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
+.gx h3 { font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); margin: 0; }
+.gx p { margin: 0; max-width: 68ch; line-height: 1.5; }
+.gx .muted { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.gx section { display: grid; gap: var(--cds-gap-md); scroll-margin-top: var(--cds-gap-xl); }
+.gx .card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius);
+  padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-sm); min-width: 0; align-content: start; }
+.gx .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: var(--cds-gap-md); }
+.gx .chart { position: relative; min-height: 10rem; }
+.gx .chart svg { display: block; overflow: visible; }
+.gx .chart text { fill: var(--color-fg-muted); font-size: 11px; font-family: var(--font-anthropic-sans); }
+.gx .chart text.strong { fill: var(--color-fg); }
+.gx .controls { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm); align-items: center; font-size: var(--cds-font-size-caption); }
+.gx select, .gx input[type=search] { font: inherit; font-size: var(--cds-font-size-caption); padding: 4px 8px; border-radius: var(--cds-radius);
+  border: 1px solid var(--color-border-line); background: var(--color-bg); color: var(--color-fg); max-width: 100%; }
+.gx .legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs) var(--cds-gap-md); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.gx .legend i { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; margin-right: .35em; vertical-align: -1px; }
+.gx .tablebox { overflow: auto; max-height: 28rem; }
+.gx table { border-collapse: collapse; width: 100%; font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; }
+.gx th { text-align: left; font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); padding: var(--cds-pad-xs) var(--cds-pad-sm);
+  border-bottom: 1px solid var(--color-border-line); white-space: nowrap; position: sticky; top: 0; background: var(--color-panel); }
+.gx th button { all: unset; cursor: pointer; } .gx th button:focus-visible { outline: 2px solid var(--color-fg); }
+.gx td { padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+.gx td.num { text-align: right; }
+.gx .tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border);
+  border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm);
+  font-size: var(--cds-font-size-caption); white-space: nowrap; z-index: 2; }
+.gx .tip .k { color: var(--cds-text-secondary); }
+.gx .empty { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+</style>
+
+<div class="gx" id="explorer">
+  <section>
+    <h2>Explorer: the raw data</h2>
+    <p class="muted">Everything below is drawn from run-level tables: every run, its 1 s time series and phase marks, kernel mixes from the Nsight runs, co-run members, batching levels and container starts. Download any of them as CSV from Sources.</p>
+  </section>
+
+  <section id="run-explorer">
+    <div class="card">
+      <h3>Run explorer</h3>
+      <p class="muted">One run over time: device readings every second, with the run's own phase marks as vertical lines. Device readings are whole-GPU, so in a co-run they include the partner.</p>
+      <div class="controls"><label for="rx-run">Run</label><select id="rx-run"></select>
+        <label for="rx-filter">Filter</label><input type="search" id="rx-filter" placeholder="workload, experiment, params"></div>
+      <div class="chart" id="rx-chart" data-source="series marks runs" style="min-height: 420px"></div>
+    </div>
+  </section>
+
+  <section id="where-runs-sit">
+    <div class="grid">
+      <div class="card">
+        <h3>Where each run sits: power vs memory traffic</h3>
+        <p class="muted">Mean over each solo, profiler-off run. Dense math climbs the power axis; streaming work runs right on the memory axis at lower power.</p>
+        <div class="legend" id="ws-legend"></div>
+        <div class="chart" id="ws-chart" data-source="runs" style="min-height: 320px"></div>
+      </div>
+      <div class="card">
+        <h3>Kernel character</h3>
+        <p class="muted">Each Nsight-profiled run: kernel launches per second against median kernel length (both log scales). Bottom right is launch-bound: many tiny kernels.</p>
+        <div class="legend" id="kc-legend"></div>
+        <div class="chart" id="kc-chart" data-source="gpu_process" style="min-height: 320px"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="energy">
+    <div class="card">
+      <h3>Energy per unit of work</h3>
+      <p class="muted">Whole-run GPU energy (NVML counter, model load included) divided by the work done, median over solo profiler-off runs of the same condition. Units differ by task; compare within a unit.</p>
+      <div class="controls"><input type="search" id="en-filter" placeholder="Filter rows"></div>
+      <div class="tablebox"><table id="en-table" data-source="energy_by_condition" data-row-key="condition"></table></div>
+    </div>
+  </section>
+
+  <section id="kernel-mix">
+    <div class="card">
+      <h3>What the GPU spends its kernel time on</h3>
+      <p class="muted">Share of kernel time by kind of kernel, median over each workload's profiled runs.</p>
+      <div class="legend" id="km-legend"></div>
+      <div class="chart" id="km-chart" data-source="kernel_mix_by_workload"></div>
+    </div>
+  </section>
+
+  <section id="corun-overlap">
+    <div class="grid">
+      <div class="card">
+        <h3>Co-run overlap vs speed kept</h3>
+        <p class="muted">Every co-run member with a matching solo reference. Points left of the dashed line ran beside their partner for under 80% of their own run, so their speed understates contention.</p>
+        <div class="legend" id="co-legend"></div>
+        <div class="chart" id="co-chart" data-source="coruns" style="min-height: 300px"></div>
+      </div>
+      <div class="card">
+        <h3>LLM batching: total and per-sequence decode speed</h3>
+        <p class="muted">llama-batched-bench levels, solid for total tokens per second, dashed for each sequence's share.</p>
+        <div class="legend" id="bt-legend"></div>
+        <div class="chart" id="bt-chart" data-source="batching" style="min-height: 300px"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="stressors">
+    <div class="card">
+      <h3>Stressor rate over time, alone and beside LLM decode</h3>
+      <p class="muted">Each stressor's own work rate every half second. Shaded: when the LLM decode partner was running.</p>
+      <div class="chart" id="ss-chart" data-source="stress_series" style="min-height: 240px"></div>
+    </div>
+  </section>
+
+  <section id="starts">
+    <div class="card">
+      <h3>Container start overhead</h3>
+      <p class="muted">Median and 90th percentile time from request to the container's first output, per launch variant (1,760 measured starts).</p>
+      <div class="chart" id="st-chart" data-source="start_by_variant"></div>
+    </div>
+  </section>
+
+  <section id="all-runs">
+    <div class="card">
+      <h3>Every run</h3>
+      <p class="muted">Sort by any column; filter by any text.</p>
+      <div class="controls"><input type="search" id="ar-filter" placeholder="Filter runs"><span class="muted" id="ar-count"></span></div>
+      <div class="tablebox"><table id="ar-table" data-source="runs" data-row-key="run_id"></table></div>
+    </div>
+  </section>
+</div>
+
+<script>
+window.GX = (() => {
+  const N = (v) => (v === '' || v == null || v === 'None' ? null : +v);
+  const rows = (id) => { const d = dash.data(id); return d.status === 'ok' && Array.isArray(d.data) ? d.data : null; };
+  const fam = (w) => w.startsWith('llamacpp') || w.startsWith('llm') ? 'LLM' : w.startsWith('train') ? 'training' : w.startsWith('ffmpeg') ? 'video' :
+    w.startsWith('wonhee') ? 'wonhee nodes' : w.startsWith('stress') ? 'stressors' : 'other';
+  const FAMS = ['LLM', 'training', 'video', 'wonhee nodes', 'stressors', 'other'];
+  const color = (f) => dash.colors[Math.max(0, FAMS.indexOf(f)) % 8];
+  function legend(el, items) {
+    el.replaceChildren();
+    items.forEach(([name, c, dashed]) => { const s = document.createElement('span'); const i = document.createElement('i');
+      i.style.background = c; if (dashed) i.style.opacity = '.5'; s.append(i, name); el.appendChild(s); });
+  }
+  function svgIn(box, H) {
+    d3.select(box).selectAll('svg').remove();
+    const W = Math.max(300, box.clientWidth);
+    return [d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`), W];
+  }
+  function axes(svg, x, y, W, H, m, fx, fy, ticksX = 5, ticksY = 4) {
+    svg.append('g').selectAll('line').data(y.ticks(ticksY)).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('text').data(y.ticks(ticksY)).join('text').attr('x', m.l - 6).attr('y', (d) => y(d) + 4).attr('text-anchor', 'end').text(fy);
+    svg.append('g').selectAll('text').data(x.ticks(ticksX)).join('text').attr('x', x).attr('y', H - 6).attr('text-anchor', 'middle').text(fx);
+  }
+  return { N, rows, fam, FAMS, color, legend, svgIn, axes };
+})();
+
+// computed tables (readers can see these functions in Sources)
+dash.calc('energy_by_condition', {
+  title: 'Energy per unit by condition',
+  description: 'Median whole-run energy per unit of work over solo, profiler-off, successful runs of each workload and parameter set.',
+  inputs: ['runs'],
+  fn: (runs) => {
+    const ok = runs.filter((r) => r.outcome === 'success' && r.profile === 'none' && !r.corun_group && r.energy_per_unit_j !== '' && r.energy_per_unit_j != null);
+    const g = d3.group(ok, (r) => `${r.workload} · ${r.params}`);
+    return Array.from(g, ([condition, rs]) => ({
+      condition, workload: rs[0].workload, unit: rs[0].work_unit, runs: rs.length,
+      joules_per_unit: d3.median(rs, (r) => +r.energy_per_unit_j), mean_power_w: d3.median(rs, (r) => +r.power_mean_w),
+      runtime_s: d3.median(rs, (r) => +r.runtime_s),
+    })).sort((a, b) => a.workload.localeCompare(b.workload) || a.joules_per_unit - b.joules_per_unit);
+  },
+});
+dash.calc('kernel_mix_by_workload', {
+  title: 'Kernel time by kind, per workload',
+  description: 'Median share of kernel time per kernel category across each workload’s profiled runs.',
+  inputs: ['kernel_mix'],
+  fn: (kernel_mix) => {
+    const out = [];
+    d3.group(kernel_mix, (r) => r.workload, (r) => r.category).forEach((cats, workload) => {
+      const runs = new Set(kernel_mix.filter((r) => r.workload === workload).map((r) => r.run_id)).size;
+      cats.forEach((rs, category) => out.push({ workload, category, share: d3.sum(rs, (r) => +r.share) / runs, runs }));
+    });
+    return out;
+  },
+});
+dash.calc('start_by_variant', {
+  title: 'Container start by variant',
+  description: 'Median and 90th percentile time from docker run to first output, per launch variant.',
+  inputs: ['starts'],
+  fn: (starts) => Array.from(d3.group(starts.filter((r) => r.to_first_output_ms !== '' && r.to_first_output_ms != null), (r) => r.variant), ([variant, rs]) => {
+    const v = rs.map((r) => +r.to_first_output_ms).sort(d3.ascending);
+    return { variant, starts: v.length, median_ms: d3.quantileSorted(v, 0.5), p90_ms: d3.quantileSorted(v, 0.9) };
+  }).sort((a, b) => a.median_ms - b.median_ms),
+});
+</script>
+
+<script>
+// run explorer
+(() => {
+  const sel = document.getElementById('rx-run'), filt = document.getElementById('rx-filter');
+  let chosen = null;
+  sel.addEventListener('change', () => { chosen = sel.value; draw(); });
+  filt.addEventListener('input', () => { fill(); draw(); });
+  function options() {
+    const runs = GX.rows('runs'), series = GX.rows('series');
+    if (!runs || !series) return [];
+    const has = new Set(series.map((s) => s.run_id));
+    const q = filt.value.trim().toLowerCase();
+    return runs.filter((r) => has.has(r.run_id)).map((r) => ({ id: r.run_id, label: `run ${r.run_id} · ${r.workload} · ${r.experiment} · ${r.params}`.slice(0, 140) }))
+      .filter((o) => !q || o.label.toLowerCase().includes(q)).reverse();
+  }
+  function fill() {
+    const opts = options();
+    sel.replaceChildren();
+    opts.forEach((o) => { const e = document.createElement('option'); e.value = o.id; e.textContent = o.label; sel.appendChild(e); });
+    if (!opts.some((o) => o.id === chosen)) chosen = opts.length ? opts[0].id : null;
+    if (chosen) sel.value = chosen;
+  }
+  function draw() {
+    const box = document.getElementById('rx-chart');
+    const series = GX.rows('series'), marks = GX.rows('marks') || [];
+    d3.select(box).selectAll('svg,.empty').remove();
+    if (!series || !chosen) return;
+    const s = series.filter((r) => r.run_id === chosen).map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, k === 'run_id' ? v : GX.N(v)])));
+    const mk = marks.filter((r) => r.run_id === chosen).map((r) => ({ mark: r.mark, t: +r.t }));
+    const panels = [['Power W', [['power_w', 0]]], ['Busy %', [['gpu_util', 0], ['memctl_util', 1], ['nvenc', 2], ['nvdec', 3]]],
+      ['VRAM GiB', [['vram_used_gib', 0], ['vram_proc_gib', 1]]], ['SM clock MHz', [['sm_mhz', 0]]], ['CPU cores', [['cpu_cores', 0]]]];
+    const ph = 76, gap = 10, m = { t: 6, r: 12, b: 22, l: 56 };
+    const [svg, W] = GX.svgIn(box, m.t + panels.length * (ph + gap) + m.b);
+    const x = d3.scaleLinear([0, d3.max(s, (r) => r.t) || 1], [m.l, W - m.r]);
+    const NAMES = { power_w: 'power', gpu_util: 'SM busy', memctl_util: 'memory ctl', nvenc: 'NVENC', nvdec: 'NVDEC', vram_used_gib: 'device used', vram_proc_gib: 'this job', sm_mhz: 'SM clock', cpu_cores: 'CPU cores' };
+    panels.forEach(([title, keys], i) => {
+      const top = m.t + i * (ph + gap);
+      const vals = keys.flatMap(([k]) => s.map((r) => r[k]).filter((v) => v != null));
+      const y = d3.scaleLinear([0, (d3.max(vals) || 1) * 1.05], [top + ph, top]).nice();
+      svg.append('g').selectAll('line').data(y.ticks(2)).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+      svg.append('g').selectAll('text').data(y.ticks(2)).join('text').attr('x', m.l - 6).attr('y', (d) => y(d) + 4).attr('text-anchor', 'end').text(d3.format('~s'));
+      svg.append('text').attr('x', m.l + 4).attr('y', top + 10).attr('class', 'strong').text(title);
+      let lx = m.l + 4 + title.length * 6.5 + 10;
+      keys.forEach(([k, ci]) => {
+        const pts = s.filter((r) => r[k] != null);
+        if (!pts.length) return;
+        svg.append('path').datum(pts).attr('fill', 'none').attr('stroke', dash.colors[ci]).attr('stroke-width', 1.5).attr('stroke-linejoin', 'round')
+          .attr('d', d3.line((r) => x(r.t), (r) => y(r[k])));
+        if (keys.length > 1) { svg.append('text').attr('x', lx).attr('y', top + 10).attr('fill', dash.colors[ci]).style('fill', dash.colors[ci]).text(NAMES[k]); lx += NAMES[k].length * 6.2 + 10; }
+      });
+    });
+    mk.forEach((d, i) => {
+      svg.append('line').attr('x1', x(d.t)).attr('x2', x(d.t)).attr('y1', m.t).attr('y2', m.t + panels.length * (ph + gap) - gap).attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '3 3');
+      if (i < 12) svg.append('text').attr('x', x(d.t) + 3).attr('y', m.t + panels.length * (ph + gap) - gap - 4 - (i % 3) * 11).text(d.mark);
+    });
+    svg.append('g').selectAll('text').data(x.ticks(8)).join('text').attr('x', x).attr('y', m.t + panels.length * (ph + gap) + 10).attr('text-anchor', 'middle').text((d) => `${d} s`);
+  }
+  dash.onData(() => { fill(); draw(); });
+})();
+</script>
+
+<script>
+// power vs memory-controller scatter; kernel character scatter
+dash.onData(() => {
+  const runs = GX.rows('runs');
+  const box = document.getElementById('ws-chart');
+  d3.select(box).selectAll('svg').remove();
+  if (runs) {
+    const pts = runs.filter((r) => r.outcome === 'success' && r.profile === 'none' && !r.corun_group && GX.N(r.power_mean_w) != null && GX.N(r.memctl_util_mean) != null && r.workload !== 'micro.idle')
+      .map((r) => ({ ...r, x: +r.memctl_util_mean, y: +r.power_mean_w, f: GX.fam(r.workload) }));
+    GX.legend(document.getElementById('ws-legend'), GX.FAMS.filter((f) => pts.some((p) => p.f === f)).map((f) => [f, GX.color(f)]));
+    const H = 320, m = { t: 10, r: 14, b: 34, l: 44 };
+    const [svg, W] = GX.svgIn(box, H);
+    const x = d3.scaleLinear([0, 100], [m.l, W - m.r]), y = d3.scaleLinear([0, Math.max(310, d3.max(pts, (p) => p.y))], [H - m.b, m.t]).nice();
+    GX.axes(svg, x, y, W, H, m, (d) => `${d}%`, (d) => `${d} W`);
+    svg.append('text').attr('x', W - m.r).attr('y', H - 20).attr('text-anchor', 'end').text('memory controller busy (mean)');
+    svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(300)).attr('y2', y(300)).attr('stroke', 'var(--cds-chart-status-critical)').attr('stroke-dasharray', '4 3');
+    svg.append('text').attr('x', m.l + 4).attr('y', y(300) - 4).text('300 W power limit');
+    const tt = { el: null };
+    tt.el = box.querySelector('.tip') || Object.assign(box.appendChild(document.createElement('div')), { className: 'tip', hidden: true });
+    svg.append('g').selectAll('circle').data(pts).join('circle').attr('cx', (p) => x(p.x)).attr('cy', (p) => y(p.y)).attr('r', 3.5)
+      .attr('fill', (p) => GX.color(p.f)).attr('fill-opacity', 0.75)
+      .on('pointermove', (ev, p) => { const b = box.getBoundingClientRect(); tt.el.hidden = false;
+        tt.el.textContent = `run ${p.run_id} · ${p.workload} · ${p.params} — ${d3.format('.0f')(p.y)} W, ${d3.format('.0f')(p.x)}% memory ctl`;
+        tt.el.style.left = `${Math.min(ev.clientX - b.left + 10, b.width - tt.el.offsetWidth)}px`; tt.el.style.top = `${ev.clientY - b.top + 10}px`; })
+      .on('pointerleave', () => { tt.el.hidden = true; });
+  }
+  const gp = GX.rows('gpu_process');
+  const kb = document.getElementById('kc-chart');
+  d3.select(kb).selectAll('svg').remove();
+  if (gp) {
+    const pts = gp.filter((r) => GX.N(r.launches_per_s) > 0 && GX.N(r.kernel_median_us) > 0).map((r) => ({ ...r, x: +r.launches_per_s, y: +r.kernel_median_us, f: GX.fam(r.workload) }));
+    GX.legend(document.getElementById('kc-legend'), GX.FAMS.filter((f) => pts.some((p) => p.f === f)).map((f) => [f, GX.color(f)]));
+    const H = 320, m = { t: 10, r: 14, b: 34, l: 50 };
+    const [svg, W] = GX.svgIn(kb, H);
+    const x = d3.scaleLog(d3.extent(pts, (p) => p.x), [m.l, W - m.r]).nice(), y = d3.scaleLog(d3.extent(pts, (p) => p.y), [H - m.b, m.t]).nice();
+    svg.append('g').selectAll('text').data(x.ticks(4)).join('text').attr('x', x).attr('y', H - 20).attr('text-anchor', 'middle').text(d3.format('~s'));
+    svg.append('g').selectAll('text').data(y.ticks(4)).join('text').attr('x', m.l - 6).attr('y', (d) => y(d) + 4).attr('text-anchor', 'end').text((d) => `${d3.format('~s')(d)} µs`);
+    svg.append('text').attr('x', W - m.r).attr('y', H - 4).attr('text-anchor', 'end').text('kernel launches per second');
+    const tip = kb.querySelector('.tip') || Object.assign(kb.appendChild(document.createElement('div')), { className: 'tip', hidden: true });
+    svg.append('g').selectAll('circle').data(pts).join('circle').attr('cx', (p) => x(p.x)).attr('cy', (p) => y(p.y)).attr('r', 4)
+      .attr('fill', (p) => GX.color(p.f)).attr('fill-opacity', 0.75)
+      .on('pointermove', (ev, p) => { const b = kb.getBoundingClientRect(); tip.hidden = false;
+        tip.textContent = `run ${p.run_id} · ${p.workload} · ${p.params} — ${d3.format(',.0f')(p.x)} launches/s, median ${d3.format('.1f')(p.y)} µs`;
+        tip.style.left = `${Math.min(ev.clientX - b.left + 10, b.width - tip.offsetWidth)}px`; tip.style.top = `${ev.clientY - b.top + 10}px`; })
+      .on('pointerleave', () => { tip.hidden = true; });
+  }
+});
+</script>
+
+<script>
+// energy table, kernel mix bars, co-run scatter, batching curves, stressor series, container starts
+(() => {
+  function sortable(table, data, cols, key, onSort) {
+    const t = d3.select(table); t.selectAll('*').remove();
+    const hr = t.append('thead').append('tr');
+    cols.forEach((c) => hr.append('th').attr('data-field', c.field).attr('aria-sort', c.field === key.field ? (key.asc ? 'ascending' : 'descending') : null)
+      .append('button').text(c.label).on('click', () => onSort(c.field)));
+    const tb = t.append('tbody');
+    data.forEach((r) => { const tr = tb.append('tr'); cols.forEach((c) => tr.append('td').attr('class', c.num ? 'num' : null).text(c.fmt ? c.fmt(r[c.field]) : (r[c.field] ?? ''))); });
+  }
+  const st = { en: { field: 'workload', asc: true }, ar: { field: 'run_id', asc: false } };
+  function sortRows(data, key, numeric) {
+    return data.slice().sort((a, b) => { const va = numeric.has(key.field) ? +a[key.field] : a[key.field], vb = numeric.has(key.field) ? +b[key.field] : b[key.field];
+      return (va > vb ? 1 : va < vb ? -1 : 0) * (key.asc ? 1 : -1); });
+  }
+  function energy() {
+    const d = GX.rows('energy_by_condition'); const el = document.getElementById('en-table');
+    if (!d) { d3.select(el).selectAll('*').remove(); return; }
+    const q = document.getElementById('en-filter').value.trim().toLowerCase();
+    const cols = [{ field: 'condition', label: 'Condition' }, { field: 'unit', label: 'Unit' },
+      { field: 'joules_per_unit', label: 'J per unit', num: true, fmt: d3.format('.4~r') }, { field: 'mean_power_w', label: 'Mean W', num: true, fmt: d3.format('.0f') },
+      { field: 'runtime_s', label: 'Run s', num: true, fmt: d3.format('.1f') }, { field: 'runs', label: 'Runs', num: true }];
+    sortable(el, sortRows(d.filter((r) => !q || r.condition.toLowerCase().includes(q)), st.en, new Set(['joules_per_unit', 'mean_power_w', 'runtime_s', 'runs'])), cols, st.en,
+      (f) => { st.en = { field: f, asc: st.en.field === f ? !st.en.asc : true }; energy(); });
+  }
+  document.getElementById('en-filter').addEventListener('input', energy);
+
+  function allRuns() {
+    const d = GX.rows('runs'); const el = document.getElementById('ar-table');
+    if (!d) { d3.select(el).selectAll('*').remove(); return; }
+    const q = document.getElementById('ar-filter').value.trim().toLowerCase();
+    const cols = ['run_id', 'experiment', 'workload', 'params', 'profile', 'sharing', 'jobs_in_group', 'outcome', 'runtime_s', 'cpu_s', 'ram_peak_gib', 'vram_peak_gib',
+      'gpu_util_mean', 'memctl_util_mean', 'power_mean_w', 'power_peak_w', 'energy_j', 'load_s', 'compute_s', 'work_units', 'work_unit', 'energy_per_unit_j', 'started_at']
+      .map((f) => ({ field: f, label: f.replace(/_/g, ' '), num: !['experiment', 'workload', 'params', 'profile', 'sharing', 'outcome', 'work_unit', 'started_at'].includes(f) }));
+    const num = new Set(cols.filter((c) => c.num).map((c) => c.field));
+    const rows = sortRows(d.filter((r) => !q || Object.values(r).join(' ').toLowerCase().includes(q)), st.ar, num);
+    document.getElementById('ar-count').textContent = `${rows.length} of ${d.length} runs`;
+    sortable(el, rows, cols, st.ar, (f) => { st.ar = { field: f, asc: st.ar.field === f ? !st.ar.asc : true }; allRuns(); });
+  }
+  document.getElementById('ar-filter').addEventListener('input', allRuns);
+
+  function kernelMix() {
+    const d = GX.rows('kernel_mix_by_workload'), box = document.getElementById('km-chart');
+    d3.select(box).selectAll('svg').remove();
+    if (!d || !d.length) return;
+    const cats = Array.from(d3.rollup(d, (v) => d3.sum(v, (r) => r.share), (r) => r.category)).sort((a, b) => b[1] - a[1]).map((c) => c[0]);
+    const top = cats.slice(0, 7), col = (c) => top.includes(c) ? dash.colors[top.indexOf(c)] : 'var(--cds-chart-muted)';
+    GX.legend(document.getElementById('km-legend'), [...top.map((c) => [c, col(c)]), ['everything else', 'var(--cds-chart-muted)']]);
+    const wls = Array.from(new Set(d.map((r) => r.workload)));
+    const rowH = 28, m = { t: 4, r: 12, b: 22, l: 130 };
+    const [svg, W] = GX.svgIn(box, m.t + m.b + wls.length * rowH);
+    const x = d3.scaleLinear([0, 1], [m.l, W - m.r]), y = d3.scaleBand(wls, [m.t, m.t + wls.length * rowH]).padding(0.25);
+    svg.append('g').selectAll('text').data(x.ticks(5)).join('text').attr('x', x).attr('y', m.t + wls.length * rowH + 14).attr('text-anchor', 'middle').text(d3.format('.0%'));
+    const tip = box.querySelector('.tip') || Object.assign(box.appendChild(document.createElement('div')), { className: 'tip', hidden: true });
+    wls.forEach((w) => {
+      let acc = 0;
+      d.filter((r) => r.workload === w).sort((a, b) => cats.indexOf(a.category) - cats.indexOf(b.category)).forEach((r) => {
+        svg.append('rect').attr('x', x(acc)).attr('y', y(w)).attr('width', Math.max(0, x(acc + r.share) - x(acc) - 0.5)).attr('height', y.bandwidth()).attr('fill', col(r.category))
+          .on('pointermove', (ev) => { const b = box.getBoundingClientRect(); tip.hidden = false; tip.textContent = `${w} · ${r.category}: ${d3.format('.1%')(r.share)} (${r.runs} runs)`;
+            tip.style.left = `${Math.min(ev.clientX - b.left + 10, b.width - tip.offsetWidth)}px`; tip.style.top = `${ev.clientY - b.top + 10}px`; })
+          .on('pointerleave', () => { tip.hidden = true; });
+        acc += r.share;
+      });
+      svg.append('text').attr('class', 'strong').attr('x', m.l - 6).attr('y', y(w) + y.bandwidth() / 2 + 4).attr('text-anchor', 'end').text(w);
+    });
+  }
+
+  function coruns() {
+    const d = GX.rows('coruns'), box = document.getElementById('co-chart');
+    d3.select(box).selectAll('svg').remove();
+    if (!d) return;
+    const pts = d.map((r) => ({ ...r, x: GX.N(r.overlap), y: GX.N(r.throughput_ratio) ?? (GX.N(r.slowdown) ? 1 / +r.slowdown : null) })).filter((p) => p.x != null && p.y != null);
+    const exps = Array.from(new Set(pts.map((p) => p.experiment)));
+    GX.legend(document.getElementById('co-legend'), exps.map((e, i) => [e, dash.colors[i % 8]]));
+    const H = 300, m = { t: 10, r: 14, b: 34, l: 44 };
+    const [svg, W] = GX.svgIn(box, H);
+    const x = d3.scaleLinear([0, 1.05], [m.l, W - m.r]), y = d3.scaleLinear([0, Math.max(1.1, d3.max(pts, (p) => p.y))], [H - m.b, m.t]).nice();
+    GX.axes(svg, x, y, W, H, m, d3.format('.0%'), d3.format('.1f'));
+    svg.append('text').attr('x', W - m.r).attr('y', H - 20).attr('text-anchor', 'end').text('share of own run with the partner running');
+    svg.append('line').attr('x1', x(0.8)).attr('x2', x(0.8)).attr('y1', m.t).attr('y2', H - m.b).attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '4 3');
+    svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(1)).attr('y2', y(1)).attr('stroke', 'var(--cds-chart-axis)');
+    const tip = box.querySelector('.tip') || Object.assign(box.appendChild(document.createElement('div')), { className: 'tip', hidden: true });
+    svg.append('g').selectAll('circle').data(pts).join('circle').attr('cx', (p) => x(p.x)).attr('cy', (p) => y(p.y)).attr('r', 4)
+      .attr('fill', (p) => dash.colors[exps.indexOf(p.experiment) % 8]).attr('fill-opacity', 0.8)
+      .on('pointermove', (ev, p) => { const b = box.getBoundingClientRect(); tip.hidden = false;
+        tip.textContent = `run ${p.run_id} · ${p.workload} beside ${p.alongside} — kept ${d3.format('.2f')(p.y)}x, overlap ${d3.format('.0%')(p.x)}`;
+        tip.style.left = `${Math.min(ev.clientX - b.left + 10, b.width - tip.offsetWidth)}px`; tip.style.top = `${ev.clientY - b.top + 10}px`; })
+      .on('pointerleave', () => { tip.hidden = true; });
+    svg.append('text').attr('x', m.l + 4).attr('y', y(1) - 4).text('solo speed');
+  }
+
+  function batching() {
+    const d = GX.rows('batching'), box = document.getElementById('bt-chart');
+    d3.select(box).selectAll('svg').remove();
+    if (!d || !d.length) return;
+    const series = Array.from(d3.group(d.filter((r) => r.profile === 'none' || d.every((x) => x.profile !== 'none')), (r) => `${r.model} · ${r.experiment}`),
+      ([k, rs]) => [k, Array.from(d3.rollup(rs, (v) => ({ tot: d3.median(v, (r) => +r.decode_tok_s), per: d3.median(v, (r) => +r.per_sequence_tok_s) }), (r) => +r.sequences))
+        .map(([s, v]) => ({ s, ...v })).sort((a, b) => a.s - b.s)]);
+    GX.legend(document.getElementById('bt-legend'), series.map(([k], i) => [k, dash.colors[i % 8]]));
+    const H = 300, m = { t: 10, r: 14, b: 34, l: 48 };
+    const [svg, W] = GX.svgIn(box, H);
+    const all = series.flatMap(([, v]) => v);
+    const x = d3.scaleLog([1, d3.max(all, (v) => v.s) || 2], [m.l, W - m.r]), y = d3.scaleLinear([0, d3.max(all, (v) => v.tot) * 1.05], [H - m.b, m.t]).nice();
+    svg.append('g').selectAll('text').data(all.map((v) => v.s).filter((v, i, a) => a.indexOf(v) === i)).join('text').attr('x', x).attr('y', H - 20).attr('text-anchor', 'middle').text((d) => d);
+    svg.append('g').selectAll('text').data(y.ticks(4)).join('text').attr('x', m.l - 6).attr('y', (v) => y(v) + 4).attr('text-anchor', 'end').text(d3.format('~s'));
+    svg.append('g').selectAll('line').data(y.ticks(4)).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('text').attr('x', W - m.r).attr('y', H - 4).attr('text-anchor', 'end').text('sequences decoded together');
+    series.forEach(([k, v], i) => {
+      svg.append('path').datum(v).attr('fill', 'none').attr('stroke', dash.colors[i % 8]).attr('stroke-width', 2).attr('d', d3.line((p) => x(p.s), (p) => y(p.tot)));
+      svg.append('path').datum(v).attr('fill', 'none').attr('stroke', dash.colors[i % 8]).attr('stroke-width', 1.5).attr('stroke-dasharray', '4 3').attr('d', d3.line((p) => x(p.s), (p) => y(p.per)));
+    });
+  }
+
+  function stress() {
+    const d = GX.rows('stress_series'), box = document.getElementById('ss-chart');
+    d3.select(box).selectAll('svg').remove();
+    if (!d || !d.length) return;
+    const modes = ['bw', 'compute', 'launch'].filter((md) => d.some((r) => r.mode === md));
+    const ph = 120, gap = 26, m = { t: 14, r: 12, b: 20, l: 56 };
+    const [svg, W] = GX.svgIn(box, m.t + modes.length * (ph + gap) + m.b);
+    const NAME = { bw: 'Bandwidth stressor', compute: 'Compute stressor', launch: 'Launch stressor' };
+    modes.forEach((md, i) => {
+      const top = m.t + i * (ph + gap);
+      const rs = d.filter((r) => r.mode === md).map((r) => ({ ...r, t: +r.t, rate: +r.rate }));
+      const x = d3.scaleLinear([0, d3.max(rs, (r) => r.t)], [m.l, W - m.r]), y = d3.scaleLinear([0, d3.max(rs, (r) => r.rate) * 1.05], [top + ph, top]).nice();
+      const pair = rs.find((r) => r.group !== 'solo' && r.llm_from !== '' && r.llm_from != null);
+      if (pair) svg.append('rect').attr('x', x(Math.max(0, +pair.llm_from))).attr('width', Math.max(0, x(+pair.llm_to) - x(Math.max(0, +pair.llm_from)))).attr('y', top).attr('height', ph).attr('fill', 'var(--cds-chart-grid)');
+      svg.append('text').attr('class', 'strong').attr('x', m.l).attr('y', top - 3).text(`${NAME[md]} (${rs[0].unit})`);
+      svg.append('g').selectAll('text').data(y.ticks(2)).join('text').attr('x', m.l - 6).attr('y', (v) => y(v) + 4).attr('text-anchor', 'end').text(d3.format('~s'));
+      svg.append('g').selectAll('text').data(x.ticks(6)).join('text').attr('x', x).attr('y', top + ph + 14).attr('text-anchor', 'middle').text((v) => `${v} s`);
+      d3.group(rs, (r) => r.run_id).forEach((pts) => {
+        const solo = pts[0].group === 'solo';
+        svg.append('path').datum(pts).attr('fill', 'none').attr('stroke', solo ? 'var(--cds-chart-muted)' : 'var(--cds-chart-status-critical)').attr('stroke-width', solo ? 1 : 1.5)
+          .attr('stroke-opacity', solo ? 0.8 : 0.9).attr('d', d3.line((r) => x(r.t), (r) => y(r.rate)));
+      });
+    });
+  }
+
+  function starts() {
+    const d = GX.rows('start_by_variant'), box = document.getElementById('st-chart');
+    d3.select(box).selectAll('svg').remove();
+    if (!d || !d.length) return;
+    const rowH = 26, m = { t: 4, r: 70, b: 22, l: 10 };
+    const [svg, W] = GX.svgIn(box, m.t + m.b + d.length * rowH);
+    const lw = Math.min(W * 0.45, d3.max(d, (r) => r.variant.length) * 6.4 + 12);
+    m.l = lw;
+    const x = d3.scaleLinear([0, d3.max(d, (r) => r.p90_ms)], [m.l, W - m.r]).nice(), y = d3.scaleBand(d.map((r) => r.variant), [m.t, m.t + d.length * rowH]).padding(0.3);
+    svg.append('g').selectAll('text').data(x.ticks(5)).join('text').attr('x', x).attr('y', m.t + d.length * rowH + 14).attr('text-anchor', 'middle').text((v) => `${v} ms`);
+    svg.append('g').selectAll('rect').data(d).join('rect').attr('x', x(0)).attr('y', (r) => y(r.variant)).attr('height', y.bandwidth()).attr('width', (r) => x(r.median_ms) - x(0)).attr('rx', 3).attr('fill', dash.colors[0]);
+    svg.append('g').selectAll('line').data(d).join('line').attr('x1', (r) => x(r.median_ms)).attr('x2', (r) => x(r.p90_ms)).attr('y1', (r) => y(r.variant) + y.bandwidth() / 2).attr('y2', (r) => y(r.variant) + y.bandwidth() / 2).attr('stroke', dash.colors[0]);
+    svg.append('g').selectAll('text.v').data(d).join('text').attr('x', (r) => x(r.p90_ms) + 6).attr('y', (r) => y(r.variant) + y.bandwidth() / 2 + 4).text((r) => `${d3.format('.0f')(r.median_ms)} / ${d3.format('.0f')(r.p90_ms)} ms`);
+    svg.append('g').selectAll('text.l').data(d).join('text').attr('class', 'strong').attr('x', m.l - 6).attr('y', (r) => y(r.variant) + y.bandwidth() / 2 + 4).attr('text-anchor', 'end').text((r) => r.variant);
+  }
+
+  dash.onData(() => { energy(); allRuns(); kernelMix(); coruns(); batching(); stress(); starts(); });
 })();
 </script>
