@@ -162,6 +162,11 @@ def main(argv=None) -> int:
     if a.task == "worker":
         return worker_bench(a)
 
+    if a.task in ("mask", "separate", "embed"):  # the framework import, apart from loading the weights
+        import torch  # noqa: F401
+        if a.task in ("mask", "embed"):
+            import transformers  # noqa: F401
+    marks.mark("framework_ready")
     load, compute = setup(a)
     t0 = time.perf_counter()
     load()
