@@ -88,6 +88,10 @@ def transcode_cmd(p) -> list[str]:
         dec, vf = [], f"scale=-2:{p.height}"
     # longer than the 120 s source: loop it (a long, steady co-tenant for interference runs)
     loop = ["-stream_loop", str(math.ceil(p.seconds / SOURCE_S) - 1)] if p.seconds > SOURCE_S else []
+    if loop and p.decode == "cuvid":
+        # at each loop the hardware decoder restarts and ffmpeg rebuilds the filter graph, which cannot link
+        # scale_cuda back up (run 848: "Impossible to convert between the formats"); keep the graph as built
+        loop = ["-reinit_filter", "0", *loop]
     inp = [*dec, *loop, "-i", f"/media/{SOURCE}", "-t", str(p.seconds)]
     if p.mode == "decode":
         return head + inp + ["-an", "-f", "null", "-"]

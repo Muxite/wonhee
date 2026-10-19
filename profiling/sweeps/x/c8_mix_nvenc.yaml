@@ -1,0 +1,14 @@
+# C8c supplement: the packing groups with the NVENC member, rerun after a workload fix. In c8_mix.yaml the looped
+# NVDEC transcode failed at the first loop (frame 3600; filter graph rebuilt on decoder restart, run 848), so every
+# group containing it had a failed member and was excluded. Same design and rules as c8_mix.yaml; the other solos
+# are rerun here too so solos and mixes stay interleaved in time.
+experiment: C8 packing
+repeats: 2
+pairs:
+  - ["llamacpp.batched:model=qwen2.5:7b,prompt_tokens=128,gen_tokens=1024,parallel=32"]
+  - ["ffmpeg.transcode:seconds=480,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid"]
+  - ["wonhee.gpu:task=whisper,clip_s=100,repeat=8,jit_cache=shared,cache=warm"]
+  - ["wonhee.gpu:task=mask,images=16,repeat=6,jit_cache=shared,cache=warm"]
+  - ["llamacpp.batched:model=qwen2.5:7b,prompt_tokens=128,gen_tokens=1024,parallel=32", "ffmpeg.transcode:seconds=480,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid"]
+  - ["ffmpeg.transcode:seconds=480,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid", "wonhee.gpu:task=whisper,clip_s=100,repeat=8,jit_cache=shared,cache=warm", "wonhee.gpu:task=mask,images=16,repeat=6,jit_cache=shared,cache=warm"]
+  - ["llamacpp.batched:model=qwen2.5:7b,prompt_tokens=128,gen_tokens=1024,parallel=32", "ffmpeg.transcode:seconds=480,mode=transcode,codec=h264_nvenc,preset=p5,decode=cuvid", "wonhee.gpu:task=whisper,clip_s=100,repeat=8,jit_cache=shared,cache=warm", "wonhee.gpu:task=mask,images=16,repeat=6,jit_cache=shared,cache=warm"]
