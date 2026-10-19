@@ -46,6 +46,24 @@ A look is mostly four things, and all four are measurable:
 - **Shooting:** any photo with a clear silhouette (plush, laptop, gear on a desk). A plain background matters more than the light.
 - **Edit:** `vibe_image print=duotone ink=#1a2fb0 paper=#f3ead8` (ultramarine on cream), or `print=halftone ink=#e8141c` (red dots). This is a joke format as much as a look.
 
+## Filters: a vibe of your own (no reference needed)
+
+Matching someone's photos is one way to get a look. The other is a filter described in photographer's terms. `wonhee filter list` shows the pack:
+- **Clean / film:** clean-bright, film-warm, film-cool, matte
+- **Camera character:** digicam, disposable
+- **Mood:** golden-hour, dreamy, pastel-pink, night-neon, teal-orange
+- **Black and white:** mono-grit, mono-soft
+
+`wonhee filter make "rainy-day cafe in Seoul: soft, slightly cool, gentle film grain, muted greens, cosy not gloomy" --name rainy-cafe --on a.jpg b.jpg` makes one:
+1. The local model picks the nearest pack filter and a few moves ("temperature down, a lot").
+2. Code renders it on your photos and checks it: blown highlights, crushed shadows, skin drift.
+3. A vision review moves up to four knobs a round, for three rounds.
+4. The best round is saved and reused with `wonhee filter apply rainy-cafe <photos>`.
+
+Tweak it later with `--from rainy-cafe "a bit warmer, less grain"`. Export it with `wonhee filter show rainy-cafe --cube rainy-cafe.cube` to use the same colour in CapCut / VN / Resolve on video. Glow, grain and the other texture effects don't fit in a LUT; add them in the app.
+
+**Masks are a last resort.** The `vibe` edit first tries the grade without a mask, then a gentler one. It only blends in a soft mask (edge-aware, feathered, at most 65% strength) if your face would end up too dark or blown out. Skin protection keeps skin colour natural under colour grades without any mask. `--set mask_policy=off` never masks; `--set mask_policy=always` always uses the soft mask.
+
 ## Formats to reuse for jokes
 
 - **Spec-sheet poster** (`poster` node): big title, two label boxes, tilted image, a justified mono "prompt" paragraph. The design-study format, used to present something mundane as an exhibit. For example: title "Signal Shielding", labels "Hardware: 1 sheet of foil" and "Funding: GitHub Student Pack", body = an absurdly precise brief. Pair it with a duotone or halftone image.
@@ -61,6 +79,8 @@ A look is mostly four things, and all four are measurable:
 | Edit your photos toward it | `wonhee vibe <photo...> --like ... --name kpop-night` | $0: the on-box gemma4:e4b picks the knobs (~10 s a photo) and the edit is deterministic. `--set fisheye=0.6` forces a knob |
 | Which saved posts share a look | `wonhee inspire`, section "Looks (measured from the pixels)" | $0 (cached teardowns) |
 | Spec-sheet poster | `wonhee node run poster --in image=<photo> --set title=... --set body=...` | $0 |
+| A filter from a description (saved) | `wonhee filter make "<vibe>" --name <name> --on <photos...>` | $0 on gemma4:e4b, ~20 s |
+| Apply / tweak / export a filter | `wonhee filter apply <name> <photos...>`, `... make "<change>" --from <name>`, `... show <name> --cube f.cube` | $0 |
 | Clean audio | `wonhee audio clip.mp4 [--preset voice\|mixed\|music] [--check]` | $0, about 1/4 real time |
 | Voice over music / street | `wonhee audio clip.mp4 --isolate [--music-db -15]` | $0, GPU, ~14 s for 44 s |
 

@@ -511,11 +511,12 @@ def vibe(conn, settings, deps, refs: list[str], photos: list[Path], *, name: str
         runs.append(rid)
         o2 = _step_out(conn, rid, "vibe_image")
         if o2 is None:
-            rows.append((photo, review, params, None, text))
+            rows.append((photo, review, params, None, text, None))
             continue
         dest = out_dir / f"{n:02d}-{Path(photo).stem}.jpg"
         dest.write_bytes(path_for(d, o2["image"]).read_bytes())
-        rows.append((photo, review, params, dest, None))
+        notes = json.loads(path_for(d, o2["notes"]).read_text()) if o2.get("notes") else None
+        rows.append((photo, review, params, dest, None, notes))
         pairs.append((style.load(photo), style.load(dest)))
     if pairs:
         tiles = []
@@ -541,7 +542,7 @@ def vibe(conn, settings, deps, refs: list[str], photos: list[Path], *, name: str
                f"- **The edit finishes:** {gd.edit_finish}", "", "On-set checklist:", "",
                *[f"- [ ] {c}" for c in gd.checklist], ""]
     md += ["## Your photos", ""]
-    for photo, review, params, dest, err in rows:
+    for photo, review, params, dest, err, notes in rows:
         md.append(f"### {Path(photo).name}")
         if err:
             md += [f"Edit failed: {err}", ""]
@@ -552,7 +553,12 @@ def vibe(conn, settings, deps, refs: list[str], photos: list[Path], *, name: str
             if k["reshoot"]:
                 md += ["", "Next time you shoot it:", *[f"- {x}" for x in k["reshoot"]]]
         knobs = {k: v for k, v in params.items() if v not in (0, 0.0, "none") and k not in ("ink", "paper")}
-        md += ["", f"Edit: `{json.dumps(knobs)}` -> `{dest.name}`", ""]
+        md += ["", f"Edit: `{json.dumps(knobs)}` -> `{dest.name}`"]
+        if notes and notes["mask"] != "none":
+            sl = notes.get("subject_L")
+            md.append(f"Mask: {notes['mask']}, policy {notes['mask_policy']}, used step **{notes['step']}**"
+                      + (f" (subject brightness L* {sl[0]} -> {sl[1]})" if sl else "") + ".")
+        md.append("")
     (out_dir / "report.md").write_text("\n".join(md), encoding="utf-8")
     summary = (f"Look '{name}' from {prof.n} reference(s): {'; '.join(prof.hints)}.\n"
                f"{len(pairs)} of {len(photos)} photo(s) edited, ${cost:.3f}. Report: {out_dir / 'report.md'}")
@@ -668,3 +674,174 @@ def chain_show(conn, settings, run_id: int) -> str:
     if queries.project_of_run(conn, run_id)["kind"] != "chain":
         raise ValueError(f"run {run_id} is not a chain run; use: wonhee show run {run_id}")
     return render_chain(conn, settings, run_id)
+
+
+# --- filters: the pack, AI-made filters, saved for later -------------------------------------------------------
+
+def _filter_sheet(pairs: list[tuple], dest: Path, h: int = 360) -> None:
+    import cv2
+    import numpy as np
+    tiles = [np.hstack([cv2.resize(x, (round(x.shape[1] * h / x.shape[0]), h)) for x in pair]) for pair in pairs]
+    w = max(t.shape[1] for t in tiles)
+    sheet = np.vstack([np.pad(t, ((0, 8), (0, w - t.shape[1]), (0, 0)), constant_values=255) for t in tiles])
+    cv2.imwrite(str(dest), sheet, [cv2.IMWRITE_JPEG_QUALITY, 88])
+
+
+def _render_filter(conn, settings, deps, shas: list[str], spec, progress=None) -> list[str | None]:
+    out = []
+    for sha in shas:
+        rid, _ = node_run(conn, settings, deps, "filter_image", {"image": sha}, spec.model_dump(), progress=progress)
+        o = _step_out(conn, rid, "filter_image")
+        out.append(o["image"] if o else None)
+    return out
+
+
+def filter_make(conn, settings, deps, description: str, photos: list[Path], *, name: str, rounds: int = 3,
+                engine: str = "local", start: str | None = None, progress=None) -> tuple[str, Path | None]:
+    """Make (or, with `start`, tweak) a filter from a description of a vibe, tune it on your photos and save it.
+
+    Each round renders the filter on the photos, measures them (clipping, crushed shadows, skin drift), lets the
+    guard fix what the numbers say is broken, then a vision model scores before|after against the description and
+    moves a few knobs (clamped, step-limited). The best-scoring round is saved as <home>/filters/<name>.json.
+    Returns (summary, the folder with the round sheets and final renders)."""
+    import json
+
+    from wonhee import filterstore
+    from wonhee.edit import filters as F
+    from wonhee.edit import style
+    from wonhee.media import path_for
+    from wonhee.nodes.filter import describe
+
+    if not photos:
+        return "give at least one photo to tune the filter on (2-3 different ones is best)", None
+    key = filterstore.slug(name)
+    if key in F.PACK:
+        return f"'{key}' is a pack filter; pick another name (e.g. my-{key})", None
+    d = settings.media_dir
+    shas = [repo.save_file(conn, d, Path(p).expanduser(), "image", "image/jpeg") for p in photos[:3]]
+    srcs = [style.load(path_for(d, s)) for s in shas]
+    base, change = None, description
+    if start:
+        base, old = filterstore.load(settings.home, start)
+        if old.get("description"):  # the goal stays the original vibe plus the change, not the change alone
+            description = f"{old['description']}; then: {change}"[:300]
+    params = {"description": change, "engine": engine, **({"start": base.model_dump_json()} if base else {})}
+    rid, text = node_run(conn, settings, deps, "filter_draft", {}, params, progress=progress)
+    runs = [rid]
+    o = _step_out(conn, rid, "filter_draft")
+    if o is None:
+        return text, None
+    draft = json.loads(path_for(d, o["filter"]).read_text())
+    spec = F.Filter(**draft["filter"])
+    out_dir = filterstore.folder(settings.home) / key
+    out_dir.mkdir(parents=True, exist_ok=True)
+    history, best = [], None
+    for r in range(1, max(1, rounds) + 1):
+        outs = _render_filter(conn, settings, deps, shas, spec, progress)
+        if any(x is None for x in outs):
+            return f"rendering the filter failed in round {r}", out_dir
+        imgs = [style.load(path_for(d, x)) for x in outs]
+        facts = [F.checks(a, b) for a, b in zip(srcs, imgs)]
+        fixed, guarded = F.guard(spec, facts)
+        if guarded:
+            spec = fixed
+            outs = _render_filter(conn, settings, deps, shas, spec, progress)
+            imgs = [style.load(path_for(d, x)) for x in outs]
+            facts = [F.checks(a, b) for a, b in zip(srcs, imgs)]
+        sheet = out_dir / f"round-{r}.jpg"
+        _filter_sheet(list(zip(srcs, imgs)), sheet)
+        sheet_sha = repo.save_file(conn, d, sheet, "image", "image/jpeg")
+        fact_text = "; ".join(f"photo {i + 1}: {F.verdicts(f)}" for i, f in enumerate(facts))
+        rid, text = node_run(conn, settings, deps, "filter_review", {"sheet": sheet_sha},
+                             {"description": description, "filter": spec.model_dump_json(), "facts": fact_text,
+                              "engine": engine}, progress=progress)
+        runs.append(rid)
+        o = _step_out(conn, rid, "filter_review")
+        rev = json.loads(path_for(d, o["review"]).read_text()) if o else None
+        score = rev["score"] if rev else 0
+        history.append({"round": r, "filter": spec.model_dump(), "score": score, "guard": guarded,
+                        "verdict": rev["verdict"] if rev else text, "moves": rev["moves"] if rev else [],
+                        "checks": facts})
+        if best is None or score >= best[0]:
+            best = (score, spec, outs, r)
+        if rev is None or rev["done"] or r == rounds:
+            break
+        spec = F.Filter(**rev["filter"])
+    score, spec, outs, best_round = best
+    for i, (photo, x) in enumerate(zip(photos, outs), 1):
+        (out_dir / f"{i:02d}-{Path(photo).stem}.jpg").write_bytes(path_for(d, x).read_bytes())
+    cost = sum(_run_cost(conn, r) for r in runs)
+    rec = {"description": description, "base": draft.get("base"), "draft_moves": draft.get("moves"),
+           "from": start, "engine": engine,
+           "filter": spec.model_dump(), "score": score, "best_round": best_round, "rounds": history,
+           "samples": [str(p) for p in photos[:3]], "cost_usd": round(cost, 4)}
+    saved = filterstore.save(settings.home, key, rec)
+    lines = [f"Filter '{key}' saved: {saved}", f"  {draft.get('notes', '')}".rstrip(),
+             f"  base: {draft.get('base')} + {', '.join(draft.get('moves') or []) or 'no moves'}",
+             f"  best round {best_round} of {len(history)}, score {score}/5, ${cost:.3f}",
+             f"  knobs: {describe(spec)}"]
+    for h in history:
+        lines.append(f"  round {h['round']}: {h['score']}/5 {h['verdict']}"
+                     + (f" -> {', '.join(h['moves'])}" if h["moves"] else "")
+                     + (f" [guard: {'; '.join(h['guard'])}]" if h["guard"] else ""))
+    lines.append(f"  sheets and renders: {out_dir}")
+    lines.append(f"  use it: wonhee filter apply {key} <photos...>   tweak: wonhee filter make \"<change>\" "
+                 f"--from {key} --name {key} --on <photos...>")
+    return "\n".join(lines), out_dir
+
+
+def filter_apply(conn, settings, deps, name: str, photos: list[Path], *, intensity: float = 1.0,
+                 dest: Path | None = None, progress=None) -> tuple[str, Path | None]:
+    """Apply a pack or saved filter to photos; writes <home>/filtered/<date>-<name>/ (or `dest`)."""
+    from datetime import date
+
+    from wonhee import filterstore
+    from wonhee.media import path_for
+
+    spec, rec = filterstore.load(settings.home, name)
+    key = rec["name"]
+    out_dir = dest or settings.home / "filtered" / f"{date.today().isoformat()}-{key}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    done, failed = 0, []
+    for i, photo in enumerate(photos, 1):
+        sha = repo.save_file(conn, settings.media_dir, Path(photo).expanduser(), "image", "image/jpeg")
+        rid, text = node_run(conn, settings, deps, "filter_image", {"image": sha},
+                             {**spec.model_dump(), "intensity": intensity}, progress=progress)
+        o = _step_out(conn, rid, "filter_image")
+        if o is None:
+            failed.append(f"{photo}: {text}")
+            continue
+        (out_dir / f"{i:02d}-{Path(photo).stem}.jpg").write_bytes(path_for(settings.media_dir, o["image"]).read_bytes())
+        done += 1
+    return (f"{key} ({rec['source']}) at {intensity:g}: {done} of {len(photos)} photo(s) -> {out_dir}"
+            + "".join(f"\n  failed {f}" for f in failed)), out_dir
+
+
+def filter_list(settings) -> str:
+    from wonhee import filterstore
+    from wonhee.edit.filters import PACK
+    lines = ["Pack:"] + [f"  {k:13} {d}" for k, (d, _) in PACK.items()]
+    mine = filterstore.saved(settings.home)
+    lines.append("Yours:" if mine else "Yours: none yet (wonhee filter make \"<a vibe>\" --name <name> --on <photos>)")
+    lines += [f"  {r['name']:13} {r.get('description', '')}  [{r.get('score', '?')}/5, {r.get('updated', '')[:10]}]"
+              for r in mine]
+    return "\n".join(lines)
+
+
+def filter_show(settings, name: str, cube: Path | None = None) -> str:
+    """One filter's knobs and history; with `cube`, also write its colour part as a .cube LUT (phone / video
+    editors: CapCut, VN, Lightroom, Resolve). Glow, grain and other spatial effects are not in a LUT."""
+    from wonhee import filterstore
+    from wonhee.edit import filters as F
+    from wonhee.nodes.filter import describe
+    spec, rec = filterstore.load(settings.home, name)
+    lines = [f"{rec['name']} ({rec['source']}): {rec.get('description', '')}", f"  knobs: {describe(spec)}"]
+    for h in rec.get("rounds", []):
+        lines.append(f"  round {h['round']}: {h['score']}/5 {h['verdict']}")
+    if cube:
+        cube = Path(cube).expanduser()
+        cube.write_text(F.cube(spec, title=rec["name"]), encoding="utf-8")
+        skipped = [k for k in ("clarity", "sharpen", "glow", "bloom", "halation", "light_leak", "aberration",
+                               "vignette", "grain") if getattr(spec, k)]
+        lines.append(f"  LUT written: {cube}" + (f" (not in a LUT: {', '.join(skipped)})" if skipped else ""))
+    return "\n".join(lines)

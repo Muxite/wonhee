@@ -13,6 +13,8 @@ import cv2
 import numpy as np
 from pydantic import BaseModel
 
+from wonhee.edit.filters import skin_weight
+
 PCTS = (1, 5, 25, 50, 75, 95, 99)
 BANDS = ("shadow", "mid", "high")
 HUES = ("red", "orange", "yellow", "lime", "green", "teal", "cyan", "azure", "blue", "violet", "magenta", "pink")
@@ -152,13 +154,15 @@ def _tone_lut(src: list[float], tgt: list[float], k: float) -> tuple[np.ndarray,
 
 
 def match(im: np.ndarray, target: Stats, strength: float = 0.7, *, tone: float = 1.0, colour: float = 1.0,
-          mask: np.ndarray | None = None, subject_strength: float = 0.4, subject_lift: float = 0.0) -> np.ndarray:
+          mask: np.ndarray | None = None, subject_strength: float = 0.4, subject_lift: float = 0.0,
+          skin_protect: float = 0.0) -> np.ndarray:
     """Move a photo's tone curve, per-band colour and colourfulness toward `target`.
 
     strength scales everything (0 = untouched, 1 = the reference's numbers). `tone` and `colour` scale those two
     parts on their own (a daylight photo pushed fully to a night profile goes muddy; tone=0.5 keeps it readable).
     With a subject mask (0..1 float, same size), the subject gets `subject_strength` of the grade instead (skin
-    stays closer to true) and `subject_lift` brightens it like a key light or on-camera flash.
+    stays closer to true) and `subject_lift` brightens it like a key light or on-camera flash. `skin_protect` keeps
+    skin-coloured pixels near their own colour (a colour-range rule, no mask) while they still take the tone move.
     """
     src = measure(im)
     lab = to_lab(im)
@@ -175,7 +179,12 @@ def match(im: np.ndarray, target: Stats, strength: float = 0.7, *, tone: float =
             out[..., 2] += w[band] * db
         c = np.clip((target.chroma / max(src.chroma, 1.0)) ** (k * colour), 0.5, 2.2)
         out[..., 1:] *= c
+        if skin_protect:
+            sk = (skin_protect * skin)[..., None]
+            out[..., 1:] = out[..., 1:] * (1 - sk) + lab[..., 1:] * sk
         return out
+
+    skin = skin_weight(lab[..., 1], lab[..., 2]) if skin_protect else None
 
     bg = grade(strength)
     if mask is None:

@@ -143,3 +143,30 @@ def subject_text(im: np.ndarray, prompt: str, feather: float = 0.003) -> np.ndar
     if feather > 0:
         m = cv2.GaussianBlur(m, (0, 0), max(1.0, feather * max(im.shape[:2])))
     return np.clip(m, 0, 1)
+
+
+# --- softening: masks that blend instead of cutting out -------------------------------------------------------
+
+def _box(x: np.ndarray, r: int) -> np.ndarray:
+    return cv2.boxFilter(x, -1, (2 * r + 1, 2 * r + 1), normalize=True, borderType=cv2.BORDER_REFLECT)
+
+
+def guided(m: np.ndarray, guide: np.ndarray, r: int, eps: float = 1e-3) -> np.ndarray:
+    """He et al.'s guided filter: smooths the mask but lets its edge follow real edges in the photo (hair, sleeves),
+    so a soft mask does not glow past the subject's outline."""
+    g = cv2.cvtColor(guide, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255
+    mg, mm = _box(g, r), _box(m, r)
+    a = (_box(g * m, r) - mg * mm) / (_box(g * g, r) - mg * mg + eps)
+    b = mm - a * mg
+    return _box(a, r) * g + _box(b, r)
+
+
+def soften(m: np.ndarray, im: np.ndarray, feather: float = 0.015, opacity: float = 0.65) -> np.ndarray:
+    """A hard subject mask turned into a gentle one: edge-aware smoothing, a wide feather (`feather` x the long
+    side) and an `opacity` cap, so the subject is only partly held back from the grade and nothing looks cut out."""
+    h, w = m.shape[:2]
+    side = max(h, w)
+    m = guided(m.astype(np.float32), im, max(2, round(side * 0.006)))
+    if feather > 0:
+        m = cv2.GaussianBlur(m, (0, 0), max(1.0, feather * side))
+    return np.clip(m, 0, 1) * opacity

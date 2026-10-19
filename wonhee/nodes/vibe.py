@@ -20,7 +20,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
 
 from wonhee.db import repo
-from wonhee.edit import fx, style
+from wonhee.edit import filters, fx, style
 from wonhee.edit import mask as mk
 from wonhee.intent.creator import load_creator
 from wonhee.media import path_for
@@ -31,6 +31,7 @@ from wonhee.nodes.subtitles import save_text
 
 Engine = Literal["local", "remote"]
 MaskKind = Literal["none", "person", "object"]
+MaskPolicy = Literal["auto", "off", "always"]
 Crop = Literal["none", "4:5", "1:1", "9:16"]
 THUMB_PX = 768
 
@@ -139,6 +140,12 @@ class VibeParams(BaseModel):
     mask_prompt: str | None = Field(default=None, max_length=40)  # name the subject ("plush toy"): GPU text mask
     subject_strength: float = Field(default=0.4, ge=0, le=1)
     subject_lift: float = Field(default=0.0, ge=0, le=0.5)  # brighten the subject like a key light / flash
+    # masks are a last resort: auto tries the grade without one (then a gentler grade) and blends in a soft mask
+    # only if the subject would end up too dark or blown; always = soft mask every time; off = never
+    mask_policy: MaskPolicy = "auto"
+    mask_opacity: float = Field(default=0.65, ge=0, le=1)  # how much the subject is held back from the grade
+    feather: float = Field(default=0.015, ge=0, le=0.05)  # mask edge softness, x the long side
+    skin_protect: float = Field(default=0.6, ge=0, le=1)  # keep skin near its own colour (colour rule, no mask)
     fisheye: float = Field(default=0.0, ge=0, le=1)
     edge_blur: float = Field(default=0.0, ge=0, le=1)
     motion_blur: float = Field(default=0.0, ge=0, le=1)  # background only when a mask is on
@@ -166,11 +173,16 @@ def crop_to(im: np.ndarray, aspect: str) -> np.ndarray:
     return im[y:y + nh]
 
 
-def subject_mask(im: np.ndarray, p: VibeParams, models_dir: Path) -> tuple[np.ndarray | None, str]:
-    """The subject mask and how it was made. GPU (Grounding-DINO + SAM 2.1) from a text prompt when torch and a
-    GPU are present; otherwise, or when the prompt finds nothing, the CPU ONNX models."""
+def subject_mask(im: np.ndarray, p: VibeParams, models_dir: Path, guard: bool = False
+                 ) -> tuple[np.ndarray | None, str]:
+    """The hard subject mask and how it was made. GPU (Grounding-DINO + SAM 2.1) from a text prompt when torch and
+    a GPU are present; otherwise, or when the prompt finds nothing, the CPU ONNX models. `guard`: with no subject
+    named, look for a person anyway (on the GPU only), to check they stay readable."""
     if p.mask == "none" and not p.mask_prompt:
-        return None, "none"
+        if not (guard and mk.gpu_available()):
+            return None, "none"
+        m = mk.subject_text(im, "person")
+        return (m, "sam2:person") if m is not None and 0.01 < float(m.mean()) < 0.9 else (None, "none")
     prompt = p.mask_prompt or ("person" if p.mask == "person" else None)
     if prompt and mk.gpu_available():
         m = mk.subject_text(im, prompt)
@@ -180,12 +192,73 @@ def subject_mask(im: np.ndarray, p: VibeParams, models_dir: Path) -> tuple[np.nd
     return mk.subject(im, models_dir, kind), f"onnx:{kind}"
 
 
-def render(im: np.ndarray, prof: style.Profile | None, p: VibeParams, models_dir: Path) -> np.ndarray:
+def _subject_pixels(im: np.ndarray, m: np.ndarray) -> np.ndarray:
+    """Where to judge the subject: its skin (face, hands) when enough shows, else the whole subject. Positions are
+    fixed on the original, so the same pixels are compared before and after."""
+    lab = style.to_lab(style._small(im))
+    sel = cv2.resize(m.astype(np.float32), (lab.shape[1], lab.shape[0])) > 0.5
+    skin = sel & (filters.skin_weight(lab[..., 1], lab[..., 2]) > 0.5)
+    if skin.sum() > max(50, 0.03 * sel.sum()):
+        return skin
+    return sel if sel.sum() > 50 else np.ones_like(sel)
+
+
+def _subject_l(im: np.ndarray, where: np.ndarray) -> tuple[float, float]:
+    """L* at the 50th and 95th percentile of the judged pixels."""
+    v = style.to_lab(style._small(im))[..., 0][where]
+    return float(np.percentile(v, 50)), float(np.percentile(v, 95))
+
+
+def readable(before: tuple[float, float], after: tuple[float, float]) -> bool:
+    """The subject still reads: not sunk into the dark, not newly blown out. A subject that was already dark only
+    has to stay about where it was."""
+    dark = after[0] < min(0.85 * before[0], max(25.0, 0.6 * before[0]))
+    blown = after[1] > 97.0 and before[1] < 94.0
+    return not dark and not blown
+
+
+def grade(im: np.ndarray, prof: style.Profile | None, p: VibeParams, models_dir: Path
+          ) -> tuple[np.ndarray, np.ndarray | None, dict]:
+    """The tone and colour move under the mask policy. Returns (image, the mask actually blended or None, notes).
+
+    The ladder for `auto`: 1 the grade as asked, 2 the same with a 40% smaller tone move, 3 a soft mask at 60% of
+    `mask_opacity`, 4 a soft mask at `mask_opacity`. The first step that keeps the subject readable wins."""
+    notes: dict = {"mask_policy": p.mask_policy, "mask": "none", "step": "global"}
+    if prof is None or p.strength <= 0:
+        return im, None, notes
+
+    def run(mask, tone_k):
+        return style.match(im, prof.stats, p.strength, tone=p.tone * tone_k, colour=p.colour, mask=mask,
+                           subject_strength=p.subject_strength,
+                           subject_lift=p.subject_lift if mask is not None else 0.0, skin_protect=p.skin_protect)
+
+    raw, how = (None, "none") if p.mask_policy == "off" else subject_mask(im, p, models_dir,
+                                                                           guard=p.mask_policy == "auto")
+    if raw is None:
+        return run(None, 1.0), None, notes
+    notes["mask"] = how
+    soft = mk.soften(raw, im, p.feather, p.mask_opacity)
+    if p.mask_policy == "always":
+        notes["step"] = "mask"
+        return run(soft, 1.0), soft, notes
+    where = _subject_pixels(im, raw)
+    before = _subject_l(im, where)
+    half = mk.soften(raw, im, p.feather, p.mask_opacity * 0.6)
+    out = None
+    for step, mask, tone_k in (("global", None, 1.0), ("gentler", None, 0.6), ("soft mask", half, 1.0),
+                               ("mask", soft, 1.0)):
+        out = run(mask, tone_k)
+        after = _subject_l(out, where)
+        notes.update(step=step, subject_L=[round(before[0], 1), round(after[0], 1)])
+        if readable(before, after):
+            return out, mask, notes
+    return out, soft, notes
+
+
+def render_notes(im: np.ndarray, prof: style.Profile | None, p: VibeParams, models_dir: Path
+                 ) -> tuple[np.ndarray, dict]:
     im = crop_to(im, p.crop)
-    m, _ = subject_mask(im, p, models_dir)
-    if prof is not None and p.strength > 0:
-        im = style.match(im, prof.stats, p.strength, tone=p.tone, colour=p.colour, mask=m,
-                         subject_strength=p.subject_strength, subject_lift=p.subject_lift)
+    im, m, notes = grade(im, prof, p, models_dir)
     im = fx.motion_blur(im, p.motion_blur, p.motion_angle, keep=m)
     im = fx.bloom(im, p.bloom)
     if p.fisheye > 0:
@@ -198,17 +271,22 @@ def render(im: np.ndarray, prof: style.Profile | None, p: VibeParams, models_dir
         im = fx.halftone(im, ink=p.ink, paper=p.paper)
     elif p.print == "duotone":
         im = fx.duotone(im, ink=p.ink, paper=p.paper)
-    return fx.grain(im, p.grain)
+    return fx.grain(im, p.grain), notes
+
+
+def render(im: np.ndarray, prof: style.Profile | None, p: VibeParams, models_dir: Path) -> np.ndarray:
+    return render_notes(im, prof, p, models_dir)[0]
 
 
 def vibe_image_fn(ctx, inputs, p: VibeParams) -> dict[str, str]:
     d = ctx.settings.media_dir
     prof = load_profile(d, inputs["profile"]) if inputs.get("profile") else None
-    out = render(style.load(path_for(d, inputs["image"])), prof, p, ctx.settings.home / "models")
+    out, notes = render_notes(style.load(path_for(d, inputs["image"])), prof, p, ctx.settings.home / "models")
     with tempfile.TemporaryDirectory(prefix="wonhee-vibe-") as tmp:
         dest = Path(tmp) / "out.jpg"
         cv2.imwrite(str(dest), out, [cv2.IMWRITE_JPEG_QUALITY, 94])
-        return {"image": repo.save_file(ctx.conn, d, dest, "image", "image/jpeg")}
+        return {"image": repo.save_file(ctx.conn, d, dest, "image", "image/jpeg"),
+                "notes": save_text(ctx.conn, d, json.dumps(notes))}
 
 
 # --- vibe_review -----------------------------------------------------------------------------------------------
@@ -245,9 +323,10 @@ SYSTEM_REVIEW = (
     "You set the knobs of a photo editor so the creator's photo takes on the look of a set of references. The "
     "first image is the creator's photo, the rest are references. You get measured numbers for both. Choose: "
     "strength 0-1 (how far to move tone and colour), tone 0-1.5 and colour 0-1.5 (lower tone keeps a daylight "
-    "photo readable when the look is a night look), mask person|object|none (use one when there is a clear "
-    "subject to keep lit and true while the background takes the grade; then name it in mask_prompt, e.g. 'plush "
-    "toy', 'person', 'laptop'), subject_lift 0-0.5 (key light / flash "
+    "photo readable when the look is a night look), mask person|object|none and mask_prompt (name the main "
+    "subject you can see, e.g. 'plush toy', 'person', 'laptop'; the editor tries the grade without a mask first "
+    "and only blends in a soft one if that subject would end up too dark or blown), subject_lift 0-0.5 (key "
+    "light / flash, used only if a mask is needed) "
     "on the subject), fisheye, edge_blur, motion_blur, bloom (glow on bright lights), vignette, grain (0-1 each, "
     "only when the references show that trait), crop none|4:5|1:1|9:16. Then `reshoot`: concrete changes to how "
     "the photo is taken next time (angle, lens, light, timing), because editing cannot fix everything. Keep "
@@ -291,12 +370,14 @@ registry.register(Node("shot_guide", 1, {"images": "images", "profile": "text"},
                        shot_guide_fn, "How to shoot for a look: lens, angle, light, motion, places like it; a "
                        "vision model grounded on the measured profile.",
                        salt=lambda s: {"llm_model": s.llm_model, "local_llm_model": s.local_llm_model}))
-registry.register(Node("vibe_review", 2, {"image": "image", "profile": "text"}, {"review": "text"}, ReviewParams,
+registry.register(Node("vibe_review", 3, {"image": "image", "profile": "text"}, {"review": "text"}, ReviewParams,
                        vibe_review_fn, "A vision model picks the edit knobs (clamped) for one photo toward a look, "
                        "plus what to change when reshooting.",
                        salt=lambda s: {"llm_model": s.llm_model, "local_llm_model": s.local_llm_model}))
-registry.register(Node("vibe_image", 2, {"image": "image", "profile": "text?"}, {"image": "image"}, VibeParams,
-                       vibe_image_fn, "Move a photo toward a look profile: tone and per-band colour match, optional "
-                       "subject mask, lens effects (fisheye, edge/motion blur, bloom, vignette, grain), halftone or "
+registry.register(Node("vibe_image", 3, {"image": "image", "profile": "text?"},
+                       {"image": "image", "notes": "text"}, VibeParams,
+                       vibe_image_fn, "Move a photo toward a look profile: tone and per-band colour match with skin "
+                       "protection, a soft subject mask only when needed (mask_policy), lens effects (fisheye, "
+                       "edge/motion blur, bloom, vignette, grain), halftone or "
                        "duotone print, crop. Deterministic.",
                        salt=lambda s: {"gpu_masks": mk.gpu_available()}))

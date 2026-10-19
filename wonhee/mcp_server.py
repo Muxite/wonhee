@@ -199,6 +199,37 @@ def vibe(like: list[str], photos: list[str] | None = None, name: str = "look", e
 
 @mcp.tool()
 @_guard
+def filter_make(description: str, photos: list[str], name: str, start: str | None = None, rounds: int = 3,
+                engine: str = "local") -> str:
+    """Make a photo filter from a description of a vibe ("late-summer film, a bit faded"), tune it on 1-3 photos
+    (render, measure, a vision model scores before|after and moves a few clamped knobs) and save it by name for
+    later. start = an existing pack or saved filter to tweak instead. engine local = $0. No image generation."""
+    from pathlib import Path
+    conn, settings = _open()
+    try:
+        return service.filter_make(conn, settings, _deps(settings), description, [Path(p) for p in photos],
+                                   name=name, rounds=rounds, engine=engine, start=start)[0]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def filter_apply(name: str, photos: list[str] | None = None, intensity: float = 1.0) -> str:
+    """Apply a pack or saved filter to photos (intensity 0..2). With no photos, lists the pack and saved filters."""
+    from pathlib import Path
+    conn, settings = _open()
+    try:
+        if not photos:
+            return service.filter_list(settings)
+        return service.filter_apply(conn, settings, _deps(settings), name, [Path(p) for p in photos],
+                                    intensity=intensity)[0]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
 def audio(file: str, preset: str = "voice", check: bool = False) -> str:
     """Measure a clip's audio (LUFS, true peak, range, speech-to-noise) and, unless check, clean it on the box:
     rumble cut, RNNoise denoise, compression, two-pass loudness to -14 LUFS / -1.5 dBTP. Writes <file>.clean.mp4.

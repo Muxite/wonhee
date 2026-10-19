@@ -186,6 +186,24 @@ def _cmd_ideate(a, settings) -> int:
     return 0
 
 
+def _cmd_filter(a, settings) -> int:
+    if a.sub == "list":
+        print(service.filter_list(settings))
+        return 0
+    if a.sub == "show":
+        print(service.filter_show(settings, a.name, cube=Path(a.cube) if a.cube else None))
+        return 0
+    conn, deps = open_db(settings), build_deps(settings)
+    if a.sub == "apply":
+        text, _ = service.filter_apply(conn, settings, deps, a.name, [Path(p) for p in a.photos],
+                                       intensity=a.intensity, dest=Path(a.out) if a.out else None, progress=_progress)
+    else:
+        text, _ = service.filter_make(conn, settings, deps, a.description, [Path(p) for p in a.on], name=a.name,
+                                      rounds=a.rounds, engine=a.engine, start=a.start, progress=_progress)
+    print(text)
+    return 0
+
+
 def _cmd_vibe(a, settings) -> int:
     over = {}
     for kv in a.set or []:
@@ -307,6 +325,24 @@ def _parser() -> argparse.ArgumentParser:
                    help="who writes the guide: remote ~$0.003 (default, best), local $0")
     s.add_argument("--set", action="append", metavar="KNOB=VALUE", help="force an edit knob, e.g. fisheye=0.6")
     s.set_defaults(fn=_cmd_vibe)
+    s = sub.add_parser("filter", help="filters that give a vibe without copying anyone: the pack, AI-made ones "
+                                      "from a description (saved for later), .cube export").add_subparsers(
+        dest="sub", required=True)
+    n = s.add_parser("list", help="the pack and your saved filters"); n.set_defaults(fn=_cmd_filter)
+    n = s.add_parser("show", help="one filter's knobs and history"); n.add_argument("name")
+    n.add_argument("--cube", metavar="FILE", help="also write its colour part as a .cube LUT (CapCut, VN, Resolve)")
+    n.set_defaults(fn=_cmd_filter)
+    n = s.add_parser("apply", help="apply a pack or saved filter to photos"); n.add_argument("name")
+    n.add_argument("photos", nargs="+"); n.add_argument("--intensity", type=float, default=1.0, help="0..2")
+    n.add_argument("--out", help="folder to write into"); n.set_defaults(fn=_cmd_filter)
+    n = s.add_parser("make", help='make a filter from a vibe: wonhee filter make "late-summer film, a bit '
+                                  'faded" --name late-summer --on a.jpg b.jpg')
+    n.add_argument("description"); n.add_argument("--name", required=True)
+    n.add_argument("--on", nargs="+", required=True, metavar="PHOTO", help="1-3 photos to tune it on")
+    n.add_argument("--from", dest="start", metavar="FILTER", help="tweak this pack or saved filter instead")
+    n.add_argument("--rounds", type=int, default=3, help="render-review-adjust rounds (default 3)")
+    n.add_argument("--engine", choices=["local", "remote"], default="local", help="local = on-box model, $0")
+    n.set_defaults(fn=_cmd_filter)
     s = sub.add_parser("audio", help="check or clean a clip's audio on the box: denoise, peaks, -14 LUFS loudness")
     s.add_argument("file"); s.add_argument("--preset", choices=["voice", "mixed", "music"], default="voice")
     s.add_argument("--check", action="store_true", help="measure only"); s.add_argument("--out", help="write here")
