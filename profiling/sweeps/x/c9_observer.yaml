@@ -1,0 +1,27 @@
+# C9  Observer effect of gauge's own host sampler (NVML + cgroup reads; profiling/analysis/observer.py, O6).
+# Existing data (O1-O5) covers Nsight's cost, the sampler's CPU (~1% of a core) and the floor under Nsight metrics
+# (29.7 W vs 16.8 W unobserved). Not yet known: does the sampler alone keep the GPU out of its idle state, and does
+# its polling rate change the work it measures? The same jobs at 20 ms, 100 ms (the default) and 1 s sampling,
+# plus the idle GPU under Nsight trace and metrics to split the floor between the sampler and the profiler.
+experiment: C9 observer
+question: "Does gauge's sampler change what it measures: the idle floor, a GPU-bound rate, a launch-bound rate, a CPU-bound wall time?"
+measure: "idle: median device power; LLM decode: avg_ts; launch stressor: kernels/s; x264 transcode: wall s"
+analysis: "change of each median vs the 1 s sampling cell, with min-max over 3 repeats"
+tolerance: "within +-1% (power: +-1 W) -> the 100 ms sampler is a negligible observer for that kind of work"
+stop: "3 repeats per cell, interleaved"
+decision: "whether the default 100 ms sampling interval needs a correction or a different default for any kind of work"
+jobs:
+  - {workload: micro.idle, fixed: {seconds: 30}, repeats: 3, interval: 0.02}
+  - {workload: micro.idle, fixed: {seconds: 30}, repeats: 3, interval: 0.1}
+  - {workload: micro.idle, fixed: {seconds: 30}, repeats: 3, interval: 1.0}
+  - {workload: micro.idle, fixed: {seconds: 30}, repeats: 3, profile: trace}
+  - {workload: micro.idle, fixed: {seconds: 30}, repeats: 3, profile: metrics}
+  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 512, reps: 3}, repeats: 3, interval: 0.02}
+  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 512, reps: 3}, repeats: 3, interval: 0.1}
+  - {workload: llamacpp.phase, fixed: {model: "qwen2.5:3b", phase: decode, tokens: 512, reps: 3}, repeats: 3, interval: 1.0}
+  - {workload: stress.gpu, fixed: {mode: launch, seconds: 20}, repeats: 3, interval: 0.02}
+  - {workload: stress.gpu, fixed: {mode: launch, seconds: 20}, repeats: 3, interval: 0.1}
+  - {workload: stress.gpu, fixed: {mode: launch, seconds: 20}, repeats: 3, interval: 1.0}
+  - {workload: ffmpeg.transcode, fixed: {seconds: 60, codec: libx264, preset: veryfast}, repeats: 3, interval: 0.02}
+  - {workload: ffmpeg.transcode, fixed: {seconds: 60, codec: libx264, preset: veryfast}, repeats: 3, interval: 0.1}
+  - {workload: ffmpeg.transcode, fixed: {seconds: 60, codec: libx264, preset: veryfast}, repeats: 3, interval: 1.0}

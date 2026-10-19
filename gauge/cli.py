@@ -121,7 +121,7 @@ def expand(sweep: dict) -> list[tuple[str, dict]]:
         keys = list(grid)
         for combo in itertools.product(*(grid[k] for k in keys)) if keys else [()]:
             params = {**j.get("fixed", {}), **dict(zip(keys, combo))}
-            over = {k: j[k] for k in ("profile", "sharing") if j.get(k)}
+            over = {k: j[k] for k in ("profile", "sharing", "interval") if j.get(k)}  # interval: sampler, s
             if j.get("experiment") or sweep.get("experiment"):  # dataset label; provenance is not hashed
                 over["provenance"] = {"experiment": j.get("experiment") or sweep["experiment"]}
             out += [(j["workload"], params, over)] * j.get("repeats", 1)
@@ -161,8 +161,10 @@ def cmd_sweep(a) -> int:
     print(f"{len(jobs)} jobs")
     for i, (wl, params, over) in enumerate(jobs, 1):
         try:
+            over = dict(over)
+            interval = over.pop("interval", a.interval)
             spec = _spec(wl, params, a).model_copy(update=over)
-            rid, s = runner.run(conn, spec, interval_s=a.interval, lock=not a.no_lock)
+            rid, s = runner.run(conn, spec, interval_s=interval, lock=not a.no_lock)
             print(f"[{i}/{len(jobs)}] run {rid} {wl} {params}: {_fmt(s)}", flush=True)
         except Exception as e:  # one broken job must not sink the sweep
             print(f"[{i}/{len(jobs)}] {wl} {params}: ERROR {type(e).__name__}: {e}", flush=True)

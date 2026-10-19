@@ -123,3 +123,20 @@ def test_corun_file_groups_solo_and_override(monkeypatch):
     cli.run_group(None, ["stress.gpu:mode=bw"], doc, a)
     cli.run_group(None, {"jobs": ["stress.gpu:mode=bw", "stress.gpu:mode=compute"], "sharing": "mps"}, doc, a)
     assert calls == [("run", "timeslice", {"experiment": "C2 sharing"}), ("corun", ["mps", "mps"])]
+
+
+def test_sweep_job_can_set_the_sampler_interval(monkeypatch, tmp_path):
+    import argparse
+
+    import yaml
+
+    from gauge import cli, runner, store
+    seen = []
+    monkeypatch.setattr(runner, "run", lambda conn, spec, interval_s, lock: seen.append((spec.workload, interval_s)) or (1, {}))
+    monkeypatch.setattr(store, "connect", lambda *a: None)
+    f = tmp_path / "s.yaml"
+    f.write_text(yaml.safe_dump({"jobs": [{"workload": "micro.idle", "interval": 1.0}, {"workload": "micro.idle"}]}))
+    a = argparse.Namespace(db=":memory:", file=str(f), order="file", seed=None, interval=0.1, no_lock=True,
+                           warmness="unknown", timeout=10, mem=None, profile="none", sharing="timeslice")
+    cli.cmd_sweep(a)
+    assert seen == [("micro.idle", 1.0), ("micro.idle", 0.1)]
