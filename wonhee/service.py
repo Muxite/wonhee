@@ -1356,3 +1356,147 @@ def slop_serve(settings, port: int = 8765):
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", port), functools.partial(Handler, directory=str(root)))
     return server
+
+
+# ---- reels (docs/specs/2026-10-20-reel-styles-design.md §6) ------------------------------------------------------
+
+REEL_RESERVED = ("tighten", "encoder", "quality", "engine", "look", "name", "seed")
+
+
+def reel_styles() -> str:
+    """The styles `wonhee reel` can make, one line each (a style is a compose_video template with a `reel` entry)."""
+    from wonhee.edit import compose as C
+
+    rows = [(t["name"], t["reel"]["summary"]) for t in C.list_templates() if t.get("reel")]
+    w = max(len(n) for n, _ in rows)
+    return "\n".join(f"{n.ljust(w)}  {s}" for n, s in rows)
+
+
+def _reel_template(style: str) -> dict:
+    from wonhee.edit import compose as C
+
+    styles = {t["name"]: t for t in C.list_templates() if t.get("reel")}
+    if style not in styles:
+        raise ValueError(f"unknown reel style '{style}'; known: {', '.join(styles)}")
+    return styles[style]
+
+
+def _lecture_task(title: str | None, words) -> str:
+    """What larp is asked to frame for the lecture slots: the title if given, else what the speaker says."""
+    if title:
+        return title
+    said = " ".join(w.text for w in words)[:240].strip()
+    return f"a short clip in which the speaker says: {said}" if said else "a short clip of an ordinary morning"
+
+
+def reel(conn, settings, deps, video: str | Path, style: str, *, title: str | None = None, cta: str | None = None,
+         items: list[str] | None = None, insets: list[str | Path] | None = None, overrides: dict | None = None,
+         progress=None) -> str:
+    """Make a reel: speech_subs, then compose_video with the style's template (one chain, so the words, slots and
+    encode are recorded and cached). The style's text slots come from --title/--cta/--items, its times from the spoken
+    words (edit/reel_slots.py); `overrides` (--set) sets any slot, plus tighten/encoder/quality/engine/look/name (the
+    look is applied inside compose_video's one encode). With style 'lecture' and no lecture slots given, the larp
+    `lecture` register (engine local unless engine=remote) writes them. Writes <home>/reels/<date>/<name>/<name>.mp4
+    and report.md; returns the text with the path."""
+    import json
+    from datetime import date
+
+    from wonhee import media
+    from wonhee.edit import reel_slots as RS
+    from wonhee.nodes.images import Images, Slide, save_images
+    from wonhee.nodes.subtitles import line_words, load_subs
+
+    tpl = _reel_template(style)
+    opts = dict(overrides or {})
+    if isinstance(opts.get("tighten"), str):  # --set tighten=off|on
+        opts["tighten"] = {"off": False, "false": False, "no": False, "on": True, "true": True, "yes": True}.get(opts["tighten"].lower())
+        if opts["tighten"] is None:
+            raise ValueError("tighten takes on, off or {\"min_pause_ms\": ..., \"keep_ms\": ...}")
+    unknown = [k for k in opts if k not in tpl["slots"] and k not in REEL_RESERVED]
+    if unknown:
+        raise ValueError(f"style '{style}' has no slot(s) {sorted(unknown)}; slots: {', '.join(tpl['slots'])}; "
+                         f"also: {', '.join(REEL_RESERVED)}")
+    src = None if re.fullmatch(r"[0-9a-f]{64}", str(video)) else Path(video).expanduser()
+    if src is not None and not src.is_file():
+        raise ValueError(f"{video}: no such video")
+    sha = repo.save_file(conn, settings.media_dir, src, "video", _mime(src)) if src else str(video)
+    info = media.probe(media.path_for(settings.media_dir, sha))
+    if not info.duration_ms:
+        raise ValueError("cannot read the video's duration")
+    rid, text = chain_run(conn, settings, deps, [{"id": "s", "node": "speech_subs", "in": {"video": sha}}], progress=progress)
+    so = _step_out(conn, rid, "s")
+    if so is None:
+        return text
+    words = [w for ln in load_subs(settings.media_dir, so["subtitles"]).lines for w in line_words(ln)[0]]
+    lecture = None
+    if style == "lecture":
+        # theses/footnotes given as --set thesis_N / footnote_N (or --items) go through the timing code like the model's
+        # would, so they get phrase-gap times and footnote markers; the explicit text wins over the larp writer's
+        given: dict = {k: opts.pop(k) for k in ("subtitle", "citation") if k in opts}
+        theses = list(items or []) or [opts.pop(f"thesis_{k}") for k in range(1, 5) if f"thesis_{k}" in opts]
+        feet = [opts.pop(f"footnote_{k}") for k in range(1, 4) if f"footnote_{k}" in opts]
+        if theses:
+            given["theses"] = [str(t) for t in theses]
+        if feet:
+            given["footnotes"] = [str(t) for t in feet]
+        lecture = given
+        if not (given.get("theses") and given.get("subtitle")):
+            lrid, ltext = node_run(conn, settings, deps, "larp", {}, {"task": _lecture_task(title, words), "registers": ["lecture"],
+                                                                       "engine": opts.get("engine", "local")}, progress=progress)
+            lo = _step_out(conn, lrid, "larp")
+            if lo is None:
+                return ltext
+            written = json.loads(media.path_for(settings.media_dir, lo["lines"]).read_text(encoding="utf-8"))["lecture"]
+            lecture = {**written, **given}
+    slots, notes = RS.fill_slots(style, tpl["slots"], words, info.duration_ms, title=None if title is None else str(title),
+                                 cta=cta, items=None if style == "lecture" else items, n_insets=len(insets or []), lecture=lecture)
+    slots.update({k: v for k, v in opts.items() if k in tpl["slots"]})
+    params: dict = {"template": style, "slots": slots}
+    for k in ("tighten", "encoder", "quality", "seed", "look"):
+        if k in opts:
+            params[k] = opts[k]
+    comp_in = {"video": sha, "subtitles": "s.subtitles"}
+    if insets:
+        paths = [Path(p).expanduser() for p in insets]
+        for p in paths:
+            if not p.is_file():
+                raise ValueError(f"{p}: no such image")
+        comp_in["images"] = save_images(conn, settings.media_dir, Images(items=[
+            Slide(sha=repo.save_file(conn, settings.media_dir, p, "image", _mime(p))) for p in paths]))
+    nodes = [{"id": "s", "node": "speech_subs", "in": {"video": sha}},
+             {"id": "v", "node": "compose_video", "in": comp_in, "params": params}]
+    rid, text = chain_run(conn, settings, deps, nodes, progress=progress)
+    vo = _step_out(conn, rid, "v")
+    if vo is None:
+        return text
+    stem = str(opts.get("name") or (src.stem if src else sha[:8]))
+    out_dir = unique_dir(settings.home / "reels" / date.today().isoformat(), f"{stem}-{style}")
+    mp4 = out_dir / f"{out_dir.name}.mp4"
+    write_atomic_bytes(mp4, media.path_for(settings.media_dir, vo["video"]).read_bytes())
+    step = queries.current_step(conn, rid, "v")
+    flags = [(r["code"], r["detail"]) for r in queries.step_flags(conn, step["id"])] if step else []
+    trimmed = next((float(m.group(1)) for c, d in flags if c == "PAUSES_TRIMMED" and (m := re.search(r"removed ([\d.]+) s", d or ""))), 0.0)
+    eff_t = params.get("tighten", tpl["params"].get("tighten"))
+    eff_t = "off" if eff_t in (None, False) else (eff_t if isinstance(eff_t, dict) else {"min_pause_ms": 250, "keep_ms": 80})
+    timed = {**{k: v["default"] for k, v in tpl["slots"].items() if isinstance(v.get("default"), dict) and "in_ms" in v["default"]},
+             **{k: v for k, v in slots.items() if isinstance(v, dict) and "in_ms" in v}}
+
+    def cut(text: str, n: int = 160) -> str:
+        return text if len(text) <= n else text[:n - 1] + "…"
+
+    def ms(v) -> str:
+        return "never" if v >= RS.NEVER_MS else str(v)
+
+    report = [f"# reel: {stem} ({style})", "", f"- style: {style}", f"- source: {src or sha} ({info.duration_ms / 1000:.1f} s)",
+              f"- seconds trimmed: {trimmed:.2f}", f"- run: {rid}", f"- video: {mp4.name}",
+              "- effective params: " + json.dumps({"tighten": eff_t, "encoder": params.get("encoder", "auto"),
+                                                    "quality": params.get("quality", 20), "look": params.get("look")}),
+              "- flags: " + ("; ".join(f"{c}" + (f" ({d})" if d else "") for c, d in flags) or "none"),
+              *[f"- note: {n}" for n in notes], "", "## slots", "",
+              *[f"- {k}: {cut(json.dumps(v, ensure_ascii=False))}" for k, v in slots.items()
+                if not (isinstance(v, dict) and "in_ms" in v)], "", "## timed slots (source ms)", "",
+              "| slot | in_ms | out_ms |", "|---|---|---|",
+              *[f"| {k} | {ms(v['in_ms'])} | {'end' if v.get('out_ms') is None else v['out_ms']} |" for k, v in sorted(timed.items())]]
+    write_atomic(out_dir / "report.md", "\n".join(report) + "\n")
+    return "\n".join([f"{mp4}", f"style {style}, {info.duration_ms / 1000:.1f} s in, {trimmed:.1f} s of pauses trimmed",
+                      *[f"note: {n}" for n in notes], *[f"flag {c}: {d}" for c, d in flags], f"report: {out_dir / 'report.md'}"])

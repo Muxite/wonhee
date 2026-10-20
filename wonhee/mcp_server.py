@@ -324,6 +324,30 @@ def viz(kind: str, path: str | None = None, themes: list[str] | None = None, par
 
 @mcp.tool()
 @_guard
+def reel(video: str, style: str, title: str | None = None, cta: str | None = None, items: list[str] | None = None,
+         insets: list[str] | None = None, set: dict | None = None) -> str:
+    """Make a reel from a talking clip (path) in a style (see reel_styles): speech_subs then compose_video with the
+    style's template, one encode, pauses trimmed in the talking-head styles. title / cta / items (list entries,
+    scrapbook chapters or lecture theses) / insets (image paths) fill the style's slots; set overrides any slot or
+    tighten, encoder, quality, look, engine, name. The lecture style writes its own slots with the larp lecture register
+    (local model). Writes <data home>/reels/<date>/<name>/ with the mp4 and report.md; returns the path."""
+    conn, settings = _open()
+    try:
+        return service.reel(conn, settings, _deps(settings), str(_in_path(video)), style, title=title, cta=cta,
+                            items=items, insets=[str(_in_path(p)) for p in insets or []] or None, overrides=set)
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def reel_styles() -> str:
+    """The reel styles `reel` can make, one line each."""
+    return service.reel_styles()
+
+
+@mcp.tool()
+@_guard
 def publish_muksite(image: str, slug: str, name: str, caption: str, alt: str, dark: str | None = None,
                     size: str = "hero", fit: str = "partial", overwrite: bool = False) -> str:
     """Upload a finished still (ref or file, plus an optional dark twin) to muksite's PUBLIC image storage under

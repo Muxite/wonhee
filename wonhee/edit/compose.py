@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Literal
 
@@ -92,7 +92,7 @@ class Layer(BaseModel):
     opacity: float = Field(default=1.0, ge=0, le=1)
     kind: str | None = None  # pattern: flat|halftone|stars|glyph|stripes; shape: Shape; sticker: bubble|badge|...
     # photo
-    src: int | str | None = None  # input index, or "clip" (video formats: a transparent window for the clip)
+    src: int | str | None = None  # input index, "clip" (video formats: a transparent window for the clip), or "none" (an empty slot)
     fit: Literal["cover", "contain"] = "cover"
     shape: Shape = "rect"
     outlines: list[Outline] = []  # offset strokes around a photo/shape/sticker, innermost first, outermost last
@@ -145,6 +145,7 @@ class Layer(BaseModel):
     at_ms: list[int] | None = None  # list: when each of `items` becomes active (else spread over the layer's time)
     keyword_colours: dict[str, str] | None = None  # list: entry text -> colour
     scroll_ms: int = Field(default=470, ge=0, le=2000)  # list: how long the scroll to the next entry takes
+    marks: dict[str, str] | None = None  # captions: spoken word (lowercase, no punctuation) -> footnote marker after its first use
 
     @field_validator("kind")
     @classmethod
@@ -652,6 +653,29 @@ def text_spec(ly: Layer, pal: list[str], content: str, preset: str | None = None
                       box_pad_em=ly.bg_pad_em, box_radius_em=ly.bg_radius_em, stroke_em=ly.stroke_em)
 
 
+def backed_block(spec: T.TextSpec, size: tuple[int, int], ref_h: int) -> Image.Image:
+    """Text with ONE backing for the whole block (reel-styles spec §6 amendment: never a box per line, so two lines
+    never overlap boxes), line height at least 1.05. The text is laid out inside the layer box less the padding, and the
+    backing (box or pill) wraps its ink."""
+    bw, bh = size
+    frac = spec.size_frac or T.DEFAULT_SIZE[spec.preset]
+    pad = round(spec.box_pad_em * ref_h * frac)
+    inner = replace(spec, box="none", line_height=max(spec.line_height or 1.05, 1.05))
+    block = T.render_block(inner, (max(8, bw - 2 * pad), max(8, bh - 2 * round(pad * 0.6))), ref_h)
+    bb = block.getchannel("A").getbbox()
+    out = Image.new("RGBA", size, (0, 0, 0, 0))
+    if bb is None:
+        return out
+    ox, oy = pad, round(pad * 0.6)
+    rect = (max(0, ox + bb[0] - pad), max(0, oy + bb[1] - round(pad * 0.6)), min(bw - 1, ox + bb[2] + pad),
+            min(bh - 1, oy + bb[3] + round(pad * 0.6)))
+    colour = ImageColor.getcolor(spec.box_colour or "#000000b0", "RGBA")
+    radius = (rect[3] - rect[1]) / 2 if spec.box == "pill" else (spec.box_radius_em or 0.2) * ref_h * frac
+    ImageDraw.Draw(out).rounded_rectangle(rect, radius=radius, fill=colour)
+    out.alpha_composite(block, (ox, oy))
+    return out
+
+
 def layer_image(ly: Layer, i: int, c: Ctx, content: str | None = None) -> tuple[Image.Image, tuple[int, int, int, int]] | None:
     """One layer drawn on its own: (RGBA image of the layer's box size, the pixel box). None for a layer that draws
     nothing here (an empty slot, a clip window, or a word-driven layer, which compose_video draws from the words).
@@ -670,7 +694,7 @@ def layer_image(ly: Layer, i: int, c: Ctx, content: str | None = None) -> tuple[
     box = layer_box(ly, c, i)
     bw, bh = max(1, box[2] - box[0]), max(1, box[3] - box[1])
     if ly.type == "photo":
-        if ly.src in ("clip", "video"):
+        if ly.src in ("clip", "video", "none"):  # "none": a template's empty inset slot draws nothing (reel styles §6)
             return None
         img, _ = _photo(ly, c.inputs, (bw, bh), c.pal, c.short, c.mask_fn, c.notes, i)
     elif ly.type == "pattern":
@@ -682,7 +706,8 @@ def layer_image(ly: Layer, i: int, c: Ctx, content: str | None = None) -> tuple[
         img = _sticker(ly if content is None else ly.model_copy(update={"content": content}), (bw, bh), c.pal, rng, H,
                        c.short)
     else:  # text
-        img = T.render_block(text_spec(ly, c.pal, text or ""), (bw, bh), H)  # colours go through text._style
+        spec = text_spec(ly, c.pal, text or "")  # colours go through text._style
+        img = backed_block(spec, (bw, bh), H) if spec.box in ("box", "pill") else T.render_block(spec, (bw, bh), H)
     return img, box
 
 
@@ -764,19 +789,28 @@ def templates_digest() -> str:
 
 
 def list_templates() -> list[dict]:
-    """[{name, doc, slots: {slot: {default, doc}}}] for every shipped template."""
+    """[{name, doc, slots: {slot: {default, doc}}, reel, params}] for every shipped template. `reel` (reel styles spec
+    §6) is {summary, words} for a style meant for `wonhee reel`, else None; `params` are the default compose_video
+    params (today: `tighten`) a style brings with it."""
     out = []
     for name, p in _template_files().items():
         d = json.loads(p.read_text(encoding="utf-8"))
-        out.append({"name": name, "doc": d.get("doc", ""), "slots": d.get("slots", {})})
+        out.append({"name": name, "doc": d.get("doc", ""), "slots": d.get("slots", {}), "reel": d.get("reel"),
+                    "params": d.get("params", {})})
     return out
+
+
+def template_params(name: str) -> dict:
+    """The default compose_video params a template ships with ({} for one without)."""
+    return next((t["params"] for t in list_templates() if t["name"] == name), {})
 
 
 def describe_templates() -> str:
     lines = []
     for t in list_templates():
         slots = "; ".join(f"{k} (default {json.dumps(v.get('default'))}): {v.get('doc', '')}" for k, v in t["slots"].items())
-        lines.append(f"{t['name']}: {t['doc']} Slots: {slots}")
+        dflt = f" Default params: {json.dumps(t['params'])}." if t["params"] else ""
+        lines.append(f"{t['name']}: {t['doc']}{dflt} Slots: {slots}")
     return "\n".join(lines)
 
 

@@ -1,0 +1,20 @@
+{
+  "doc": "Reel style 'legend' (reference trait: a black top band with a condensed headline that pops in, the clip in a square-ish window, serif karaoke captions on a dark box with a lilac word pill). For one long uncut take.",
+  "reel": {"summary": "black canvas, clip window at 22-70%, condensed headline popping in at 1.6 s, serif karaoke captions with a lilac pill", "words": true},
+  "slots": {
+    "title": {"default": "the most unreasonable thing i have ever recorded on a tuesday", "doc": "headline, 1-2 lines, in the black top band"},
+    "title_t": {"default": {"in_ms": 1600}, "doc": "when the headline pops in: {in_ms, out_ms}"},
+    "pill": {"default": "#aa73b2", "doc": "the active word's pill colour"},
+    "box_colour": {"default": "#00000099", "doc": "the caption box colour (translucent black)"},
+    "bg": {"default": "#000000", "doc": "canvas / band colour"}
+  },
+  "layout": {
+    "canvas": {"w": 1080, "h": 1920, "bg": "slot:bg"},
+    "palette": "ink",
+    "layers": [
+      {"type": "photo", "src": "clip", "clip_fit": "cover", "box": {"x": 0, "y": 0.223, "w": 1, "h": 0.477}},
+      {"type": "text", "content": "slot:title", "preset": "outline", "role": "headline", "size_frac": 0.04, "colour": "#ffffff", "stroke_em": 0, "line_height": 1.15, "tracking_em": -0.01, "t": "slot:title_t", "anim": "pop", "dur_ms": 500, "box": {"x": 0.068, "y": 0.12, "w": 0.864, "h": 0.095}},
+      {"type": "captions", "mode": "karaoke", "max_words": 3, "role": "transcript", "size_frac": 0.032, "colour": "#ffffff", "highlight": "slot:pill", "active_colour": "#000000", "bg_box": "box", "bg_colour": "slot:box_colour", "bg_pad_em": 0.35, "bg_radius_em": 0.3, "stroke_em": 0, "box": {"x": 0.14, "y": 0.705, "w": 0.72, "h": 0.05}}
+    ]
+  }
+}

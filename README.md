@@ -110,6 +110,21 @@ every time; each format is a named template with slots (`uv run wonhee node show
 - `frame_video` captions come from `subtitles`; with line timing only, each line's time is split evenly across its words
   (`WORDS_ESTIMATED`).
 
+## Reels
+
+One command turns a talking clip into a styled reel (speech to words, then one encode with timed text, captions and insets):
+
+```bash
+uv run wonhee reel styles                                   # the six styles, one line each
+uv run wonhee reel clip.mp4 --style explainer --title "a trick i wish i had known"
+uv run wonhee reel clip.mp4 --style scrapbook --items "the problem, the fix, the catch" --inset a.png --inset b.png
+uv run wonhee reel clip.mp4 --style lecture            # the larp lecture register writes the title, theses, footnotes
+```
+
+Output lands in `data/reels/<date>/<name>/` (the mp4 and a `report.md` with the style, seconds of pauses trimmed and
+flags). Speech uses whisper on the GPU (take the lock first). Each style, its slots and what it copies from the
+references: [docs/production/reels.md](docs/production/reels.md). MCP: `reel` and `reel_styles`.
+
 ## Pictures from data (viz) and publishing to muksite
 
 wonhee also makes stills from data instead of footage (this absorbed `~/projects/vizkit` on 2026-10-19): a repo's

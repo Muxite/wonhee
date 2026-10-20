@@ -1,0 +1,35 @@
+{
+  "doc": "Still form of the 'lecture' style for carousels: paper ground, editorial title and italic subtitle, an abstract, numbered theses, a footnote line and a citation (the compose engine, 4:5).",
+  "slots": {
+    "title": {"default": "On the Sufficiency of a Second Coffee", "doc": "title, editorial serif"},
+    "subtitle": {"default": "A preliminary note, with diagrams", "doc": "italic subtitle"},
+    "abstract": {"default": "We argue that the second coffee is neither necessary nor, on inspection, a second.", "doc": "one or two sentences"},
+    "thesis_1": {"default": "The first cup establishes the problem.", "doc": "thesis I (empty = none)"},
+    "thesis_2": {"default": "The second cup merely restates it.", "doc": "thesis II (empty = none)"},
+    "thesis_3": {"default": "", "doc": "thesis III (empty = none)"},
+    "footnote": {"default": "¹ See the previous clip.", "doc": "footnote line, mono (empty = none)"},
+    "citation": {"default": "(Muk, 2026)", "doc": "citation, mono, bottom right"},
+    "ground": {"default": "#f1ece1", "doc": "paper colour (dark slide: #14130f)"},
+    "ink": {"default": "#1b1a17", "doc": "ink colour (dark slide: #ece6d8)"}
+  },
+  "layout": {
+    "canvas": {"w": 1080, "h": 1350, "bg": "slot:ground"},
+    "palette": "ink",
+    "layers": [
+      {"type": "text", "content": "slot:title", "preset": "outline", "role": "editorial", "size_frac": 0.06, "colour": "slot:ink", "stroke_em": 0, "align": "left", "line_height": 1.0, "box": {"x": 0.08, "y": 0.07, "w": 0.84, "h": 0.14}},
+      {"type": "text", "content": "slot:subtitle", "preset": "outline", "role": "editorial_italic", "size_frac": 0.036, "colour": "slot:ink", "stroke_em": 0, "align": "left", "box": {"x": 0.08, "y": 0.215, "w": 0.84, "h": 0.06}},
+      {"type": "shape", "kind": "rect", "fill": "slot:ink", "opacity": 0.8, "box": {"x": 0.08, "y": 0.288, "w": 0.84, "h": 0.0016}},
+      {"type": "text", "content": "Abstract.", "preset": "outline", "role": "mono", "size_frac": 0.018, "colour": "slot:ink", "stroke_em": 0, "align": "left", "box": {"x": 0.08, "y": 0.31, "w": 0.3, "h": 0.03}},
+      {"type": "text", "content": "slot:abstract", "preset": "outline", "role": "transcript", "size_frac": 0.03, "colour": "slot:ink", "stroke_em": 0, "align": "left", "box": {"x": 0.08, "y": 0.345, "w": 0.84, "h": 0.15}},
+      {"type": "text", "content": "I.", "preset": "outline", "role": "editorial_italic", "size_frac": 0.036, "colour": "slot:ink", "stroke_em": 0, "align": "left", "box": {"x": 0.08, "y": 0.53, "w": 0.1, "h": 0.09}, "opacity": 1},
+      {"type": "text", "content": "slot:thesis_1", "preset": "outline", "role": "editorial", "size_frac": 0.036, "colour": "slot:ink", "stroke_em": 0, "align": "left", "box": {"x": 0.19, "y": 0.53, "w": 0.73, "h": 0.09}},
+      {"type": "text", "content": "II.", "preset": "outline", "role": "editorial_italic", "size_frac": 0.036, "colour": "slot:ink", "stroke_em": 0, "align": "left", "box": {"x": 0.08, "y": 0.63, "w": 0.1, "h": 0.09}, "opacity": 1},
+      {"type": "text", "content": "slot:thesis_2", "preset": "outline", "role": "editorial", "size_frac": 0.036, "colour": "slot:ink", "stroke_em": 0, "align": "left", "box": {"x": 0.19, "y": 0.63, "w": 0.73, "h": 0.09}},
+      {"type": "text", "content": "III.", "preset": "outline", "role": "editorial_italic", "size_frac": 0.036, "colour": "slot:ink", "stroke_em": 0, "align": "left", "box": {"x": 0.08, "y": 0.73, "w": 0.1, "h": 0.09}, "opacity": 1},
+      {"type": "text", "content": "slot:thesis_3", "preset": "outline", "role": "editorial", "size_frac": 0.036, "colour": "slot:ink", "stroke_em": 0, "align": "left", "box": {"x": 0.19, "y": 0.73, "w": 0.73, "h": 0.09}},
+      {"type": "shape", "kind": "rect", "fill": "slot:ink", "opacity": 0.55, "box": {"x": 0.08, "y": 0.875, "w": 0.84, "h": 0.0014}},
+      {"type": "text", "content": "slot:footnote", "preset": "outline", "role": "mono", "size_frac": 0.0165, "colour": "slot:ink", "stroke_em": 0, "align": "left", "box": {"x": 0.08, "y": 0.885, "w": 0.84, "h": 0.05}},
+      {"type": "text", "content": "slot:citation", "preset": "outline", "role": "mono", "size_frac": 0.0165, "colour": "slot:ink", "stroke_em": 0, "align": "right", "box": {"x": 0.5, "y": 0.94, "w": 0.42, "h": 0.03}}
+    ]
+  }
+}

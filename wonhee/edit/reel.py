@@ -61,6 +61,11 @@ def _map_words(words: list[Word], tl: TL.Timeline) -> list[Word]:
     return out
 
 
+def _mark_key(text: str) -> str:
+    """A word as `marks` names it: lowercase, letters and digits only."""
+    return "".join(ch for ch in text.lower() if ch.isalnum())
+
+
 def _case(text: str, case: str) -> str:
     return text.lower() if case == "lower" else text.upper() if case == "upper" else text
 
@@ -161,8 +166,13 @@ def captions_states(ly: C.Layer, i: int, c: C.Ctx, words: list[Word], tl: TL.Tim
     chunks = [_map_words(ch, tl) for ch in TL.chunk_words(words, ly.max_words, ly.pause_ms)]
     out = []
     base = ly.size_frac or DEFAULT_SIZE["captions"]
+    pending = {_mark_key(k): v for k, v in (ly.marks or {}).items()}  # footnote markers, each used on the word's first spoken use
     for ci, chunk in enumerate(chunks):
         texts = [_case(w.text, ly.case) for w in chunk]
+        for k, w in enumerate(chunk):
+            key = _mark_key(w.text)
+            if key in pending:
+                texts[k] += pending.pop(key)
         frac = _fit_frac(texts, ly, c, bw, base)
         nxt = chunks[ci + 1][0].start_ms if ci + 1 < len(chunks) else None
         end = chunk[-1].end_ms + HOLD_MS
@@ -428,11 +438,11 @@ def _s(ms: float) -> str:
 
 
 def graph_for(plan: Plan, size: tuple[int, int], tmpd: Path, kept: list[tuple[int, int]] | None,
-              has_audio: bool) -> tuple[list[str], str, str | None]:
+              has_audio: bool, look_vf: str | None = None) -> tuple[list[str], str, str | None]:
     """(extra input args after the clip, filter_complex, audio map label or None).
 
     The clip is trimmed and concatenated per `kept` (tighten), scaled into the window (contain pads black, cover crops),
-    then every overlay PNG goes on in layer order with a half-open `gte(t,a)*lt(t,b)` enable, so no frame shows two
+    graded by the optional `look_vf`, then every overlay PNG goes on in layer order with a half-open `gte(t,a)*lt(t,b)` enable, so no frame shows two
     states of one layer."""
     W, H = size
     x0, y0, x1, y1 = plan.window or (0, 0, W, H)
@@ -457,6 +467,9 @@ def graph_for(plan: Plan, size: tuple[int, int], tmpd: Path, kept: list[tuple[in
             parts.append("".join(f"[v{j}]" for j in range(k)) + f"concat=n={k}:v=1:a=0[vt]")
         vin = "[vt]"
     vin = vin if vin.startswith("[") else f"[{vin}]"
+    if look_vf:  # the look grades the clip only (after the cuts, before scaling), never the text or bands: same encode
+        parts.append(f"{vin}{look_vf}[lk]")
+        vin = "[lk]"
     scale = (f"scale={ww}:{wh}:force_original_aspect_ratio=increase:force_divisible_by=2,crop={ww}:{wh}" if fit_cover else
              f"scale={ww}:{wh}:force_original_aspect_ratio=decrease:force_divisible_by=2")
     px = f"{x0}" if fit_cover else f"trunc(({x0}+({ww}-iw)/2)/2)*2"

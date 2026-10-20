@@ -1,0 +1,48 @@
+{
+  "doc": "Reel style 'scrapbook' (reference trait: a picture for every noun, a soft heavy serif headline on torn paper, word-by-word captions, numbered marker chapter tiles, image insets popping in over the talking head).",
+  "reel": {"summary": "full-bleed clip, soft-serif headline on paper, word-by-word captions, numbered marker chapters, popping image insets", "words": true},
+  "params": {"tighten": {"min_pause_ms": 250, "keep_ms": 80}},
+  "slots": {
+    "title": {"default": "how to make a thing look expensive", "doc": "headline on a paper strip"},
+    "title_t": {"default": {"in_ms": 0, "out_ms": 4000}, "doc": "when the headline shows: {in_ms, out_ms}"},
+    "ch1": {"default": "", "doc": "chapter 1 label (marker, on a paper strip); empty = no chapter 1"},
+    "ch1_t": {"default": {"in_ms": 9999000}, "doc": "when chapter 1's numbered tile shows: {in_ms, out_ms}"},
+    "ch2": {"default": "", "doc": "chapter 2 label (marker, on a paper strip); empty = no chapter 2"},
+    "ch2_t": {"default": {"in_ms": 9999000}, "doc": "when chapter 2's numbered tile shows: {in_ms, out_ms}"},
+    "ch3": {"default": "", "doc": "chapter 3 label (marker, on a paper strip); empty = no chapter 3"},
+    "ch3_t": {"default": {"in_ms": 9999000}, "doc": "when chapter 3's numbered tile shows: {in_ms, out_ms}"},
+    "ch4": {"default": "", "doc": "chapter 4 label (marker, on a paper strip); empty = no chapter 4"},
+    "ch4_t": {"default": {"in_ms": 9999000}, "doc": "when chapter 4's numbered tile shows: {in_ms, out_ms}"},
+    "inset1": {"default": "none", "doc": "inset 1: the index of an image in the `images` input (0 is the first), or 'none' for no inset"},
+    "inset1_t": {"default": {"in_ms": 9999000}, "doc": "when inset 1 shows: {in_ms, out_ms} on the source timeline (the reel command spreads them over the take)"},
+    "inset2": {"default": "none", "doc": "inset 2: the index of an image in the `images` input (0 is the first), or 'none' for no inset"},
+    "inset2_t": {"default": {"in_ms": 9999000}, "doc": "when inset 2 shows: {in_ms, out_ms} on the source timeline (the reel command spreads them over the take)"},
+    "inset3": {"default": "none", "doc": "inset 3: the index of an image in the `images` input (0 is the first), or 'none' for no inset"},
+    "inset3_t": {"default": {"in_ms": 9999000}, "doc": "when inset 3 shows: {in_ms, out_ms} on the source timeline (the reel command spreads them over the take)"},
+    "inset4": {"default": "none", "doc": "inset 4: the index of an image in the `images` input (0 is the first), or 'none' for no inset"},
+    "inset4_t": {"default": {"in_ms": 9999000}, "doc": "when inset 4 shows: {in_ms, out_ms} on the source timeline (the reel command spreads them over the take)"},
+    "cta": {"default": "", "doc": "closing line on a paper strip (empty = none)"},
+    "cta_t": {"default": {"in_ms": 9999000}, "doc": "when the closing line shows: {in_ms, out_ms} (the reel command sets the last 3 s)"}
+  },
+  "layout": {
+    "canvas": {"w": 1080, "h": 1920, "bg": "#000000"},
+    "palette": "ink",
+    "layers": [
+      {"type": "text", "content": "slot:title", "preset": "outline", "role": "soft_serif", "size_frac": 0.04, "bg_box": "paper", "bg_colour": "#f4f2ee", "colour": "#1a1a1a", "stroke_em": 0, "bg_pad_em": 0.3, "t": "slot:title_t", "anim": "pop", "dur_ms": 400, "box": {"x": 0.12, "y": 0.13, "w": 0.76, "h": 0.1}},
+      {"type": "photo", "src": "slot:inset1", "fit": "cover", "shape": "rounded", "outlines": [{"width_frac": 0.005, "colour": "#ffffff"}], "rotate": -2, "t": "slot:inset1_t", "anim": "pop", "box": {"x": 0.12, "y": 0.3, "w": 0.62, "h": 0.28}},
+      {"type": "photo", "src": "slot:inset2", "fit": "cover", "shape": "rounded", "outlines": [{"width_frac": 0.005, "colour": "#ffffff"}], "rotate": 2, "t": "slot:inset2_t", "anim": "pop", "box": {"x": 0.2, "y": 0.36, "w": 0.62, "h": 0.28}},
+      {"type": "photo", "src": "slot:inset3", "fit": "cover", "shape": "rounded", "outlines": [{"width_frac": 0.005, "colour": "#ffffff"}], "rotate": -1.5, "t": "slot:inset3_t", "anim": "pop", "box": {"x": 0.14, "y": 0.32, "w": 0.62, "h": 0.28}},
+      {"type": "photo", "src": "slot:inset4", "fit": "cover", "shape": "rounded", "outlines": [{"width_frac": 0.005, "colour": "#ffffff"}], "rotate": 1.5, "t": "slot:inset4_t", "anim": "pop", "box": {"x": 0.22, "y": 0.34, "w": 0.62, "h": 0.28}},
+      {"type": "text", "content": "1", "preset": "outline", "role": "numeral", "size_frac": 0.1, "bg_box": "paper", "bg_colour": "#f4f2ee", "colour": "#1a1a1a", "stroke_em": 0, "bg_pad_em": 0.3, "t": "slot:ch1_t", "anim": "pop", "box": {"x": 0.125, "y": 0.123, "w": 0.213, "h": 0.139}},
+      {"type": "text", "content": "slot:ch1", "preset": "outline", "role": "marker", "size_frac": 0.045, "bg_box": "paper", "bg_colour": "#f4f2ee", "colour": "#1a1a1a", "stroke_em": 0, "align": "left", "t": "slot:ch1_t", "anim": "pop", "box": {"x": 0.36, "y": 0.14, "w": 0.52, "h": 0.1}},
+      {"type": "text", "content": "2", "preset": "outline", "role": "numeral", "size_frac": 0.1, "bg_box": "paper", "bg_colour": "#f4f2ee", "colour": "#1a1a1a", "stroke_em": 0, "bg_pad_em": 0.3, "t": "slot:ch2_t", "anim": "pop", "box": {"x": 0.125, "y": 0.123, "w": 0.213, "h": 0.139}},
+      {"type": "text", "content": "slot:ch2", "preset": "outline", "role": "marker", "size_frac": 0.045, "bg_box": "paper", "bg_colour": "#f4f2ee", "colour": "#1a1a1a", "stroke_em": 0, "align": "left", "t": "slot:ch2_t", "anim": "pop", "box": {"x": 0.36, "y": 0.14, "w": 0.52, "h": 0.1}},
+      {"type": "text", "content": "3", "preset": "outline", "role": "numeral", "size_frac": 0.1, "bg_box": "paper", "bg_colour": "#f4f2ee", "colour": "#1a1a1a", "stroke_em": 0, "bg_pad_em": 0.3, "t": "slot:ch3_t", "anim": "pop", "box": {"x": 0.125, "y": 0.123, "w": 0.213, "h": 0.139}},
+      {"type": "text", "content": "slot:ch3", "preset": "outline", "role": "marker", "size_frac": 0.045, "bg_box": "paper", "bg_colour": "#f4f2ee", "colour": "#1a1a1a", "stroke_em": 0, "align": "left", "t": "slot:ch3_t", "anim": "pop", "box": {"x": 0.36, "y": 0.14, "w": 0.52, "h": 0.1}},
+      {"type": "text", "content": "4", "preset": "outline", "role": "numeral", "size_frac": 0.1, "bg_box": "paper", "bg_colour": "#f4f2ee", "colour": "#1a1a1a", "stroke_em": 0, "bg_pad_em": 0.3, "t": "slot:ch4_t", "anim": "pop", "box": {"x": 0.125, "y": 0.123, "w": 0.213, "h": 0.139}},
+      {"type": "text", "content": "slot:ch4", "preset": "outline", "role": "marker", "size_frac": 0.045, "bg_box": "paper", "bg_colour": "#f4f2ee", "colour": "#1a1a1a", "stroke_em": 0, "align": "left", "t": "slot:ch4_t", "anim": "pop", "box": {"x": 0.36, "y": 0.14, "w": 0.52, "h": 0.1}},
+      {"type": "captions", "mode": "word", "max_words": 3, "role": "caption_round", "size_frac": 0.03, "colour": "#ffffff", "case": "lower", "tracking_em": -0.02, "stroke": ["#000000", "#000000"], "stroke_em": 0.05, "box": {"x": 0.14, "y": 0.715, "w": 0.72, "h": 0.045}},
+      {"type": "text", "content": "slot:cta", "preset": "outline", "role": "soft_serif", "size_frac": 0.04, "bg_box": "paper", "bg_colour": "#f4f2ee", "colour": "#1a1a1a", "stroke_em": 0, "bg_pad_em": 0.3, "t": "slot:cta_t", "anim": "pop", "dur_ms": 400, "box": {"x": 0.14, "y": 0.45, "w": 0.72, "h": 0.12}}
+    ]
+  }
+}

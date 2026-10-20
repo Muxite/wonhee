@@ -1,0 +1,22 @@
+{
+  "doc": "Reel style 'explainer' (reference trait: full-bleed talking head, a tight editorial serif headline standing over the first seconds, small lowercase captions low, a closing card in the headline's face; pauses cut out of the take).",
+  "reel": {"summary": "full-bleed clip, editorial serif headline for the first 4.7 s, lowercase caption chunks at 72%, pauses trimmed", "words": true},
+  "params": {"tighten": {"min_pause_ms": 250, "keep_ms": 80}},
+  "slots": {
+    "title": {"default": "a trick i wish i had known sooner", "doc": "headline, 1-2 lines, editorial serif"},
+    "subline": {"default": "", "doc": "optional bold-caps line under the headline (type it in UPPERCASE; empty = none)"},
+    "title_t": {"default": {"in_ms": 0, "out_ms": 4700}, "doc": "when the headline and subline show: {in_ms, out_ms}"},
+    "cta": {"default": "", "doc": "closing line in the headline's face (empty = none)"},
+    "cta_t": {"default": {"in_ms": 9999000}, "doc": "when the closing line shows: {in_ms, out_ms} (the reel command sets the last 3 s)"}
+  },
+  "layout": {
+    "canvas": {"w": 1080, "h": 1920, "bg": "#000000"},
+    "palette": "ink",
+    "layers": [
+      {"type": "text", "content": "slot:title", "preset": "outline", "role": "editorial", "size_frac": 0.052, "colour": "#fffefc", "stroke_em": 0, "bg_box": "box", "bg_colour": "#00000066", "bg_pad_em": 0.3, "line_height": 1.05, "tracking_em": -0.05, "t": "slot:title_t", "box": {"x": 0.21, "y": 0.125, "w": 0.58, "h": 0.094}},
+      {"type": "text", "content": "slot:subline", "preset": "outline", "role": "caption_bold", "size_frac": 0.021, "colour": "#ffffff", "stroke_em": 0, "tracking_em": -0.03, "t": "slot:title_t", "box": {"x": 0.2, "y": 0.232, "w": 0.6, "h": 0.027}},
+      {"type": "captions", "mode": "chunk", "max_words": 3, "role": "caption", "size_frac": 0.03, "colour": "#ffffff", "case": "lower", "tracking_em": -0.03, "stroke": ["#000000", "#000000"], "stroke_em": 0.08, "box": {"x": 0.14, "y": 0.7, "w": 0.72, "h": 0.05}},
+      {"type": "text", "content": "slot:cta", "preset": "outline", "role": "editorial", "size_frac": 0.052, "colour": "#fffefc", "stroke_em": 0, "bg_box": "box", "bg_colour": "#00000066", "bg_pad_em": 0.3, "line_height": 1.05, "tracking_em": -0.05, "t": "slot:cta_t", "box": {"x": 0.17, "y": 0.134, "w": 0.66, "h": 0.085}}
+    ]
+  }
+}

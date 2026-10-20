@@ -1,0 +1,32 @@
+{
+  "doc": "Reel style 'list' (reference trait: a near-black stage, a UI-font title pinned at the top, a teleprompter list that scrolls one line per entry with the active line bright, cards crossfading in the middle).",
+  "reel": {"summary": "near-black canvas, UI title pinned at the top, scrolling list (active line bright), clip/insets crossfading below it", "words": true},
+  "slots": {
+    "title": {"default": "Things worth knowing", "doc": "title pinned at the top for the whole reel"},
+    "items": {"default": null, "doc": "the list entries, one per line (null = the spoken words, one per line)"},
+    "at_ms": {"default": null, "doc": "when each entry becomes active, ms (null = spread over the take)"},
+    "keywords": {"default": {}, "doc": "entry text -> colour, e.g. {\"follow\": \"#8df010\"}"},
+    "bg": {"default": "#040404", "doc": "canvas colour"},
+    "inset1": {"default": "none", "doc": "inset 1: the index of an image in the `images` input (0 is the first), or 'none' for no inset"},
+    "inset1_t": {"default": {"in_ms": 9999000}, "doc": "when inset 1 shows: {in_ms, out_ms} on the source timeline (the reel command spreads them over the take)"},
+    "inset2": {"default": "none", "doc": "inset 2: the index of an image in the `images` input (0 is the first), or 'none' for no inset"},
+    "inset2_t": {"default": {"in_ms": 9999000}, "doc": "when inset 2 shows: {in_ms, out_ms} on the source timeline (the reel command spreads them over the take)"},
+    "inset3": {"default": "none", "doc": "inset 3: the index of an image in the `images` input (0 is the first), or 'none' for no inset"},
+    "inset3_t": {"default": {"in_ms": 9999000}, "doc": "when inset 3 shows: {in_ms, out_ms} on the source timeline (the reel command spreads them over the take)"},
+    "inset4": {"default": "none", "doc": "inset 4: the index of an image in the `images` input (0 is the first), or 'none' for no inset"},
+    "inset4_t": {"default": {"in_ms": 9999000}, "doc": "when inset 4 shows: {in_ms, out_ms} on the source timeline (the reel command spreads them over the take)"}
+  },
+  "layout": {
+    "canvas": {"w": 1080, "h": 1920, "bg": "slot:bg"},
+    "palette": "ink",
+    "layers": [
+      {"type": "text", "content": "slot:title", "preset": "outline", "role": "ui", "size_frac": 0.027, "colour": "#ffffff", "stroke_em": 0, "box": {"x": 0.14, "y": 0.12, "w": 0.72, "h": 0.03}},
+      {"type": "list", "items": "slot:items", "at_ms": "slot:at_ms", "keyword_colours": "slot:keywords", "role": "ui_medium", "size_frac": 0.022, "colour": "#ffffff", "stroke_em": 0, "line_height": 1.1, "window": 5, "align": "left", "box": {"x": 0.14, "y": 0.28, "w": 0.72, "h": 0.12}},
+      {"type": "photo", "src": "clip", "clip_fit": "cover", "box": {"x": 0.05, "y": 0.42, "w": 0.9, "h": 0.31}},
+      {"type": "photo", "src": "slot:inset1", "fit": "cover", "shape": "rounded", "t": "slot:inset1_t", "anim": "fade", "dur_ms": 470, "box": {"x": 0.05, "y": 0.42, "w": 0.9, "h": 0.31}},
+      {"type": "photo", "src": "slot:inset2", "fit": "cover", "shape": "rounded", "t": "slot:inset2_t", "anim": "fade", "dur_ms": 470, "box": {"x": 0.05, "y": 0.42, "w": 0.9, "h": 0.31}},
+      {"type": "photo", "src": "slot:inset3", "fit": "cover", "shape": "rounded", "t": "slot:inset3_t", "anim": "fade", "dur_ms": 470, "box": {"x": 0.05, "y": 0.42, "w": 0.9, "h": 0.31}},
+      {"type": "photo", "src": "slot:inset4", "fit": "cover", "shape": "rounded", "t": "slot:inset4_t", "anim": "fade", "dur_ms": 470, "box": {"x": 0.05, "y": 0.42, "w": 0.9, "h": 0.31}}
+    ]
+  }
+}

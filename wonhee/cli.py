@@ -254,6 +254,18 @@ def _cmd_audio(a, settings) -> int:
     return 0
 
 
+def _cmd_reel(a, settings) -> int:
+    if a.video == "styles":
+        print(service.reel_styles())
+        return 0
+    if not a.style:
+        raise ValueError("--style is required (see: wonhee reel styles)")
+    items = [t.strip() for t in a.items.split(",") if t.strip()] if a.items else None
+    print(service.reel(_open(settings), settings, build_deps(settings), a.video, a.style, title=a.title, cta=a.cta,
+                       items=items, insets=a.inset or None, overrides=parse_sets(a.set), progress=_progress))
+    return 0
+
+
 def _cmd_viz(a, settings) -> int:
     params: dict = {}
     for flag in ("rev", "title", "size", "layout", "chart", "branch"):
@@ -502,6 +514,16 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--then", metavar="STEP", help="look=<preset> | filter=<name> | cutout=<kind>[:<background>]")
     s.add_argument("--set", action="append", default=[], metavar="k=v", help="any other node param")
     s.add_argument("--out", help="folder to write into"); s.set_defaults(fn=_cmd_viz)
+    s = sub.add_parser("reel", help="make a reel in a style from a talking clip: `wonhee reel clip.mp4 --style legend`; "
+                                    "`wonhee reel styles` lists them")
+    s.add_argument("video", help="the clip (a path), or the word `styles` to list the styles")
+    s.add_argument("--style", help="legend | explainer | scrapbook | series | list | lecture")
+    s.add_argument("--title"); s.add_argument("--cta", help="closing line (or the closing lines of a list)")
+    s.add_argument("--items", help='comma list: list entries, scrapbook chapters or lecture theses, e.g. "a, b, c"')
+    s.add_argument("--inset", action="append", metavar="IMG", help="an image that pops in over the clip (repeatable, up to 4)")
+    s.add_argument("--set", action="append", default=[], metavar="k=v",
+                   help="any style slot, or tighten=on|off, encoder, quality, look=<preset>, engine=remote|local, name")
+    s.set_defaults(fn=_cmd_reel)
     s = sub.add_parser("publish", help="upload a finished still to a site; prints its YAML entry")
     ps = s.add_subparsers(dest="site", required=True)
     n = ps.add_parser("muksite", help="muksite's Supabase image storage (needs SUPABASE_URL, SUPABASE_SERVICE_KEY)")

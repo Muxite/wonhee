@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from wonhee import media
 from wonhee.db import repo
 from wonhee.edit import compose as C
+from wonhee.edit.looks import Preset as LookPreset, filter_chain
 from wonhee.fsutil import run_timed
 from wonhee.inspire import dossier as dz
 from wonhee.nodes import registry
@@ -132,7 +133,10 @@ class ComposeVideoParams(BaseModel):
     template: str | None = Field(default=None, description="named template; one of the templates in this schema's description")
     slots: dict = Field(default_factory=dict)
     clip_slot: str = Field(default="photo", description="the template slot that becomes the clip window (if it has one)")
-    tighten: Tighten | None = None
+    tighten: Tighten | bool | None = Field(
+        default=None, description="pause trimming. null = the template's own default (the talking-head styles turn it "
+                                  "on), false = off, true = the defaults (250 ms / keep 80 ms), or {min_pause_ms, keep_ms}")
+    look: LookPreset | None = Field(default=None, description="grade the clip (not the text) with a look preset, e.g. lofi_cam; same encode")
     seed: int | None = None
     encoder: Literal["auto", "nvenc", "x264"] = "auto"
     quality: int = Field(default=20, ge=12, le=35)
@@ -184,7 +188,8 @@ def silence_cuts(src: Path, t: Tighten) -> tuple[tuple[int, int], ...]:
     return tuple(cuts)
 
 
-def _render_video(ctx, inputs, layout: C.Layout, tighten: Tighten | None, seed, encoder: str, quality: int) -> str:
+def _render_video(ctx, inputs, layout: C.Layout, tighten: Tighten | None, seed, encoder: str, quality: int,
+                  look: str | None = None) -> str:
     from wonhee.edit import reel as R
     from wonhee.edit import timeline as TL
     from wonhee.nodes.subtitles import line_words
@@ -227,7 +232,8 @@ def _render_video(ctx, inputs, layout: C.Layout, tighten: Tighten | None, seed, 
     order = ["nvenc", "x264"] if encoder == "auto" else [encoder]
     with tempfile.TemporaryDirectory(prefix="wonhee-reel-") as tmp:
         tmpd = Path(tmp)
-        args, graph, alabel = R.graph_for(plan, (W, H), tmpd, tl.kept(info.duration_ms) if cuts else None, has_audio)
+        args, graph, alabel = R.graph_for(plan, (W, H), tmpd, tl.kept(info.duration_ms) if cuts else None, has_audio,
+                                         filter_chain(look, video=True) if look else None)
         audio = ["-map", alabel, "-c:a", "aac", "-b:a", "160k"] if alabel else (
             ["-map", "0:a?", "-c:a", "copy"] if not cuts else [])
         out = tmpd / "out.mp4"
@@ -248,7 +254,16 @@ def compose_video_fn(ctx, inputs, p: ComposeVideoParams) -> dict[str, str]:
     declared = {t["name"]: t["slots"] for t in C.list_templates()}.get(p.template or "", {})
     slots = {**p.slots, **({p.clip_slot: "clip"} if p.clip_slot in declared and p.clip_slot not in p.slots else {})}
     layout = p.layout if p.layout is not None else C.load_template(p.template, slots)  # type: ignore[arg-type]
-    return {"video": _render_video(ctx, inputs, layout, p.tighten, p.seed, p.encoder, p.quality)}
+    return {"video": _render_video(ctx, inputs, layout, _tighten_of(p), p.seed, p.encoder, p.quality, p.look)}
+
+
+def _tighten_of(p: ComposeVideoParams) -> Tighten | None:
+    """The pause trimming to use: the param when given, else the template's own default (reel styles spec §3, §6)."""
+    t = p.tighten
+    if t is None and p.template:
+        d = C.template_params(p.template).get("tighten")
+        t = Tighten.model_validate(d) if d else None
+    return Tighten() if t is True else None if t is False else t
 
 
 def frame_video_fn(ctx, inputs, p: FrameVideoParams) -> dict[str, str]:
@@ -348,7 +363,7 @@ registry.register(Node("compose", 3, {"images": "images?", "refs": "text?"}, {"i
                        "Render a layout (canvas + layers: photo, pattern, shape, sticker, text, band) or a named "
                        "template (meme_frame, sticker_frame, brag_collage, popart_cutout, slop_card) with slots.",
                        salt=_salt))
-registry.register(Node("compose_video", 2, {"video": "video", "subtitles": "subtitles?", "images": "images?"},
+registry.register(Node("compose_video", 4, {"video": "video", "subtitles": "subtitles?", "images": "images?"},
                        {"video": "video"}, ComposeVideoParams, compose_video_fn,
                        "A reel from a layout or style template: timed layers, animated text, word captions "
                        "(chunk / word / karaoke), kinetic stack, scrolling list, insets, optional pause trimming; "

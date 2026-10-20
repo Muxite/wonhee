@@ -237,6 +237,7 @@ def test_mcp_server_tools_and_call(settings):
                      "publish_muksite": {"image", "slug", "name", "caption", "alt", "dark", "size", "fit",
                                          "overwrite"},
                      "larp": {"task", "image", "video", "pick", "engine", "register"},
+                     "reel": {"video", "style", "title", "cta", "items", "insets", "set"}, "reel_styles": set(),
                      "slop_next": {"n", "engine"}, "slop_pick": {"repo"}, "slop_render": {"dossier", "script"}}
     res = asyncio.run(mcp.call_tool("scout_show_run", {"run_id": 99}))
     assert "no run 99" in str(res)

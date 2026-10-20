@@ -1,0 +1,45 @@
+{
+  "doc": "Reel style 'series' (reference trait: a weekly-series talking head in a split screen, image inserts on top and the speaker below, a kinetic one-word-per-line hook, boxed auto-captions, a series title card with a sticker burst; no pinned header: the card owns the brand and the top window is a flat panel when no inset shows).",
+  "reel": {"summary": "split screen (images on top, speaker below), kinetic word-stack hook, boxed autocaptions, series title card with sticker burst", "words": true},
+  "params": {"tighten": {"min_pause_ms": 250, "keep_ms": 80}},
+  "slots": {
+    "title": {"default": "Weekly", "doc": "the series word, big in the editorial face (on the title card)"},
+    "kicker": {"default": "FIELD NOTES", "doc": "small grotesk line above the series word (type it in UPPERCASE)"},
+    "tag": {"default": "NEW", "doc": "text in the yellow sticker burst on the title card"},
+    "ep": {"default": "ep. 1", "doc": "episode line in the hand marker face, on the title card"},
+    "hook_t": {"default": {"in_ms": 0, "out_ms": 3000}, "doc": "when the kinetic word stack runs: {in_ms, out_ms}"},
+    "card_t": {"default": {"in_ms": 3200, "out_ms": 4800}, "doc": "when the series title card shows: {in_ms, out_ms}"},
+    "inset1": {"default": "none", "doc": "inset 1: the index of an image in the `images` input (0 is the first), or 'none' for no inset"},
+    "inset1_t": {"default": {"in_ms": 9999000}, "doc": "when inset 1 shows: {in_ms, out_ms} on the source timeline (the reel command spreads them over the take)"},
+    "inset2": {"default": "none", "doc": "inset 2: the index of an image in the `images` input (0 is the first), or 'none' for no inset"},
+    "inset2_t": {"default": {"in_ms": 9999000}, "doc": "when inset 2 shows: {in_ms, out_ms} on the source timeline (the reel command spreads them over the take)"},
+    "inset3": {"default": "none", "doc": "inset 3: the index of an image in the `images` input (0 is the first), or 'none' for no inset"},
+    "inset3_t": {"default": {"in_ms": 9999000}, "doc": "when inset 3 shows: {in_ms, out_ms} on the source timeline (the reel command spreads them over the take)"},
+    "inset4": {"default": "none", "doc": "inset 4: the index of an image in the `images` input (0 is the first), or 'none' for no inset"},
+    "inset4_t": {"default": {"in_ms": 9999000}, "doc": "when inset 4 shows: {in_ms, out_ms} on the source timeline (the reel command spreads them over the take)"},
+    "cta": {"default": "", "doc": "closing line in the grotesk face (empty = none)"},
+    "cta_accent": {"default": "", "doc": "second closing line in the italic editorial face (empty = none)"},
+    "cta_t": {"default": {"in_ms": 9999000}, "doc": "when the closing lines show: {in_ms, out_ms} (the reel command sets the last 2.5 s)"}
+  },
+  "layout": {
+    "canvas": {"w": 1080, "h": 1920, "bg": "#111111"},
+    "palette": "ink",
+    "layers": [
+      {"type": "photo", "src": "clip", "clip_fit": "cover", "box": {"x": 0, "y": 0.46, "w": 1, "h": 0.54}},
+      {"type": "photo", "src": "slot:inset1", "fit": "cover", "t": "slot:inset1_t", "box": {"x": 0, "y": 0, "w": 1, "h": 0.46}},
+      {"type": "photo", "src": "slot:inset2", "fit": "cover", "t": "slot:inset2_t", "box": {"x": 0, "y": 0, "w": 1, "h": 0.46}},
+      {"type": "photo", "src": "slot:inset3", "fit": "cover", "t": "slot:inset3_t", "box": {"x": 0, "y": 0, "w": 1, "h": 0.46}},
+      {"type": "photo", "src": "slot:inset4", "fit": "cover", "t": "slot:inset4_t", "box": {"x": 0, "y": 0, "w": 1, "h": 0.46}},
+      {"type": "stack", "role": "grotesk", "size_frac": 0.055, "colour": "#ffffff", "stroke_em": 0, "tracking_em": -0.04, "line_height": 0.95, "align": "left", "max_lines": 4, "t": "slot:hook_t", "box": {"x": 0.15, "y": 0.5, "w": 0.44, "h": 0.2}},
+      {"type": "captions", "mode": "chunk", "max_words": 3, "role": "autocaption", "size_frac": 0.025, "colour": "#ffffff", "bg_box": "box", "bg_colour": "#282828b3", "bg_pad_em": 0.35, "bg_radius_em": 0.15, "stroke_em": 0, "box": {"x": 0.14, "y": 0.71, "w": 0.72, "h": 0.045}},
+      {"type": "shape", "kind": "rounded", "fill": "#0c0c0c", "t": "slot:card_t", "anim": "fade", "box": {"x": 0.1, "y": 0.285, "w": 0.8, "h": 0.37}},
+      {"type": "text", "content": "slot:kicker", "preset": "outline", "role": "grotesk", "size_frac": 0.032, "colour": "#ffffff", "stroke_em": 0, "tracking_em": 0.06, "align": "left", "t": "slot:card_t", "box": {"x": 0.15, "y": 0.33, "w": 0.33, "h": 0.05}},
+      {"type": "sticker", "kind": "burst", "content": "slot:tag", "preset": "outline", "colour": "#2b2b2b", "stroke": ["#f6d33e", "#f6d33e"], "colours": ["#f6d33e", "#2b2b2b", "#2b2b2b"], "outlines": [{"width_frac": 0.002, "colour": "#f6d33e"}], "size_frac": 0.035, "rotate": -8, "t": "slot:card_t", "anim": "pop", "box": {"x": 0.54, "y": 0.3, "w": 0.28, "h": 0.14}},
+      {"type": "text", "content": "slot:title", "preset": "outline", "role": "editorial", "size_frac": 0.11, "colour": "#ffffff", "stroke_em": 0, "tracking_em": -0.03, "t": "slot:card_t", "anim": "pop", "box": {"x": 0.14, "y": 0.43, "w": 0.72, "h": 0.12}},
+      {"type": "text", "content": "slot:ep", "preset": "outline", "role": "marker_alt", "size_frac": 0.04, "colour": "#f6d33e", "stroke_em": 0, "rotate": -3, "t": "slot:card_t", "box": {"x": 0.3, "y": 0.56, "w": 0.4, "h": 0.06}},
+      {"type": "shape", "kind": "rounded", "fill": "#00000080", "t": "slot:cta_t", "box": {"x": 0.12, "y": 0.49, "w": 0.76, "h": 0.185}},
+      {"type": "text", "content": "slot:cta", "preset": "outline", "role": "grotesk", "size_frac": 0.05, "colour": "#ffffff", "stroke_em": 0, "tracking_em": -0.04, "t": "slot:cta_t", "box": {"x": 0.14, "y": 0.5, "w": 0.72, "h": 0.07}},
+      {"type": "text", "content": "slot:cta_accent", "preset": "outline", "role": "editorial_italic", "size_frac": 0.06, "colour": "#ffffff", "stroke_em": 0, "t": "slot:cta_t", "box": {"x": 0.14, "y": 0.57, "w": 0.72, "h": 0.085}}
+    ]
+  }
+}
