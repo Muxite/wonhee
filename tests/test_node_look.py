@@ -73,3 +73,23 @@ def test_look_video_node_keeps_duration_and_audio(conn, settings, tiny_video):
     src, dst = media.path_for(settings.media_dir, sha), media.path_for(settings.media_dir, out(conn, rid, "l", "video"))
     assert abs(media.probe(dst).duration_ms - media.probe(src).duration_ms) < 200
     assert media.has_audio(dst) == media.has_audio(src)
+
+
+def test_lofi_cam_is_valid_ffmpeg_and_mutes_a_frame(tmp_path):
+    import shutil
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    src = tmp_path / "in.png"
+    Image.new("RGB", (160, 288), (200, 60, 40)).save(src)
+    out = tmp_path / "out.jpg"
+    for video, name in ((False, "out.jpg"), (True, "out.mp4")):
+        out = tmp_path / name
+        args = ["ffmpeg", "-loglevel", "error", "-y", *(["-loop", "1", "-t", "0.2", "-r", "10"] if video else []),
+                "-i", str(src), "-vf", filter_chain("lofi_cam", video=video), *([] if video else ["-frames:v", "1"]), str(out)]
+        r = subprocess.run(args, capture_output=True, text=True)
+        assert r.returncode == 0 and out.stat().st_size > 0, r.stderr
+    im = Image.open(tmp_path / "out.jpg").convert("RGB")
+    r, g, b = im.getpixel((80, 144))
+    assert max(r, g, b) - min(r, g, b) < 140  # was 160 apart: muted
+    assert sum(im.getpixel((2, 2))) < sum(im.getpixel((80, 144)))  # vignette: corners darker than centre
+    assert filter_chain("lofi_cam", 0, video=True) == "format=yuv420p"

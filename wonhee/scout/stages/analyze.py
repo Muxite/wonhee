@@ -64,7 +64,10 @@ def analyze_video(ctx: Ctx, sha: str) -> None:
     tsha = repo.save_media_bytes(
         ctx.conn, media_dir,
         json.dumps({"language": transcript.language,
-                    "segments": [{"start_ms": s.start_ms, "end_ms": s.end_ms, "text": s.text}
+                    "segments": [{"start_ms": s.start_ms, "end_ms": s.end_ms, "text": s.text,
+                                  # word timings only when the transcriber gave them: keeps old JSON shape otherwise
+                                  **({"words": [{"start_ms": w.start_ms, "end_ms": w.end_ms, "text": w.text}
+                                                for w in s.words]} if s.words else {})}
                                  for s in transcript.segments]}).encode(),
         "transcript", "application/json")
 

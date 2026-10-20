@@ -2,9 +2,12 @@
 one retry with the validation error, then SchemaFail. Every attempt is recorded."""
 from __future__ import annotations
 
+import atexit
+import itertools
 import json
 import os
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Generic, TypeVar
@@ -43,6 +46,49 @@ def data_block(label: str, text: str) -> str:
 
 
 _KERNELS: dict[tuple, object] = {}
+_SEQ = itertools.count()
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _host_token() -> str:
+    """This host's name made safe for a directory name; no '-', so `<host>-<pid>` splits unambiguously."""
+    import socket
+    return re.sub(r"[^A-Za-z0-9_.]", "_", socket.gethostname()) or "host"
+
+
+def _instance_root(base: Path) -> Path:
+    """<home>/moeka/<host>-<pid>/: this process's own moeka instance dirs (DESIGN D22). moeka takes an exclusive
+    flock on a state dir for the life of a writer Kernel, so two wonhee processes (or two kernels in one) can
+    never share one. Dirs of dead pids on THIS host are swept; other hosts' dirs (containers sharing the home
+    may reuse pids) are never touched. The old flat state/work/data dirs are removed only when empty."""
+    host = _host_token()
+    for old in base.glob(f"{host}-[0-9]*"):
+        pid = old.name[len(host) + 1:]
+        if old.is_dir() and pid.isdigit() and int(pid) != os.getpid() and not _pid_alive(int(pid)):
+            shutil.rmtree(old, ignore_errors=True)
+    for flat in ("state", "work", "data"):
+        try:
+            (base / flat).rmdir()  # only succeeds when empty
+        except OSError:
+            pass
+    return base / f"{host}-{os.getpid()}"
+
+
+def _cleanup(kernel, root: Path) -> None:
+    try:
+        kernel.close()
+    except Exception:  # noqa: BLE001 - exit-time housekeeping must never raise
+        pass
+    shutil.rmtree(root, ignore_errors=True)
 
 
 def _make_provider(settings: Settings, api_key: str):
@@ -65,15 +111,17 @@ def _kernel(settings: Settings):
     spec = ModelSpec(name=ALIAS, model=settings.llm_model, provider="openrouter",
                      price_in=settings.llm_price_in_per_mtok or None,
                      price_out=settings.llm_price_out_per_mtok or None)
+    root = _instance_root(base) / f"k{next(_SEQ)}"  # one dir per kernel: also two kernels in one process
     for d in ("state", "work", "data"):
-        (base / d).mkdir(parents=True, exist_ok=True)
+        (root / d).mkdir(parents=True, exist_ok=True)
     env = Environment.for_host(
-        state_dir=base / "state", work_dir=base / "work", data_dir=base / "data", credentials={},
+        state_dir=root / "state", work_dir=root / "work", data_dir=root / "data", credentials={},
         providers=[ProviderSpec(name="openrouter", api_base=settings.llm_base_url.rstrip("/"))],
         models=[spec], default_model=ALIAS, strict=True)
     kernel = Kernel(env, consumer="wonhee")
     kernel.llm.register_provider(ALIAS, _make_provider(settings, api_key), spec)
     _KERNELS[key] = kernel
+    atexit.register(_cleanup, kernel, root)
     return kernel
 
 

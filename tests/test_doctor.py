@@ -86,3 +86,9 @@ def test_stale_chain_run_is_a_warning(settings, conn):
     conn.execute("UPDATE run SET started_at='2020-01-01T00:00:00+00:00' WHERE id=?", (rid,))
     c = {c.name: c for c in checks(settings)}["stale chain runs"]
     assert not c.ok and c.severity == "warning" and "force=true" in c.hint and "=" not in c.detail and str(rid) in c.detail
+
+
+def test_missing_bundled_fonts_message_is_about_the_package_not_apt():
+    from wonhee.doctor import _fonts_fix, _fonts_missing
+    assert "package" in _fonts_missing(["bundled fonts"]) and "apt" not in _fonts_fix(["bundled fonts"])
+    assert "apt" in _fonts_fix(["emoji"])

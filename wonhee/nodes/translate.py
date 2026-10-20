@@ -126,7 +126,8 @@ def translate_fn(ctx, inputs, p: TranslateParams) -> dict[str, str]:
     if gaps:
         ctx.flag("TRANSLATION_GAP", "ids: " + ", ".join(map(str, gaps)))
         ctx.weak = True
-    out = Subtitles(language=p.to, lines=[ln.model_copy(update={"text": done[ln.id]}) for ln in subs.lines])
+    # word order changes in translation: lines keep their timings and drop `words` (reel-styles spec §1)
+    out = Subtitles(language=p.to, lines=[ln.model_copy(update={"text": done[ln.id], "words": None}) for ln in subs.lines])
     sections = []
     if gist:
         sections.append(gist)

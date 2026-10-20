@@ -58,6 +58,20 @@ def _cuda_check(settings: Settings) -> Check:
     return Check("cuda", True, f"{n} CUDA device(s); cuBLAS and cuDNN load")
 
 
+def _fonts_missing(missing: list[str]) -> str:
+    if "bundled fonts" in missing:
+        return "bundled font files are missing from the package (wonhee/assets/fonts)" + (
+            f"; also missing: {', '.join(m for m in missing if m != 'bundled fonts')}" if len(missing) > 1 else "")
+    return f"missing: {', '.join(missing)} (emoji and CJK fall back to the base font)"
+
+
+def _fonts_fix(missing: list[str]) -> str:
+    fix = "reinstall wonhee or restore wonhee/assets/fonts from the checkout" if "bundled fonts" in missing else ""
+    if set(missing) - {"bundled fonts"}:
+        fix = (fix + "; " if fix else "") + "apt install fonts-noto-color-emoji fonts-noto-cjk"
+    return fix
+
+
 def _stale_runs_check(settings: Settings) -> Check:
     """Chain runs stuck in 'running' whose last step started over 30 minutes ago (their process likely died)."""
     from datetime import UTC, datetime, timedelta
@@ -115,8 +129,8 @@ def checks(settings: Settings) -> list[Check]:
     fonts = fonts_available()
     missing = [k for k, ok in fonts.items() if not ok]
     out.append(Check("text fonts", not missing, "bundled sans + script, Noto Color Emoji, Noto Sans CJK" if not missing
-                     else f"missing: {', '.join(missing)} (emoji and CJK fall back to the base font)", "warning",
-                     "" if not missing else "apt install fonts-noto-color-emoji fonts-noto-cjk"))
+                     else _fonts_missing(missing), "warning",
+                     "" if not missing else _fonts_fix(missing)))
     from wonhee.localllm import model_ready
     ok, detail = model_ready(settings)
     out.append(Check("local model", ok, detail, "warning",

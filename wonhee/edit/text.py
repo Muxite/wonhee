@@ -3,6 +3,9 @@
 Adapted from slopcut/text.py, plus per-run font fallback: emoji runs are drawn with Noto Color Emoji
 (embedded colour, no stroke), CJK/Hangul runs with Noto Sans CJK, everything else with the preset's font.
 `render_layer` returns a full-frame RGBA layer, so callers can overlay it with ffmpeg in the same pass as a look.
+
+Font roles, tracking, line height and a background box (docs/specs/2026-10-20-reel-styles-design.md §4) are optional
+TextSpec fields; with all of them at their defaults a spec renders exactly as it did before they existed.
 """
 from __future__ import annotations
 
@@ -21,7 +24,57 @@ CJK = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
 CJK_FACE = {"kr": 1, "sc": 2}  # .ttc face index: 0 JP, 1 KR, 2 SC, 3 TC
 EMOJI_PX = 109  # the only size the bitmap emoji font loads at; glyphs are scaled afterwards
 
+@dataclass(frozen=True)
+class FontRole:
+    """A bundled font file plus how to pick its instance: a named instance, or axis values (by axis name) for a
+    variable font. Axes not listed keep the font's default."""
+    file: str
+    name: str | None = None
+    axes: tuple[tuple[str, float], ...] = ()
+
+
+# spec §4: templates name a role, never a file. All files are bundled under assets/fonts with their licences.
+ROLES: dict[str, FontRole] = {
+    "sans": FontRole("NotoSans-Bold.ttf"),
+    "mono": FontRole("NotoSansMono-Regular.ttf"),
+    "script": FontRole("DancingScript.ttf", name="Bold"),
+    "headline": FontRole("BarlowCondensed-SemiBold.ttf"),
+    "transcript": FontRole("Tinos-Bold.ttf"),
+    "editorial": FontRole("InstrumentSerif-Regular.ttf"),
+    "editorial_italic": FontRole("InstrumentSerif-Italic.ttf"),
+    "grotesk": FontRole("InterTight-VF.ttf", name="Bold"),
+    "ui": FontRole("Inter-VF.ttf", name="Bold"),
+    "ui_medium": FontRole("Inter-VF.ttf", name="Medium"),
+    "caption": FontRole("Figtree-VF.ttf", name="SemiBold"),
+    "caption_bold": FontRole("Figtree-VF.ttf", name="ExtraBold"),
+    "caption_round": FontRole("Poppins-SemiBold.ttf"),
+    "soft_serif": FontRole("Fraunces-VF.ttf", axes=(("Optical Size", 72), ("Weight", 800), ("Softness", 100), ("Wonky", 0))),
+    "numeral": FontRole("Fraunces-VF.ttf", axes=(("Optical Size", 144), ("Weight", 900), ("Softness", 0), ("Wonky", 0))),
+    "marker": FontRole("CaveatBrush-Regular.ttf"),
+    "marker_alt": FontRole("GochiHand-Regular.ttf"),
+    "hand": FontRole("Mansalva-Regular.ttf"),
+    "autocaption": FontRole("Arimo-VF.ttf", name="Regular"),
+    "pixel": FontRole("PressStart2P-Regular.ttf"),
+}
+
+
+def font_for(role: str, px: int) -> ImageFont.FreeTypeFont:
+    """The bundled font for a role at `px`, with its variable-font instance selected. ValueError on an unknown role."""
+    if role not in ROLES:
+        raise ValueError(f"unknown font role '{role}'; known: {', '.join(ROLES)}")
+    r = ROLES[role]
+    f = ImageFont.truetype(str(FONTS / r.file), px)
+    if r.name:
+        f.set_variation_by_name(r.name)
+    elif r.axes:
+        want = dict(r.axes)
+        f.set_variation_by_axes([want.get(a["name"].decode() if isinstance(a["name"], bytes) else a["name"], a["default"])
+                                 for a in f.get_variation_axes()])
+    return f
+
+
 Preset = Literal["outline", "band", "script", "sticker"]
+BoxKind = Literal["none", "box", "pill", "paper"]
 Position = Literal["top", "upper", "center", "lower", "bottom"]
 # Instagram's reel UI, measured on a 1080x2181 phone (2026-10-20): header ~7.5% of the screen, caption block from ~79%,
 # buttons over the right 13% from 37-86%. A 9:16 video can sit low on a 20:9 screen, so these are the worst case.
@@ -48,6 +101,32 @@ class TextSpec:
     slant: float = 0.0
     drop: float = 0.06
     align: Literal["left", "center", "right"] = "center"
+    # spec §4. role: a key of ROLES replacing the preset's font (None = the preset's own). tracking_em: extra letter
+    # spacing in em (-0.1..0.2). line_height: line pitch in em of the glyph size (0.8..1.6; None = the preset's own).
+    # box: a background per line behind the text: "box" (rounded rectangle), "pill" (fully rounded), "paper" (a ragged
+    # strip with a soft shadow). box_colour: any PIL colour (None = a per-kind default). box_pad_em: horizontal padding
+    # in em (vertical is 0.6 of it). box_radius_em: corner radius for "box" (None = 0.2; pill is always fully round).
+    role: str | None = None
+    tracking_em: float = 0.0
+    line_height: float | None = None
+    box: BoxKind = "none"
+    box_colour: str | None = None
+    box_pad_em: float = 0.25
+    box_radius_em: float | None = None
+    # stroke_em: outline width in em (0..0.15) for outline/band/script text; None = the preset's own (a box defaults to 0).
+    stroke_em: float | None = None
+
+    def __post_init__(self):
+        if self.role is not None and self.role not in ROLES:
+            raise ValueError(f"unknown font role '{self.role}'; known: {', '.join(ROLES)}")
+        if not -0.1 <= self.tracking_em <= 0.2:
+            raise ValueError(f"tracking_em {self.tracking_em} outside -0.1..0.2")
+        if self.line_height is not None and not 0.8 <= self.line_height <= 1.6:
+            raise ValueError(f"line_height {self.line_height} outside 0.8..1.6")
+        if self.stroke_em is not None and not 0 <= self.stroke_em <= 0.15:
+            raise ValueError(f"stroke_em {self.stroke_em} outside 0..0.15")
+        if self.box not in ("none", "box", "pill", "paper"):
+            raise ValueError(f"unknown box '{self.box}'; known: none, box, pill, paper")
 
 
 DEFAULT_SIZE = {"outline": 0.040, "band": 0.034, "script": 0.052, "sticker": 0.060}
@@ -56,7 +135,8 @@ MAX_SLANT = 12.0
 
 
 def available() -> dict[str, bool]:
-    return {"sans": SANS_BOLD.exists(), "script": SCRIPT.exists(), "emoji": EMOJI.exists(), "cjk": CJK.exists()}
+    return {"sans": SANS_BOLD.exists(), "script": SCRIPT.exists(), "emoji": EMOJI.exists(), "cjk": CJK.exists(),
+            "bundled fonts": all((FONTS / r.file).exists() for r in ROLES.values())}
 
 
 # ---- classification ------------------------------------------------------------------------------------------
@@ -100,8 +180,11 @@ def runs(text: str) -> list[tuple[str, str]]:
 # ---- drawing ---------------------------------------------------------------------------------------------------
 
 class _Fonts:
-    def __init__(self, preset: str, px: int, text: str):
-        if preset == "script":
+    def __init__(self, preset: str, px: int, text: str, role: str | None = None, tracking: float = 0.0):
+        self.tracking = tracking * px  # extra px after every glyph
+        if role is not None:
+            self.base = font_for(role, px)
+        elif preset == "script":
             self.base = ImageFont.truetype(str(SCRIPT), px)
             self.base.set_variation_by_name("Bold")
         else:
@@ -138,6 +221,10 @@ def _style(spec: TextSpec, px: int) -> _Style:
         return _Style("white" if spec.band == "dark" else "black", 0, "black")
     fill = spec.colours[0] if spec.colours else "white"  # compose's text layers: fill, then stroke colour
     stroke = spec.colours[1] if spec.colours and len(spec.colours) > 1 else "black"
+    if spec.stroke_em is not None:
+        return _Style(fill, round(px * spec.stroke_em), stroke)
+    if spec.box != "none":  # the box is the contrast: no outline on top of it unless stroke_em asks for one
+        return _Style(fill, 0, stroke)
     if spec.preset == "script":
         return _Style(fill, max(2, round(px * 0.06)), stroke)
     return _Style(fill, max(2, round(px * 0.09)), stroke)
@@ -167,6 +254,8 @@ def _piece(fonts: _Fonts, st: _Style, kind: str, s: str, line_h: int, base_y: in
             return strip
         kind = "base"  # no emoji font: fall back to the base font (likely tofu, but never crash)
     f = fonts.font(kind)
+    if fonts.tracking:
+        return _tracked_piece(fonts, st, f, s, line_h, base_y)
     w = round(f.getlength(s)) + 2 * st.pad + 2
     strip = Image.new("RGBA", (max(1, w), line_h), (0, 0, 0, 0))
     d = ImageDraw.Draw(strip)
@@ -179,6 +268,19 @@ def _piece(fonts: _Fonts, st: _Style, kind: str, s: str, line_h: int, base_y: in
         d.text((x, base_y), s, font=f, fill=st.stroke2_fill, anchor="ls", stroke_width=both,
                stroke_fill=st.stroke2_fill)
     d.text((x, base_y), s, font=f, fill=st.fill, anchor="ls", stroke_width=st.stroke, stroke_fill=st.stroke_fill)
+    return strip
+
+
+def _tracked_piece(fonts: _Fonts, st: _Style, f, s: str, line_h: int, base_y: int) -> Image.Image:
+    """A text run with letter spacing: each glyph sits at its kerned position plus `tracking` px per glyph before it."""
+    t = fonts.tracking
+    w = round(f.getlength(s) + t * len(s)) + 2 * st.pad + 2
+    strip = Image.new("RGBA", (max(1, w), line_h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(strip)
+    x0 = st.pad + 1
+    for i, ch in enumerate(s):
+        x = x0 + f.getlength(s[:i]) + t * i
+        d.text((x, base_y), ch, font=f, fill=st.fill, anchor="ls", stroke_width=st.stroke, stroke_fill=st.stroke_fill)
     return strip
 
 
@@ -211,11 +313,11 @@ def _tokens(text: str) -> list[tuple[str, bool]]:
 def _render_lines(spec: TextSpec, size: tuple[int, int]) -> tuple[list[Image.Image], int]:
     W, H = size
     px = max(10, round(H * (spec.size_frac or DEFAULT_SIZE[spec.preset])))
-    fonts = _Fonts(spec.preset, px, spec.content)
+    fonts = _Fonts(spec.preset, px, spec.content, spec.role, spec.tracking_em)
     st = _style(spec, px)
     line_h = round(px * 1.32) + 2 * st.pad
     base_y = round(px * 1.02) + st.pad
-    space = round(fonts.base.getlength(" "))
+    space = round(fonts.base.getlength(" ") + fonts.tracking)
     max_w = W * spec.width_frac
 
     pad = 2 * st.pad + 2  # each text strip carries its stroke on both sides; neighbours overlap by it
@@ -255,8 +357,60 @@ def _render_lines(spec: TextSpec, size: tuple[int, int]) -> tuple[list[Image.Ima
             x += im.width - p
         if spec.preset == "sticker" and spec.slant:
             img = _shear(img, min(abs(spec.slant), MAX_SLANT) * (1 if spec.slant > 0 else -1))
+        if spec.box != "none":
+            img = _boxed(img, spec, px, base_y, fonts.base)
         out.append(img)
     return out, px
+
+
+BOX_DEFAULT = {"box": "#00000099", "pill": "#00000099", "paper": "#f4f2ee"}
+
+
+def _pad_px(spec: TextSpec, px: int) -> tuple[int, int]:
+    return round(spec.box_pad_em * px), round(spec.box_pad_em * px * 0.6)
+
+
+def _boxed(line: Image.Image, spec: TextSpec, px: int, base_y: int, font) -> Image.Image:
+    """The line over its background. The box hugs the glyphs (ascent above the baseline, descent below) plus padding."""
+    import random
+    px_, py_ = _pad_px(spec, px)
+    asc, desc = font.getmetrics()
+    top, bottom = max(0, base_y - asc), min(line.height, base_y + desc)
+    ink = line.getbbox()
+    x0, x1 = (ink[0], ink[2]) if ink else (0, line.width)
+    out = Image.new("RGBA", (x1 - x0 + 2 * px_, line.height + 2 * py_), (0, 0, 0, 0))
+    colour = spec.box_colour or BOX_DEFAULT[spec.box]
+    rect = (0, top, out.width - 1, bottom + 2 * py_)
+    d = ImageDraw.Draw(out)
+    if spec.box == "paper":
+        rng = random.Random(spec.content)  # ragged but deterministic: the same words always tear the same way
+        jit = max(1, round(px * 0.04))
+        n = max(4, (rect[2] - rect[0]) // max(4, px // 3))
+        xs = [round(rect[0] + (rect[2] - rect[0]) * i / n) for i in range(n + 1)]
+        topline = [(x, rect[1] + rng.randint(0, jit)) for x in xs]
+        botline = [(x, rect[3] - rng.randint(0, jit)) for x in reversed(xs)]
+        shadow = Image.new("RGBA", out.size, (0, 0, 0, 0))
+        off = max(1, round(px * 0.04))
+        ImageDraw.Draw(shadow).polygon([(x + off, y + off) for x, y in topline + botline], fill="#00000055")
+        out.alpha_composite(shadow)
+        d.polygon(topline + botline, fill=colour)
+    else:
+        r = spec.box_radius_em if spec.box_radius_em is not None else 0.2
+        radius = (rect[3] - rect[1]) / 2 if spec.box == "pill" else r * px
+        d.rounded_rectangle(rect, radius=radius, fill=colour)
+    out.alpha_composite(line.crop((x0, 0, x1, line.height)), (px_, py_))
+    return out
+
+
+def _line_gap(spec: TextSpec, px: int) -> int:
+    """Pixels between consecutive line images. Default is the preset's own 0.08 em; `line_height` sets the pitch of the
+    text lines (em of the glyph size), whatever the stroke or box padding adds to each line image."""
+    if spec.line_height is None:
+        return round(px * 0.08)
+    own = round(px * 1.32) + 2 * _style(spec, px).pad
+    if spec.box != "none":
+        own += 2 * _pad_px(spec, px)[1]
+    return round(px * spec.line_height) - own
 
 
 def _shear(img: Image.Image, degrees: float) -> Image.Image:
@@ -273,7 +427,7 @@ def _place(spec: TextSpec, size: tuple[int, int]):
     """Rendered lines and where the block's top goes for this position."""
     W, H = size
     lines, px = _render_lines(spec, size)
-    gap = round(px * 0.08)
+    gap = _line_gap(spec, px)
     block_h = sum(l.height for l in lines) + gap * (len(lines) - 1)
     if spec.position == "top":
         y0 = round(H * SAFE_TOP)
@@ -331,7 +485,7 @@ def render_block(spec: TextSpec, size: tuple[int, int], ref_h: int | None = None
         sp = replace(spec, size_frac=frac, width_frac=1.0)
         px = max(10, round(ref * frac))
         lines, px = _render_lines(replace(sp, width_frac=max(0.2, 1 - k * px * 1.5 / max(W, 1))), (W, ref))
-        gap = round(px * 0.08)
+        gap = _line_gap(sp, px)
         block_h = sum(l.height for l in lines) + gap * max(0, len(lines) - 1)
         if lines and max(l.width for l in lines) <= W and block_h <= H:
             break

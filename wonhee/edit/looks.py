@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Literal
 
-Preset = Literal["moody", "grain", "moody_grain", "digicam", "faded", "bw_grain", "warm_pink", "cool_night", "none"]
+Preset = Literal["moody", "grain", "moody_grain", "digicam", "faded", "bw_grain", "warm_pink", "cool_night", "lofi_cam", "none"]
 
 MONO_FONTS = ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
               "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf")
@@ -55,6 +55,16 @@ def _cool_night(k: float) -> list[str]:
             f"colorbalance=bs={_f(0.08 * k)}:gs={_f(0.02 * k)}:rh={_f(0.04 * k)}"]
 
 
+def _lofi_cam(k: float) -> list[str]:
+    # phone-cam lo-fi (reel study c48, docs/specs/2026-10-20-reel-styles-design.md §5): muted colour (~0.55 saturation),
+    # a slight blur, a magenta-tinted lift in the shadows and a strong vignette (PI/4.2 at intensity 1: edge/centre luminance 0.46 on a flat frame, the c48 value); the preset's grain is added after
+    return [f"eq=saturation={_f(1 - 0.45 * k)}:contrast={_f(1 - 0.04 * k)}",
+            f"gblur=sigma={_f(0.8 * k)}:steps=1",
+            f"curves=all='0/{_f(0.05 * k)} 1/1'",
+            f"colorbalance=rs={_f(0.06 * k)}:gs={_f(-0.03 * k)}:bs={_f(0.04 * k)}",
+            f"vignette=angle=PI/{_f(1 + 3.2 * k)}"]
+
+
 # preset -> (grade, default grain strength at intensity 1)
 PRESETS: dict[str, tuple[Callable[[float], list[str]], int]] = {
     "moody": (_moody, 0),
@@ -65,6 +75,7 @@ PRESETS: dict[str, tuple[Callable[[float], list[str]], int]] = {
     "bw_grain": (_bw, 26),
     "warm_pink": (_warm_pink, 0),
     "cool_night": (_cool_night, 0),
+    "lofi_cam": (_lofi_cam, 8),
     "none": (lambda k: [], 0),
 }
 

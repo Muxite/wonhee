@@ -153,3 +153,22 @@ def test_ensure_ready_error_propagates_once(conn, settings, fake_llm, tiny_video
     ctx.deps.transcriber = NoGpu()
     with pytest.raises(RuntimeError, match="CUDA"):
         analyze.run(ctx)
+
+
+def test_transcript_saves_word_timings_when_given(conn, settings, fake_llm, tiny_video):
+    import json
+    from wonhee.analyze.speech import Segment, SpokenWord, Transcript
+    from wonhee.media import path_for
+
+    class W:
+        def transcribe(self, path):
+            return Transcript("en", [Segment(0, 900, "hi there", [SpokenWord(0, 400, "hi"), SpokenWord(450, 900, "there")]),
+                                     Segment(1000, 1200, "plain")])
+    fake_llm.queue(ShotTexts=[{"shots": []}])
+    ctx = _ctx(conn, settings, tiny_video, n_videos=1)
+    ctx.deps.transcriber = W()
+    analyze.run(ctx)
+    tsha = conn.execute("SELECT transcript_sha256 FROM media_analysis").fetchone()[0]
+    segs = json.loads(path_for(settings.media_dir, tsha).read_text())["segments"]
+    assert segs[0]["words"] == [{"start_ms": 0, "end_ms": 400, "text": "hi"}, {"start_ms": 450, "end_ms": 900, "text": "there"}]
+    assert "words" not in segs[1]

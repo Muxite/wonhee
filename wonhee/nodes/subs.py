@@ -13,7 +13,7 @@ from wonhee import media
 from wonhee.db import queries
 from wonhee.nodes import registry
 from wonhee.nodes.base import Node
-from wonhee.nodes.subtitles import Line, Subtitles, load_subs, save_subs, save_text
+from wonhee.nodes.subtitles import Line, Subtitles, Word, load_subs, save_subs, save_text
 
 
 class NoParams(BaseModel):
@@ -21,7 +21,10 @@ class NoParams(BaseModel):
 
 
 def _renumbered(language, segments) -> Subtitles:
-    lines = [Line(id=0, start_ms=s, end_ms=e, text=t.strip(), source="speech") for s, e, t in segments if t.strip()]
+    """segments: (start_ms, end_ms, text[, words]) where words is a list of (start_ms, end_ms, text) or None."""
+    lines = [Line(id=0, start_ms=s[0], end_ms=s[1], text=s[2].strip(), source="speech",
+                  words=[Word(start_ms=a, end_ms=b, text=t) for a, b, t in s[3]] if len(s) > 3 and s[3] else None)
+             for s in segments if s[2].strip()]
     for i, ln in enumerate(lines):
         ln.id = i
     return Subtitles(language=language, lines=lines)
@@ -33,12 +36,19 @@ def speech_fn(ctx, inputs, p) -> dict[str, str]:
     row = queries.media_analysis_row(ctx.conn, sha)
     if row is not None and row["transcript_sha256"]:
         data = json.loads(media.path_for(ctx.settings.media_dir, row["transcript_sha256"]).read_text())
-        subs = _renumbered(data.get("language"), [(s["start_ms"], s["end_ms"], s["text"]) for s in data["segments"]])
+        # A stored transcript keeps its word timings if it has them (the analyze stage writes none today); we do
+        # not re-run whisper to get them: it costs a GPU pass, and consumers estimate words from line times and
+        # flag WORDS_ESTIMATED instead.
+        subs = _renumbered(data.get("language"),
+                           [(s["start_ms"], s["end_ms"], s["text"],
+                             [(w["start_ms"], w["end_ms"], w["text"]) for w in s.get("words") or []])
+                            for s in data["segments"]])
     elif not media.has_audio(path):
         subs = Subtitles()
     else:
         t = ctx.deps.transcriber.transcribe(path)
-        subs = _renumbered(t.language, [(s.start_ms, s.end_ms, s.text) for s in t.segments])
+        subs = _renumbered(t.language, [(s.start_ms, s.end_ms, s.text, [(w.start_ms, w.end_ms, w.text) for w in s.words or []])
+                                   for s in t.segments])
     if not subs.lines:
         ctx.flag("NO_TEXT", "no speech found")
     return {"subtitles": save_subs(ctx.conn, ctx.settings.media_dir, subs)}
@@ -119,8 +129,8 @@ def srt_fn(ctx, inputs, p: SrtParams) -> dict[str, str]:
     return {"file": save_text(ctx.conn, ctx.settings.media_dir, render_srt(subs, p.max_chars))}
 
 
-registry.register(Node("speech_subs", 1, {"video": "video"}, {"subtitles": "subtitles"}, NoParams, speech_fn,
-                       "Subtitles from the spoken audio (reuses a stored transcript).",
+registry.register(Node("speech_subs", 2, {"video": "video"}, {"subtitles": "subtitles"}, NoParams, speech_fn,
+                       "Subtitles from the spoken audio, with word timings when whisper gave them (reuses a stored transcript).",
                        salt=lambda s: {"whisper_model": s.whisper_model, "compute_type": s.whisper_compute_type},
                        lane="cuda"))
 registry.register(Node("merge_subs", 4, {"a": "subtitles", "b": "subtitles"}, {"subtitles": "subtitles"},

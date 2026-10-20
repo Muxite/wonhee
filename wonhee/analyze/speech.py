@@ -9,10 +9,18 @@ from typing import Protocol
 
 
 @dataclass
+class SpokenWord:
+    start_ms: int
+    end_ms: int
+    text: str
+
+
+@dataclass
 class Segment:
     start_ms: int
     end_ms: int
     text: str
+    words: list[SpokenWord] | None = None  # faster-whisper word timestamps; None = not computed
 
 
 @dataclass
@@ -90,6 +98,10 @@ class WhisperTranscriber:
 
         if not has_audio(path):
             return Transcript(None, [])  # no audio stream: nothing said, not an error
-        segments, info = self._load().transcribe(str(path), beam_size=5, vad_filter=True)
-        segs = [Segment(int(s.start * 1000), int(s.end * 1000), s.text) for s in segments]
+        segments, info = self._load().transcribe(str(path), beam_size=5, vad_filter=True,
+                                                word_timestamps=True)
+        segs = [Segment(int(s.start * 1000), int(s.end * 1000), s.text,
+                        [SpokenWord(int(w.start * 1000), int(w.end * 1000), w.word.strip())
+                         for w in (s.words or []) if w.word.strip()] or None)
+                for s in segments]
         return Transcript(info.language, segs)

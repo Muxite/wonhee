@@ -234,3 +234,74 @@ def test_grab_refetch_failure_stays_weak(conn, settings, fake_llm, tiny_video):
     step = queries.current_step(conn, run_id, "grab")
     assert step["status"] == "weak"
     assert "DOWNLOAD_FAILED" in [f["code"] for f in queries.step_flags(conn, step["id"])]
+
+
+def test_speech_subs_puts_words_on_lines(conn, settings, tiny_video):
+    from wonhee.analyze.speech import SpokenWord
+
+    class Words(FakeTranscriber):
+        def transcribe(self, path):
+            return Transcript("en", [Segment(400, 1500, " hello there ", [SpokenWord(400, 900, "hello"),
+                                                                         SpokenWord(950, 1500, "there")])])
+
+    sha = store_video(conn, settings, tiny_video)
+    rid, status = run_chain(conn, settings, [{"id": "s", "node": "speech_subs", "in": {"video": sha}}],
+                            fake_deps(transcriber=Words()))
+    assert status == "done"
+    ln = load_subs(settings.media_dir, out(conn, rid, "s", "subtitles")).lines[0]
+    assert [(w.start_ms, w.end_ms, w.text) for w in ln.words] == [(400, 900, "hello"), (950, 1500, "there")]
+    from wonhee.nodes.subtitles import line_words
+    assert line_words(ln)[1] is False
+
+
+def test_stored_transcript_without_words_keeps_lines_wordless(conn, settings, tiny_video):
+    """No re-run of whisper for words: lines stay word-less and consumers estimate."""
+    sha = store_video(conn, settings, tiny_video)
+    t = {"language": "en", "segments": [{"start_ms": 0, "end_ms": 1000, "text": "a b"}]}
+    tsha = repo.save_media_bytes(conn, settings.media_dir, json.dumps(t).encode(), "transcript", "application/json")
+    empty = save_subs(conn, settings.media_dir, Subtitles())
+    rid0, _ = run_chain(conn, settings, [{"id": "t", "node": "to_srt", "in": {"subtitles": empty}}])
+    repo.save_analysis(conn, sha=sha, analyzer_version=1, step_id=queries.current_step(conn, rid0, "t")["id"],
+                       first_word_ms=None, language="en", transcript_sha=tsha, shots=[])
+    tr = CountingTranscriber()
+    rid, _ = run_chain(conn, settings, [{"id": "s", "node": "speech_subs", "in": {"video": sha}}],
+                       fake_deps(transcriber=tr))
+    assert tr.n == 0
+    assert load_subs(settings.media_dir, out(conn, rid, "s", "subtitles")).lines[0].words is None
+
+
+def test_line_words_estimates_evenly_and_cjk_per_character():
+    from wonhee.nodes.subtitles import Word, line_words
+    ws, est = line_words(L(0, 1000, 2000, "one two  three four"))
+    assert est and [w.text for w in ws] == ["one", "two", "three", "four"]
+    assert ws[0].start_ms == 1000 and ws[-1].end_ms == 2000
+    assert all(a.end_ms == b.start_ms for a, b in zip(ws, ws[1:]))
+    ws, est = line_words(L(0, 0, 900, "안녕하세"))
+    assert est and [w.text for w in ws] == list("안녕하세") and ws[1].start_ms == 225
+    assert line_words(L(0, 0, 10, "  ")) == ([], False)
+    real = Line(id=0, start_ms=0, end_ms=10, text="x", source="speech", words=[Word(start_ms=0, end_ms=10, text="x")])
+    assert line_words(real)[1] is False
+
+
+def test_words_are_omitted_from_json_when_none_and_old_json_loads():
+    a = Subtitles(language="en", lines=[L(0, 0, 10, "x")])
+    assert "words" not in a.model_dump_json()
+    old = '{"language":"en","lines":[{"id":0,"start_ms":0,"end_ms":10,"text":"x","source":"speech"}]}'
+    assert a.model_dump_json() == old
+    assert Subtitles.model_validate_json(old).lines[0].words is None
+    from wonhee.nodes.subtitles import Word
+    b = Subtitles(lines=[Line(id=0, start_ms=0, end_ms=5, text="x", source="speech",
+                              words=[Word(start_ms=0, end_ms=5, text="x")])])
+    assert Subtitles.model_validate_json(b.model_dump_json()).lines[0].words[0].text == "x"
+    assert "x" in render_srt(b, 42)
+
+
+def test_merge_carries_words_on_a_lines(conn, settings):
+    from wonhee.nodes.subtitles import Word
+    w = [Word(start_ms=0, end_ms=500, text="hi")]
+    a = save_subs(conn, settings.media_dir, Subtitles(lines=[Line(id=0, start_ms=0, end_ms=500, text="hi", source="speech", words=w)]))
+    b = save_subs(conn, settings.media_dir, Subtitles(lines=[L(0, 9000, 9500, "unrelated card text", "screen")]))
+    rid, status = run_chain(conn, settings, [{"id": "m", "node": "merge_subs", "in": {"a": a, "b": b}}])
+    assert status == "done"
+    lines = load_subs(settings.media_dir, out(conn, rid, "m", "subtitles")).lines
+    assert lines[0].words == w and lines[1].words is None

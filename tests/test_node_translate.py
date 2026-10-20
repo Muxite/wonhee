@@ -123,3 +123,15 @@ def test_local_engine_uses_the_on_box_model_and_costs_nothing(conn, settings, fa
     assert status == "done" and len(sent) == 1 and fake_llm.calls() == []
     assert [l.text for l in load_subs(settings.media_dir, out(conn, rid, "t", "subs")).lines] == ["tr0", "tr1"]
     assert conn.execute("SELECT coalesce(sum(cost_usd),0) FROM step WHERE run_id=?", (rid,)).fetchone()[0] == 0
+
+
+def test_translation_drops_words_keeps_timings(conn, settings, fake_llm):
+    from wonhee.nodes.subtitles import Line, Word
+    ln = Line(id=0, start_ms=100, end_ms=900, text="src0", source="speech",
+              words=[Word(start_ms=100, end_ms=900, text="src0")])
+    sha = save_subs(conn, settings.media_dir, Subtitles(language="ko", lines=[ln]))
+    fake_llm.queue(TranslateReply=[reply([0])])
+    rid, status = tr(conn, settings, sha)
+    assert status == "done"
+    out_ln = load_subs(settings.media_dir, out(conn, rid, "t", "subs")).lines[0]
+    assert out_ln.words is None and (out_ln.start_ms, out_ln.end_ms) == (100, 900)
