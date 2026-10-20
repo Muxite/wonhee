@@ -10,7 +10,9 @@ adds **time** to it, so one engine makes stills and reels.
 Each subtitle line may carry `words: [{start_ms, end_ms, text}]`. `speech_subs` fills them from whisper's word
 timestamps (`word_timestamps=True`; same model, so the node gets a version bump). Lines without `words` (older cache,
 `screen_text`, translations) are given evenly split timings by the consumer, which flags `WORDS_ESTIMATED`.
-Translation keeps the line timings and drops `words` (word order changes).
+Translation keeps the line timings and drops `words` (word order changes). The analyze stage saves word timings with each
+stored transcript segment from now on. Transcripts stored before this have none, and consumers estimate them;
+nothing is re-analysed.
 
 ## 2. Timed layers (the compose engine, extended)
 
@@ -106,8 +108,8 @@ credential, publication or institution (VISION: no faking real events).
 ## 8. Fixes found during the study
 
 - Parallel remote-LLM calls fail with moeka `InstanceLockedError` when two processes share the moeka state
-  directory (two teardowns failed). Design: each wonhee process uses its own moeka instance state directory under
-  `data/moeka/<pid>/`, or waits for the lock with a timeout (the moeka-multi-instance rule).
+  directory (two teardowns failed). Design: each moeka kernel gets its own instance directory `<home>/moeka/<pid>/k<n>/` (moeka has no lock
+  wait), swept when its process is dead and removed at exit (the moeka-multi-instance rule).
 
 ## 9. Tests (from this text)
 
