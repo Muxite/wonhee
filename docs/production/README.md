@@ -11,6 +11,7 @@ Written 2026-10-17. Every number here was measured on this box (Ryzen 7 3700X, 1
 | [benchmarks.md](benchmarks.md) | you want the numbers behind the rules |
 | [references.md](references.md) | what our posts and the reference reels look like, and what that means for what to build |
 | [insights-2026-10-17.md](insights-2026-10-17.md) | what to record (B-roll shoot list), which formats fit, and what that means for what to build |
+| [reels.md](reels.md) | making a reel in one of the six styles (`wonhee reel <video> --style …`), with each style's slots |
 | [reel-study-2026-10-20.md](reel-study-2026-10-20.md) | what five strong reels share (sound, cuts, text timing, fonts, layout) and the pseudo-intellectual style |
 | [idea-bank.md](idea-bank.md) | the @frictionlessmuk niche: ideas grouped into shoot days, each with a capture, a line and a look |
 
