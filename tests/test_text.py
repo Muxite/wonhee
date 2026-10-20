@@ -83,3 +83,19 @@ def test_text_video_node_window_keeps_duration_and_audio(conn, settings, tiny_vi
     src, dst = media.path_for(settings.media_dir, sha), media.path_for(settings.media_dir, out(conn, rid, "t", "video"))
     assert abs(media.probe(dst).duration_ms - media.probe(src).duration_ms) < 200
     assert media.has_audio(dst) == media.has_audio(src)
+
+
+def test_tall_frames_keep_text_off_the_buttons_and_caption():
+    """design: DESIGN Stage 4 safe zones (phone screenshot 2026-10-20): above 76% of the height, and inside the middle
+    72% of the width wherever a block reaches the button strip (35-88%); a top title may use the full width."""
+    W, H = 540, 960
+    long = "still shipping at 3:17 AM because the model said it was fine and the tests said otherwise"
+    for pos in ("upper", "center", "lower", "bottom"):
+        x0, y0, x1, y1 = render_layer(TextSpec(long, "outline", pos), (W, H)).getbbox()
+        assert y1 <= H * 0.76 + 1
+        if y1 > H * 0.35 and y0 < H * 0.88:
+            assert x1 <= W * 0.86 + 1 and x0 >= W * 0.14 - 1, (pos, x0, x1)
+    tx0, ty0, tx1, ty1 = render_layer(TextSpec("BIG TITLE AT THE TOP OF THE REEL", "outline", "top"), (W, H)).getbbox()
+    assert ty1 < H * 0.35 and tx1 > W * 0.86  # the top band is free of buttons, so the title keeps its width
+    sq = render_layer(TextSpec(long, "outline", "center"), (W, W)).getbbox()
+    assert sq[2] > W * 0.86  # square/4:5 posts have no button strip over the image

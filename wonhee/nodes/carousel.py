@@ -103,7 +103,7 @@ def content_images_fn(ctx, inputs, p: NoParams) -> dict[str, str]:
     return {"images": save_images(ctx.conn, ctx.settings.media_dir, Images(items=[Slide(sha=s) for s in shas]))}
 
 
-registry.register(Node("carousel", 1, {"images": "images"}, {"images": "images"}, CarouselParams, carousel_fn,
+registry.register(Node("carousel", 2, {"images": "images"}, {"images": "images"}, CarouselParams, carousel_fn,
                        "Lay photos out as Instagram slides (4:5 / 1:1 / 9:16; panoramas span slides), one look for "
                        "the whole set, optional per-photo text."))
 registry.register(Node("content_images", 1, {"content": "content"}, {"images": "images"}, NoParams,

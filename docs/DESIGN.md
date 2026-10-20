@@ -87,7 +87,7 @@ These hold everywhere; breaking one is a defect.
 | Video timeline + `render` | Edit ops are timeline transforms (`timeline` → `timeline`). Only `render` encodes, once per output, plus one preview. Grade, text, trim, speed, reframe and audio mix compile into one ffmpeg graph | [policies.md §2](production/policies.md), [workers.md › Build next](production/workers.md) 1–4 | approved, not built |
 | Per-op encodes (old R1) | Each op re-encodes | toolkit R1 | **superseded** by the timeline design: measured 3–11× slower, 2026-10-17 |
 | Translation | grab → speech_subs → screen_text → merge_subs → translate → to_srt / burn_subtitles. Empty output flags `NO_TEXT`. Translation gaps flag `TRANSLATION_GAP` and keep the source line | [toolkit R7](specs/2026-10-15-toolkit-design.md) | built |
-| Looks and text (video and photo) | Named looks are one filter string each. Text layers in outline / band / script presets inside IG safe zones, with colour emoji via Pillow (never libass emoji) | workers.md rows `look`, `text_*`, `carousel` | built |
+| Looks and text (video and photo) | Named looks are one filter string each. Text layers in outline / band / script presets inside IG safe zones, with colour emoji via Pillow (never libass emoji). **Safe zones** (measured 2026-10-20 on a 1080×2181 phone screenshot; a 9:16 video may sit low on a 20:9 screen, so the worst case is used): text stays below 12% and above 76% of the frame height. On tall frames (h/w ≥ 1.7), a block that reaches the button strip (35–88% of the height) wraps within the middle 72% of the width, because the like/comment/share buttons cover the right 13%. A top title above the strip may use the full wrap width | workers.md rows `look`, `text_*`, `carousel` | built |
 | Photo: filters | A parametric filter applies correct-first (`auto`), point ops with 8 colour ranges, effects, then skin undertone. `filter make` drafts, renders, measures, guards, reviews and saves. Reviewer calibration hides knobs the model can't see, unless the model is guessing. Usage logs set the default intensity | [photo-looks.md › Filters](production/photo-looks.md#filters-a-vibe-of-your-own-no-reference-needed) | built |
 | Photo: vibe | Look profile from references → per-photo grade along the ladder global → gentler → range → soft mask → mask. The first step that keeps skin readable wins. If none does, the least-bad step wins and is flagged unreadable | photo-looks.md, workers.md row `vibe` | built |
 | Photo: formats | `poster`, `carousel`, `mask_cutout` | workers.md | built |
@@ -137,8 +137,8 @@ Themes: `paper` (default), `dark`, `both`. Size `WxH` (default 1200×600). PNG e
 **Dropped from vizkit on purpose:** the separate `panel.png` legend image, the raw `graph.json`/`tree.json` and
 standalone interactive HTML outputs, and `--skip-export`. A still is the product. Bring one back as an M-size change
 if a use appears.
-**Gap:** the WaveSim source isn't pinned in wonhee (vizkit pinned it as a submodule). The Dockerfile has to say
-where the source comes from before `viz_wavegen` can be called built for real.
+**WaveSim source:** `github.com/Muxite/WaveSim`, pinned by `ARG WAVESIM_REV` in `wonhee/edit/viz/vendor/wavesim.Dockerfile`
+and patched at build time. Bump the pin on purpose, never float it.
 
 ## Drift
 
@@ -160,10 +160,10 @@ Every known mismatch between this design and the code, with the verdict from [PR
 | D11 | toolkit R2–R6 | Not built | n/a: approved and not built | roadmap ([VISION › Where it's going](VISION.md#where-its-going-ordered)) |
 | D12 | about 27 nodes, worker, viz, publish | Code with no design | unowned → owned | designed on this page |
 | D13 | scout §7 | A hard-failure reply goes back through the intent compiler: not built (needs the moeka/Telegram side) | approved, not built | later, with the director |
-| D14 | viz | WaveSim source not pinned | design gap | open |
+| D14 | viz | WaveSim source not pinned | false finding: the Dockerfile already clones `Muxite/WaveSim` at `1d78d63` (vizkit's submodule pin, still upstream `master` on 2026-10-20). The audit missed the `ARG` | closed |
 | D15 | MCP tools | Fewer capabilities than their CLI twins: `audio` (isolate, music_db), `vibe` (set, guide_engine), `larp` (register), `node_run`/`chain_run` (no_cache). No MCP `filter show`/`filter calibrate` | code wrong (contract 4) | **fixed**: args added; new `filter_show` (cube written under `<home>/filters/cube/`) and `filter_calibrate` |
 | D16 | MCP `publish_muksite` | Publishes with no `yes`. The only gate is the MCP client's tool-approval prompt plus the docstring ("only when the user asked") | **owner decision**: is a client approval prompt "a human yes" (contract 9)? | open |
-| D17 | text safe zones | watchouts.md says the IG UI covers the top 14% and bottom 20–25%; `edit/text.py` keeps text out of the top 12% and bottom 20% | design underspecified (a range, no measurement) | open: measure on a phone screenshot, then fix one side |
+| D17 | text safe zones | watchouts.md said top 14% / bottom 20–25%; the code used top 12% / bottom 20% and nothing reserved the right-hand button strip | design wrong on evidence (phone screenshot 2026-10-20: header 7.5%, caption from 79% of the screen, buttons on the right 13% from 37–86%) | **fixed**: Stage 4 contract amended; `edit/text.py` bottom 76% plus the narrower wrap in the button strip |
 | D18 | worker health | workers.md promised node versions in the health report; the `worker` table has none, so a worker started before a code change runs old code | design wrong (detail), real risk | doc amended; restart workers after deploys; versions in health = M change later |
 | D19 | production docs | README, policies.md and production/README stated `render`/timeline as live | doc stale | amended: marked approved, not built |
 | D21 | intent compiler | Its LLM calls aren't under a run's cost cap | design underspecified (no run exists yet) | contract 8 amended: outside the cap, logged per intent |

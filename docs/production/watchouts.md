@@ -18,7 +18,7 @@ Things that silently cost time or quality. **Seen** marks ones observed in this 
 - **Rotation metadata.** Phone clips often store landscape pixels with a rotate tag. ffmpeg auto-rotates on decode, but probe-reported width/height may be swapped. Normalise at ingest.
 - **VFR phone footage.** Variable frame rate drifts against audio after cuts. Set CFR at render (`fps=30`), not in a separate pass.
 - **Generation loss.** Each lossy pass costs SSIM: 0.9948 after 3 x264 passes vs 0.9964 after one. Instagram re-encodes on upload as well, so give it one clean, high-quality encode.
-- **Safe zones.** Instagram's UI covers roughly the top 14% and bottom 20–25% of a 9:16 reel, plus a right-side strip for buttons. Keep text inside the middle band. The reference reel centres it. (The code uses top 12% / bottom 20%, `edit/text.py`; which is right is open, drift D17.)
+- **Safe zones.** Measured 2026-10-20 on a 1080×2181 phone: the header takes the top ~7.5% of the screen, the username/caption block starts at ~79%, and the like/comment/share buttons cover the right 13% from 37% to 86% of the height. A 9:16 video can sit low on a 20:9 screen, so `edit/text.py` keeps text between 12% and 76% of the frame and wraps blocks in the button band within the middle 72% (DESIGN.md › Stage 4). Big titles go at the top, full width, the way the reference reels do it.
 - **NVENC files are bigger** (measured: 1.8× x264 at equal quality). Fine for uploads, since Instagram re-encodes. Use x264 when archiving or when size matters.
 
 ## Audio

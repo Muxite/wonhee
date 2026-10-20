@@ -7,7 +7,7 @@ Adapted from slopcut/text.py, plus per-run font fallback: emoji runs are drawn w
 from __future__ import annotations
 
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
@@ -23,8 +23,12 @@ EMOJI_PX = 109  # the only size the bitmap emoji font loads at; glyphs are scale
 
 Preset = Literal["outline", "band", "script"]
 Position = Literal["top", "upper", "center", "lower", "bottom"]
-# Instagram reel UI covers about the top 12% and the bottom 20%; text blocks stay inside.
-SAFE_TOP, SAFE_BOTTOM = 0.12, 0.80
+# Instagram's reel UI, measured on a 1080x2181 phone (2026-10-20): header ~7.5% of the screen, caption block from ~79%,
+# buttons over the right 13% from 37-86%. A 9:16 video can sit low on a 20:9 screen, so these are the worst case.
+SAFE_TOP, SAFE_BOTTOM = 0.12, 0.76
+BUTTONS_Y = (0.35, 0.88)  # where the like/comment/share strip is, as a fraction of a tall frame's height
+BUTTONS_WRAP = 0.72  # a centred block within the middle 72% clears the strip on both sides
+TALL = 1.7  # h/w at or above this is a reel/story frame; feed photos (1:1, 4:5) have no strip over the image
 ANCHOR_Y = {"upper": 0.30, "center": 0.50, "lower": 0.66}
 
 
@@ -222,12 +226,9 @@ def _render_lines(spec: TextSpec, size: tuple[int, int]) -> tuple[list[Image.Ima
     return out, px
 
 
-def render_layer(spec: TextSpec, size: tuple[int, int]) -> Image.Image:
-    """A full-frame transparent RGBA layer with the text block placed per preset and position."""
+def _place(spec: TextSpec, size: tuple[int, int]):
+    """Rendered lines and where the block's top goes for this position."""
     W, H = size
-    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    if not spec.content.strip():
-        return layer
     lines, px = _render_lines(spec, size)
     gap = round(px * 0.08)
     block_h = sum(l.height for l in lines) + gap * (len(lines) - 1)
@@ -237,7 +238,22 @@ def render_layer(spec: TextSpec, size: tuple[int, int]) -> Image.Image:
         y0 = round(H * SAFE_BOTTOM) - block_h
     else:
         y0 = round(H * ANCHOR_Y[spec.position] - block_h / 2)
+    # every position stays inside the safe band; a block too tall for it starts at the top of the band
+    y0 = max(round(H * SAFE_TOP), min(y0, round(H * SAFE_BOTTOM) - block_h))
     y0 = max(round(H * 0.02), min(y0, H - block_h - round(H * 0.02)))
+    return lines, px, gap, block_h, y0
+
+
+def render_layer(spec: TextSpec, size: tuple[int, int]) -> Image.Image:
+    """A full-frame transparent RGBA layer with the text block placed per preset and position."""
+    W, H = size
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    if not spec.content.strip():
+        return layer
+    lines, px, gap, block_h, y0 = _place(spec, size)
+    if H / W >= TALL and spec.width_frac > BUTTONS_WRAP and y0 + block_h > H * BUTTONS_Y[0] and y0 < H * BUTTONS_Y[1]:
+        # the block reaches the button strip: re-wrap narrower rather than shift it, so the position still means the same
+        lines, px, gap, block_h, y0 = _place(replace(spec, width_frac=BUTTONS_WRAP), size)
     if spec.preset == "band":
         pad = round(px * 0.55)
         colour = (0, 0, 0, 235) if spec.band == "dark" else (255, 255, 255, 240)

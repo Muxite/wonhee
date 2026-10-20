@@ -106,9 +106,9 @@ def text_video_fn(ctx, inputs, p: VideoTextParams) -> dict[str, str]:
     return {"video": sha}
 
 
-registry.register(Node("text_image", 1, {"image": "image"}, {"image": "image"}, TextParams, text_image_fn,
+registry.register(Node("text_image", 2, {"image": "image"}, {"image": "image"}, TextParams, text_image_fn,
                        "Put styled text on a photo (outline / band / script; colour emoji and CJK), optional look; "
                        "one pass."))
-registry.register(Node("text_video", 1, {"video": "video"}, {"video": "video"}, VideoTextParams, text_video_fn,
+registry.register(Node("text_video", 2, {"video": "video"}, {"video": "video"}, VideoTextParams, text_video_fn,
                        "Put styled text on a video for a time window (outline / band / script; colour emoji and "
                        "CJK), optional look; one encode."))
