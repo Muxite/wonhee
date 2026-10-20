@@ -1,8 +1,8 @@
-# Meme frame, sticker and pop-art formats: design
+# Layouts: meme frame, sticker, pop-art and collage formats, as one engine
 
-Status: **proposed** 2026-10-20, waiting on the owner. Stage 4 (make), photo and video formats. Size: M per format
-(new nodes and presets inside an approved area). Written as one spec because the formats share their building
-blocks.
+Status: **approved** 2026-10-20 by the owner, who asked for it to be generalized further. The generalization
+(§ "Generalized design") replaces the per-format node list (§ "Proposed building blocks", kept as the feature
+checklist). Stage 4 (make).
 
 ## Why
 
@@ -50,6 +50,48 @@ Each is a node with ports, params and flags, following DESIGN contracts 1–13.
 7. **`grid_plan`** (`images` → `images`): order and colour-assign 3, 6 or 9 posts so the profile grid reads as a
    set (a palette per row, optional split across tiles). It reuses the `carousel` split.
 
+## Generalized design (approved form)
+
+The seven building blocks above are one idea: **a picture is a canvas plus an ordered list of layers.** So there is
+one engine and one node, and each format is data: a named template plus a few slots. This is the Stockgen idea
+again: an agent or a person writes a small declarative layout, and the code renders it the same way every time.
+
+**`compose`** (`images?` → `image`), params `layout` (a `Layout` dict) or `template` (name) + `slots` (dict). Engine:
+`wonhee/edit/compose.py`, no DB.
+
+```
+Layout = {canvas: {w, h, bg: colour | pattern},
+          palette: [colours] | name,
+          seed: int,
+          layers: [Layer, ...]}            # painted in order
+
+Layer kinds (each has box: {x, y, w, h} as fractions of the canvas, rotate (deg), opacity):
+  photo    src: input index | "slot:<name>"; fit: cover | contain; shape: rect | rounded | circle | heart | star | burst;
+           outlines: [{width_frac, colour}] (offset strokes, outermost last); cutout: bool (subject only, via mask_cutout's engine)
+  pattern  kind: flat | halftone | stars | glyph | stripes; colours; density; angle   (fills its box, or the canvas)
+  shape    kind: as photo.shape + bubble (with tail: {x, y}); fill: colour | pattern; outlines
+  sticker  kind: bubble | badge | checklist | burst | note | label; text or items; colours   (a shape + text, laid out)
+  text     content; preset: outline | band | script | sticker; size_frac; align; colour; stroke colours; slant
+  band     side: top | bottom; h_frac; colour          (letterbox bands)
+```
+
+- **Templates** are layouts with `"slot:<name>"` holes, shipped as JSON in `wonhee/edit/compose_templates/`:
+  `meme_frame` (A, still form), `sticker_frame` (B), `brag_collage` (C), `popart_cutout` (D), and `slop_card`. The
+  slop machine's cards can move onto this later; they are not changed now. A template is listed with its slots and
+  defaults through `nodes_list(name="compose")` and `wonhee node show compose`.
+- **Safe zones** (DESIGN Stage 4) apply to `text` and `sticker` layers on tall canvases. A layout that puts text in
+  the caption or button zone is moved inside, and flagged `LAYOUT_ADJUSTED`.
+- **Determinism:** the same layout, inputs and seed give identical bytes. Fonts are bundled or reported by doctor.
+- **Video formats reuse it:** `meme_frame` for video renders the composed overlay (bands + title) as one PNG with a
+  transparent window, and ffmpeg scales the clip into the window and overlays the PNG, in **one encode**.
+  `word_captions` adds timed Pillow layers into the same graph. The video form is the `frame_video` node
+  (`video`, `subtitles?` → `video`), params `template`, `slots`, `captions` (style `box` | `highlight` | `none`).
+- **`grid_plan`** stays its own node (`images` → `images`): it assigns a template and palette per tile so a 3, 6 or
+  9 set reads as one grid.
+
+What generalizing buys: a new format is a JSON template (the M lane becomes a data change with a test), and agents
+can write one-off layouts directly in a chain without new code.
+
 ## Rules
 
 - **Real pixels only.** Patterns, outlines and stickers are drawn, and photos are ours. Format C must be built
@@ -69,7 +111,15 @@ Each is a node with ports, params and flags, following DESIGN contracts 1–13.
   words on screen.
 - `grid_plan`: 9 inputs give 9 outputs. Row palettes follow the plan.
 
-## Order (if approved)
+## Order
+
+1. `compose` engine with `text` (+ the sticker preset), `pattern`, `shape`, `photo` (shapes, outlines, cutout) and
+   `band` layers, plus the `compose` node and the `sticker_frame` and `popart_cutout` templates.
+2. `sticker` layer kinds and the `brag_collage` template.
+3. `frame_video` with `meme_frame` + `word_captions` (one encode).
+4. `grid_plan`.
+
+The older ordering, kept for reference:
 
 1 sticker preset → 4 sticker → 3 pattern_bg → 2 shape_frame → 6 word_captions → 5 meme_frame → 7 grid_plan. The
 first four make formats B, C and D on photos. 5 and 6 make format A and are also the first real piece of the video

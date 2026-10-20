@@ -35,7 +35,9 @@ These hold everywhere; breaking one is a defect.
 8. **Money.** Each run has `cost_cap_usd` (default $1). Paid calls, Apify and remote LLM alike, are checked against
    the remaining budget **before** they're made, and are refused with `COST_CAP` when it's spent. Intent-compiler
    turns happen before a run exists, so they sit outside any cap; they are logged in `llm_call` against the intent.
-9. **Gates.** Publishing, deleting media and spending over the cap need a person (`--yes`, or a `resume --set`).
+9. **Gates.** Publishing, deleting media and spending over the cap need a person: `--yes` on the CLI, a `resume --set`,
+   or, over MCP, the client's tool-approval prompt (owner ruling 2026-10-20). MCP tools that publish say so in their
+   docstring and are called only when the user asked.
 10. **Keys** come from the process env or the repo `.env` (or `--env-file`). Subprocesses get `procenv.clean_env()`.
     No user-level config is read.
 11. **The GPU is shared.** GPU nodes declare `lane="cuda"`. People and agents hold `gpu-lock` for GPU work outside
@@ -92,7 +94,7 @@ These hold everywhere; breaking one is a defect.
 | Photo: filters | A parametric filter applies correct-first (`auto`), point ops with 8 colour ranges, effects, then skin undertone. `filter make` drafts, renders, measures, guards, reviews and saves. Reviewer calibration hides knobs the model can't see, unless the model is guessing. Usage logs set the default intensity | [photo-looks.md › Filters](production/photo-looks.md#filters-a-vibe-of-your-own-no-reference-needed) | built |
 | Photo: vibe | Look profile from references → per-photo grade along the ladder global → gentler → range → soft mask → mask. The first step that keeps skin readable wins. If none does, the least-bad step wins and is flagged unreadable | photo-looks.md, workers.md row `vibe` | built |
 | Photo: formats | `poster`, `carousel`, `mask_cutout` | workers.md | built |
-| Meme frame, sticker, pop-art formats | `meme_frame`, `word_captions`, sticker text preset, `sticker`, `pattern_bg`, `shape_frame`, `grid_plan` (from the 2026-10-20 references) | [formats spec](specs/2026-10-20-meme-and-popart-formats-design.md) | **proposed** |
+| Layouts (meme frame, sticker, pop-art, collage) | One `compose` engine: a canvas plus ordered layers (photo, cutout, pattern, shape, sticker, text, band). Each format is a named template of it. Plus `word_captions` and `grid_plan` | [formats spec](specs/2026-10-20-meme-and-popart-formats-design.md) | approved |
 | Audio | `audio_check` measures loudness, peak, range and speech-to-noise. `audio_clean` brings a clip to -14 LUFS and -1.5 dBTP, denoises, and can optionally isolate the voice | [photo-looks.md › Audio defaults](production/photo-looks.md#audio-defaults-why) | built |
 | Data stills (from vizkit) | See [Data stills](#data-stills-viz) below | this page | built |
 
@@ -164,7 +166,7 @@ Every known mismatch between this design and the code, with the verdict from [PR
 | D13 | scout §7 | A hard-failure reply goes back through the intent compiler: not built (needs the moeka/Telegram side) | approved, not built | later, with the director |
 | D14 | viz | WaveSim source not pinned | false finding: the Dockerfile already clones `Muxite/WaveSim` at `1d78d63` (vizkit's submodule pin, still upstream `master` on 2026-10-20). The audit missed the `ARG` | closed |
 | D15 | MCP tools | Fewer capabilities than their CLI twins: `audio` (isolate, music_db), `vibe` (set, guide_engine), `larp` (register), `node_run`/`chain_run` (no_cache). No MCP `filter show`/`filter calibrate` | code wrong (contract 4) | **fixed**: args added; new `filter_show` (cube written under `<home>/filters/cube/`) and `filter_calibrate` |
-| D16 | MCP `publish_muksite` | Publishes with no `yes`. The only gate is the MCP client's tool-approval prompt plus the docstring ("only when the user asked") | **owner decision**: is a client approval prompt "a human yes" (contract 9)? | open |
+| D16 | MCP `publish_muksite` | Publishes with no `yes`. The only gate is the MCP client's tool-approval prompt plus the docstring ("only when the user asked") | owner ruling 2026-10-20: the client's approval prompt is the human yes | **closed**: contract 9 amended |
 | D17 | text safe zones | watchouts.md said top 14% / bottom 20–25%; the code used top 12% / bottom 20% and nothing reserved the right-hand button strip | design wrong on evidence (phone screenshot 2026-10-20: header 7.5%, caption from 79% of the screen, buttons on the right 13% from 37–86%) | **fixed**: Stage 4 contract amended; `edit/text.py` bottom 76% plus the narrower wrap in the button strip |
 | D18 | worker health | workers.md promised node versions in the health report; the `worker` table has none, so a worker started before a code change runs old code | design wrong (detail), real risk | doc amended; restart workers after deploys; versions in health = M change later |
 | D19 | production docs | README, policies.md and production/README stated `render`/timeline as live | doc stale | amended: marked approved, not built |
