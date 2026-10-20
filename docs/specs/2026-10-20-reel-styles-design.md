@@ -47,12 +47,36 @@ few intermediate states (≤ 10 per animation).
 shape, outlines, `anim`. A **split** layout (c51) is a template with a top window for insets and the talking head
 below.
 
+**Amendments from the wave-2 alignment check (2026-10-20):**
+- The text background on layers is `bg_box: none | box | pill | paper` with `bg_colour`, `bg_pad_em` and
+  `bg_radius_em`, because `box` is a layer's geometry. `paper` on captions is the same ragged strip as in `text.py`.
+  A backing taller than its layer grows the layer image rather than clipping.
+- `anim` values are entrances. A layer's exit is a hard cut at `out_ms`. On the word-driven layers (`captions`,
+  `stack`, `list`), `t` clips their states and `anim` must be `none`, or the layout is refused.
+- `list` scrolls smoothly: `scroll_ms` (default 470) renders up to 8 intermediate offset states per entry. These are
+  the only states allowed between entry times.
+- The clip (`src: "clip"`, alias `"video"`) is the bottom of the stack. Every other layer, static or timed, draws
+  over it in list order. With no clip layer the clip fills the canvas (cover) and `canvas.bg` is unused. `shape`,
+  `rotate` and `outlines` on the clip layer are refused.
+- Insets are images from `images`. Clip insets need a second video input and come later.
+- A reel may have up to 1,500 overlay states. That's measured: about 0.03 s per state, with the encode dominating.
+
 ## 3. Pause trimming inside a take
 
 `compose_video` param `tighten: {min_pause_ms: 250, keep_ms: 80}`: pauses in the speech are cut out (from the word
 timings, else from `silencedetect`), inside the same filter graph (`trim`/`atrim` + `concat`), so there's still one
 encode. Every timed layer and caption is re-timed to the cut timeline. Off by default; on in the talking-head styles.
 The report lists the seconds removed.
+
+Amendments (wave-2 check):
+- Only pauses *between* words are cut. Leading and trailing silence are left alone.
+- Chunking and phrase gaps are decided on the source timeline, before cutting, and then mapped through the cuts.
+- Cut points snap to the video frame grid, and audio and video are cut together, so there's no A/V drift.
+- Trimmed audio is re-encoded (AAC). Untrimmed audio is copied.
+- `tighten` expects speech word timings (`speech_subs`). Without words, cuts come from a decode-only
+  `silencedetect` pass (`-vn`, not an encode), so the one-encode rule still holds. A clip with no audio is left
+  untrimmed and flagged.
+- Cuts never go past the clip's duration.
 
 ## 4. Fonts and typography
 
