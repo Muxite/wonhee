@@ -64,6 +64,7 @@ These hold everywhere; breaking one is a defect.
 | Library grab | `grab URL` stores a post (reel, photo, carousel) with metrics, media and analysis. Every item seen gets a metric snapshot | toolkit §1, scout R14 | built |
 | Teardown and inspire | Creator-blind teardown of each stored post (closed vocabularies), cached per post. `inspire` aggregates them into a report: what to build, what to shoot, a line bank, looks | [workers.md](production/workers.md) row `teardown` | built |
 | Shot search | `shots index` cuts footage into shots and embeds the keyframes (SigLIP2). `shots search` finds shots by description | workers.md row 6 | built |
+| GitHub slop machine | Endless feed of public repos, each turned into a credited 4:5 card set (`gh_pick` → `slop_script` → `slop_cards`); voice lines from an AI, facts from code; local infinite-scroll page; an agent skill writes scripts | [github slop spec](specs/2026-10-20-github-slop-design.md) | approved |
 
 ### Stage 2: plan
 
