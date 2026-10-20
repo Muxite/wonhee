@@ -59,6 +59,15 @@ Classify honestly and fix the expensive ones first.
 
 ## 3. The lifecycle, sized to the change
 
+Every change, of every size, goes in this order (owner rule 2026-10-20):
+
+1. **Design and docs first.** The design text (and the how-to doc it implies) is written and committed.
+2. **Code second.** It's built to that text, with tests written from it.
+3. **Alignment check.** A *different* agent (or person) from the one who built it reads the design section and the
+   diff, and lists every mismatch. Each is classified with §2 and resolved (fix the code, or amend the design with
+   the reason) before the change is committed as done. The result goes on the design row: `built (aligned
+   YYYY-MM-DD)`. Small changes get a short check of the one section they touch.
+
 Pick the smallest lane that fits. When in doubt, go one size up.
 
 **S: fix to match the design** (a bug, a crash, drift where the design already says what's right)
@@ -84,7 +93,7 @@ default)
 4. Build in waves along the M lane.
 5. Run the S lane on whatever the live run finds.
 
-**Done means:** the tests pass, the live check is recorded where one applies, the section says `built`, the drift
+**Done means:** the alignment check is clean (or every mismatch is resolved), the tests pass, the live check is recorded where one applies, the section says `built`, the drift
 register has no new open row for it, and the README describes how to use it.
 
 ## 4. Keeping it honest, quickly
