@@ -1,6 +1,9 @@
 # wonhee toolkit design
 
-Status: approved in chat 2026-10-15; R0 nodes/chains and R7 translation added 2026-10-15 (awaiting review) (sub-project 2, before the editor proper). Builds on the trend scout
+Status (2026-10-20): R0 and R7 built; R1 **superseded** by the timeline/`render` design (policies.md §2, measured
+2026-10-17); R2–R6 approved, not built. R0 as amended by [DESIGN.md](../DESIGN.md) contracts 1–4 (cache salt, `CACHED`
+flag, `images` type, dict chain form, warm-worker hand-off, `nodes_list(name)`). Where this spec and DESIGN.md
+disagree, DESIGN.md wins. Builds on the trend scout
 (`2026-10-15-trend-scout-design.md`) and reuses its store, provenance and pipeline machinery.
 
 ## 1. Goal
@@ -85,7 +88,7 @@ Proven by hand on reel DcSv-shxIDR (108 s Mandarin skit, 63 lines, $0.003); thes
 | node | in → out | params (defaults) | behaviour |
 |---|---|---|---|
 | `grab` | → `content`, `video` | `url`, `relation="external"`, `refetch=false` | wraps the library grab (scrape, download with the yt-dlp audio fallback) |
-| `speech_subs` | `video` → `subtitles` | — | GPU whisper; reuses the stored transcript when `media_analysis` already has one for the sha; no audio → empty lines, flag-free |
+| `speech_subs` | `video` → `subtitles` | — | GPU whisper; reuses the stored transcript when `media_analysis` already has one for the sha; no audio → empty lines and a `NO_TEXT` flag (amended 2026-10-20: a silent result must be explainable) |
 | `screen_text` | `video`, `context: subtitles?` → `subtitles` | `every_s=2.0`, `max_frames=90`, `dedupe_hamming=4` | sample a frame every `every_s` (cap `max_frames`, widen the step if over); skip frames within `dedupe_hamming` of the last *read* frame (extend its line instead); vision model reads text in batches of 8 frames; the context subtitles go in as a data block so names match the speech; identical consecutive text merges into one line |
 | `merge_subs` | `a: subtitles`, `b: subtitles` → `subtitles` | `prefer="a"` | union by time; a `b` line is dropped when contiguous text blocks shared with the `a` lines within ±`slack_ms` (2000) cover ≥ `cover` (0.8) of its normalised text. Only blocks of ≥ 3 characters count (≥ 2 when the `b` text has CJK), so scattered letters never match. A `b` line of ≥ `long_chars` (20) characters is compared against `a` lines within ±`long_slack_ms` (15000), for end cards that replay the last speech |
 | `translate` | `subs: subtitles`, `caption: content?` → `subs: subtitles`, `notes: text` | `to="en"`, `style="natural"` (or `literal`) | one English line per input line, same ids and timings; batches of 80 lines with the previous 10 as context; a glossary of names/terms from batch 1 is carried into later batches; missing ids → one retry for those ids, then `TRANSLATION_GAP` flag listing them; notes = gist + names/wordplay/cultural references |
@@ -105,7 +108,12 @@ Example: translate a foreign reel and burn English subtitles, unattended:
 The edit ops (R1) and `check` (R3) are registered as nodes with the same signatures (`video` → `video`, and
 `video` → `text` findings), so they chain with these.
 
-### R1 Edit ops (`wonhee/edit/ops.py`)
+### R1 Edit ops (`wonhee/edit/ops.py`) — superseded
+
+**Superseded 2026-10-20.** Ops that each re-encode cost 3–4× the time of one graph and lose quality (measured
+2026-10-17, `docs/production/benchmarks.md`). The same ops are now timeline transforms compiled by one `render`
+(policies.md §2, workers.md › Build next 1–2). The op list and defaults below remain the reference for those
+transforms.
 Each op is a pure function `op(src: Path, dst: Path, **params) -> OpReport` around ffmpeg, run with
 `clean_env()`. `OpReport(params_used: dict, notes: list[str])`.
 

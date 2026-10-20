@@ -3,18 +3,31 @@
 The README covers what wonhee is and how to use it. This page tells you where code lives, how to change it safely, and
 the house rules. Read this first, then follow the links for the part you are touching.
 
+## Design first
+
+wonhee is built to a written design, not documented after the fact:
+
+- [docs/VISION.md](docs/VISION.md): what it's for. Only the owner changes it.
+- [docs/DESIGN.md](docs/DESIGN.md): the contracts every area must meet, their status, and the drift register.
+- [docs/PROCESS.md](docs/PROCESS.md): the S / M / L lanes, and the rule for telling whether the code or the design is
+  wrong when they disagree.
+
+Before you change behaviour, find the DESIGN.md section that governs it. A bug fix that restores the design is
+S-lane: test, then code. New behaviour edits the design **first** (M), or gets a spec the owner approves (L). If you
+find drift you can't fix now, add a row to DESIGN.md › Drift.
+
 ## Map
 
 | Layer | Where | What it does |
 |---|---|---|
-| Entry points | `wonhee/cli.py`, `wonhee/mcp_server.py` | Thin. They parse args, open the DB, call `service`, and print. Every MCP tool has a CLI twin |
+| Entry points | `wonhee/cli.py`, `wonhee/mcp_server.py` | Thin. They parse args, open the DB, call `service`, and print. A user-facing action has both a CLI command and an MCP tool with the same capabilities (DESIGN contract 4) |
 | Service | `wonhee/service.py` | One function per user-facing action (`audio`, `vibe`, `shots_search`, `node_run`, `chain_run`, …). They return text |
 | Nodes | `wonhee/nodes/*.py`, registered in `nodes/registry.MODULES` | Typed steps: `Node(name, version, inputs, outputs, params, fn, doc, salt=, lane=)`. Chains wire them together. Results are cached by (node, version, inputs, params, salt) |
 | Engines | `wonhee/edit/` (pixels, audio; `edit/viz/` draws pictures from data), `wonhee/analyze/` (speech, shots, embeddings), `wonhee/muksite.py` (portfolio upload) | Plain functions on files and arrays. They know nothing about the DB |
 | Store | `wonhee/db/` (`migrations/NNNN_*.sql`, `repo/`, `queries.py`) | SQLite in WAL mode. Blobs are content-addressed under `data/media/` |
 | Warm workers | `wonhee/worker.py` | Long-lived process per lane. It keeps models loaded and runs detached chains from the `job` table |
 | Profiler | `gauge/` (+ `profiling/`) | Runs any job in a container and measures CPU, RAM, VRAM and the GPU trace. See `docs/profiling/GUIDE.md` |
-| Docs | `docs/production/` (rules, numbers), `docs/profiling/` (gauge, dataset), `docs/specs`, `docs/plans` | Every number in them was measured on this box |
+| Docs | `docs/VISION.md`, `docs/DESIGN.md`, `docs/PROCESS.md` (what and why, outranks code); `docs/specs` (area designs); `docs/production/` (rules, numbers); `docs/profiling/`; `docs/plans` (disposable build plans) | Every number in them was measured on this box |
 
 ## Commands
 
@@ -29,6 +42,7 @@ uv run gauge doctor                 # profiler prerequisites (add --mps for the 
 
 ## Adding a node (checklist)
 
+0. Write its row (contract, ports, flags, status `approved`) in DESIGN.md, or in the area spec it links. Tests come from that text.
 1. Write the engine function in `edit/` or `analyze/`, with no DB access, so it is easy to test.
 2. Write the node in `nodes/<area>.py`:
    - It takes a params model with `extra="forbid"`.
@@ -45,7 +59,7 @@ uv run gauge doctor                 # profiler prerequisites (add --mps for the 
    - Use the `conn`, `settings` and `tiny_video` fixtures (`tests/conftest.py`).
    - Use fakes from `tests/fakes.py`. Monkeypatch model modules (see `tests/test_shots.py`).
    - Anything that needs real CUDA gets `@pytest.mark.gpu`.
-8. Update the README or `docs/production/` if behaviour or a rule changed.
+8. Set the design row to `built`, then update the README or `docs/production/` with how to use it.
 
 ## The GPU is shared: take the lock
 
@@ -78,6 +92,7 @@ Other agent sessions on this machine run timed GPU sweeps. Any GPU use counts, e
 |---|---|
 | know what a run did, or why it failed | `wonhee show run <id>` / `wonhee chain show <id>`, then README › Debugging |
 | decide what runs where, or how many at once | `docs/production/policies.md` |
-| pick the next thing to build | `docs/production/workers.md` › Build next |
+| pick the next thing to build | `docs/VISION.md` › Where it's going, then `docs/DESIGN.md` (rows `approved, not built`) and `docs/production/workers.md` › Build next |
+| decide whether the code or the design is wrong | `docs/PROCESS.md` §2 |
 | profile something | `docs/profiling/GUIDE.md`; experiments in `profiling/sweeps/x/` (run order: `profiling/sweeps/x/round2.sh`) |
 | understand the GPU numbers | `docs/profiling/DATA_CARD.md`, `profiling/report/shared-gpu-node.html` |

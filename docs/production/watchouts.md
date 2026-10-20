@@ -13,12 +13,12 @@ Things that silently cost time or quality. **Seen** marks ones observed in this 
 
 ## Picture
 - **Colour emoji in libass** (seen, tested): rendered as monochrome outline glyphs. Pillow with Noto Color Emoji renders them correctly. Overlay PNG text layers.
-- **Script fonts aren't installed.** The reference style needs one. Bundle OFL fonts (for example Dancing Script, Pacifico) in the worker image, and never depend on host fonts.
+- **Script fonts aren't installed.** The reference style needs one. Bundle OFL fonts (for example Dancing Script, Pacifico) in the worker image. Done for sans, script and mono (`wonhee/assets/fonts`); colour emoji, CJK and the date-stamp font still come from host packages (`fonts-noto-color-emoji`, `fonts-noto-cjk`, DejaVu), and `wonhee doctor` warns when they are missing.
 - **Phone HDR** (iPhone HLG / Dolby Vision, 10-bit). Encoding straight to 8-bit yuv420p washes colours out. Detect `color_transfer=arib-std-b67|smpte2084` at ingest and tone-map once (`zscale` + `tonemap`, or libplacebo).
 - **Rotation metadata.** Phone clips often store landscape pixels with a rotate tag. ffmpeg auto-rotates on decode, but probe-reported width/height may be swapped. Normalise at ingest.
 - **VFR phone footage.** Variable frame rate drifts against audio after cuts. Set CFR at render (`fps=30`), not in a separate pass.
 - **Generation loss.** Each lossy pass costs SSIM: 0.9948 after 3 x264 passes vs 0.9964 after one. Instagram re-encodes on upload as well, so give it one clean, high-quality encode.
-- **Safe zones.** Instagram's UI covers roughly the top 14% and bottom 20–25% of a 9:16 reel, plus a right-side strip for buttons. Keep text inside the middle band. The reference reel centres it.
+- **Safe zones.** Instagram's UI covers roughly the top 14% and bottom 20–25% of a 9:16 reel, plus a right-side strip for buttons. Keep text inside the middle band. The reference reel centres it. (The code uses top 12% / bottom 20%, `edit/text.py`; which is right is open, drift D17.)
 - **NVENC files are bigger** (measured: 1.8× x264 at equal quality). Fine for uploads, since Instagram re-encodes. Use x264 when archiving or when size matters.
 
 ## Audio

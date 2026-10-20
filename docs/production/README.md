@@ -22,6 +22,8 @@ Written 2026-10-17. Every number here was measured on this box (Ryzen 7 3700X, 1
 
 ## The rules on one screen
 
+Rules 1, 5 and the `render` half of 2 are the approved target; `render`, `timeline` and `proxy` aren't built yet (see [DESIGN.md](../DESIGN.md) › Stage 4).
+
 1. **Touch pixels once.** Edit nodes produce a timeline, not a video. Only `render` encodes. A chain should have one final encode, plus at most one preview encode. Three chained re-encodes cost **3–4× the time and CPU** of one filter graph, and lose quality.
 2. **Pick the encoder by lane.** NVENC for previews and most finals (**2.8× faster** than x264 medium, same SSIM, about 1.8× the file size). x264 when file size matters.
 3. **Batch by lane, not by item.** x264 already uses all 16 threads, so run **one** CPU encode at a time. NVENC scales to **about 4** at once (4 × 60 s in 11 s), then flattens.

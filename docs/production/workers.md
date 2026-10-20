@@ -5,6 +5,11 @@ Model-backed workers stay up with the model loaded. Pure-ffmpeg workers can be o
 
 ## Already built (wonhee nodes)
 
+The Lane column is the **policy lane** (§3 of policies.md: what the work loads). A node's `lane=` attribute in code
+is narrower: it routes the node to a warm worker. Any node that *may* load a GPU model has `lane="cuda"` (for
+example `vibe_image` for SAM masks, `audio_clean` for Demucs isolation, `viz_wavegen`), even when most calls stay on
+the CPU. Contracts for each node are in [DESIGN.md](../DESIGN.md); this table is the how-to and the numbers.
+
 | Node | Lane | Notes |
 |---|---|---|
 | `grab` | net | Apify post data + yt-dlp video; paid, under the cost cap |
@@ -26,6 +31,11 @@ Model-backed workers stay up with the model loaded. Pure-ffmpeg workers can be o
 | `filter_image`, `filter_draft`, `filter_review` + `wonhee filter` | cpu-light (+ local or remote model) | filters that give a vibe without copying anyone (`wonhee/edit/filters.py`): exposure, S-curve contrast, shadows / highlights, fade, roll-off, temperature / tint, saturation / vibrance, greens / blues, mono, split toning by named hue, skin protection (a colour-range rule, not a mask), clarity, sharpen, glow, bloom, halation, light leak, chromatic aberration, vignette, grain. 13-filter pack (`wonhee filter list`), ~0.1-0.2 s a photo. `wonhee filter make "<vibe>" --name N --on <photos>`: the model picks a pack base + a few word moves ("temperature down, a lot"), code renders and measures (clipping, crushed shadows, skin drift; plain-word verdicts, because small models misread numbers), a guard fixes blown / crushed results, a vision review moves up to 4 knobs a round, best round saved to `data/filters/<name>.json` (5 previous versions kept). `--from` tweaks a saved filter (goal = original vibe + change). `filter show --cube` exports the colour part as a .cube LUT (ffmpeg `lut3d`, CapCut, VN, Resolve). Local gemma4:e4b, $0, ~20 s for 3 rounds on 2 photos |
 | `audio_check`, `audio_clean` + `wonhee audio` | cpu | loudness (LUFS), true peak, range, speech-to-noise, with verdicts; clean = rumble cut, RNNoise (`arnndn`, model fetched once; `DENOISE_FALLBACK` to `afftdn` offline) + residual FFT denoise, optional gate / de-ess, compression, two-pass `loudnorm` to -14 LUFS / -1.5 dBTP + limiter; video stream copied. `isolate=true` (GPU, Demucs htdemucs, MIT) first splits the voice from music / street / room and `music_db` puts the bed back underneath. Measured: 44 s clip in ~12 s; hissy test clip 18 → 42 dB speech-to-noise; music + rumble test clip 7 → 30 dB (RNNoise) vs 51 dB (isolate), 13.6 s warm |
 | `wonhee inspire` looks section | cpu-light | groups saved posts by measured look (photos or keyframes) and prints the `wonhee vibe --like content:...` command for each group |
+| `filter_identify` + `wonhee filter calibrate` | llm (local vision) | calibration probe: one knob moved on one photo, the model names it; per-knob seen rates in `data/filters/_calibration.json` (see photo-looks.md › Calibrate the reviewer). Measured 2026-10-19: gemma4:e4b answered "temperature" 54 of 63 times, so it was flagged guessing and nothing was hidden |
+| `shot_index` + `wonhee shots index / search` | cuda | shots + SigLIP2 keyframe vectors and tags; search by description across everything indexed |
+| `mask_cutout` | cuda (ONNX fallback on CPU) | keep the subject (person or object), background transparent, flat or blurred |
+| `viz_depgraph`, `viz_diskviz`, `viz_history`, `viz_wavegen` + `wonhee viz` | cpu-light (Chromium export); wavegen cuda + docker | stills from data (absorbed vizkit 2026-10-19); contracts in DESIGN.md › Data stills |
+| `publish_muksite` + `wonhee publish muksite` | net | uploads a light/dark pair to muksite Storage; `--yes` required (public), `--overwrite` to replace |
 
 ## On this machine, ready to wrap
 
@@ -53,12 +63,12 @@ Model-backed workers stay up with the model loaded. Pure-ffmpeg workers can be o
 |---|---|---|---|---|---|
 | 1 | **render** | nvenc (x264 option) | `timeline` → `video` (+ preview, thumbnail from one decode via `split`) | ffmpeg `-filter_complex_script` | Replaces chains of re-encodes: about 3× less wall time with x264, 8–11× with NVENC (60 s clip) |
 | 2 | **timeline ops**: `cut`, `trim`, `speed`, `grade`, `reframe_9x16`, `text`, `audio` | none (data) | `timeline` → `timeline` | the spec's R1 ops, rewritten as transforms | Agents compose edits for free and validate them before any pixels move |
-| 3 | **text_layers** | cpu-light | `timeline` → PNG layers | `slopcut/text.py` + Noto Color Emoji + bundled OFL script fonts | Emoji-correct overlays in the reference style; libass can't do colour emoji |
+| 3 | **text_layers** (partial: `text_image`/`text_video` already draw Pillow layers; no timeline output yet) | cpu-light | `timeline` → PNG layers | `slopcut/text.py` + Noto Color Emoji + bundled OFL script fonts | Emoji-correct overlays in the reference style; libass can't do colour emoji |
 | 4 | **proxy** | nvenc | `video` → 360p, 2–5 fps `video` + keyframes | ffmpeg CUVID decode + `scale_cuda` | Every analysis node reads a small file; full decode happens once |
 | 5 | ~~warm whisper~~ **done 2026-10-19** as the general warm worker (`wonhee worker serve`, see below) | cuda | any `lane="cuda"` node | `wonhee/worker.py` | Removes the per-call model load. Still to do: a music gate (watchouts §Audio) |
 | 6 | ~~shot_index~~ **done 2026-10-19** (`wonhee shots index / search`) | cuda | `video` → per-shot SigLIP2 vectors + tags | `nodes/shots.py` | Reads the full video today; switch its input to the proxy (#4) once that exists |
 | 7 | **local_vision** | llm | keyframes → descriptions, on-screen text | gemma3:12b or ministral-3:14b via Ollama, batched per reel | Removes the paid vision call from `screen_text`; batches all of a reel's keyframes in one request |
-| 8 | **check** | cpu-light | `video` → findings | spec R3 + a safe-zone check on text boxes | Catches the expensive mistakes (black frames, loudness, letterboxing) before a human looks |
+| 8 | **check** (partial: `audio_check` only) | cpu-light | `video` → findings | spec R3 + a safe-zone check on text boxes | Catches the expensive mistakes (black frames, loudness, letterboxing) before a human looks |
 | 9 | **caption_writer** | llm | plan + style → caption, hashtags | spec R6 style memory | One call per reel; uses the voice style |
 | 10 | **reframe_track** | cuda | 16:9 `video` → crop path for the timeline | OWLv2 / Grounding-DINO boxes, smoothed; viv for long clips | Turns landscape footage into 9:16 that follows the subject, without hand keyframing |
 | later | stems (demucs), upscale (Real-ESRGAN), frame interpolation (RIFE) | cuda | | not installed | Slow, and seldom needed for phone footage. Measure before adopting |
@@ -70,7 +80,7 @@ Built 2026-10-19 as `wonhee/worker.py` (one process per lane, SQLite `job` and `
 - One image per lane family, built from `profiling/images/…`. Models mount read-only from the host caches (`~/.cache/huggingface`, the Ollama volume). The CUDA JIT cache is a shared volume (`gauge-cuda-cache` at `/root/.nv`), or each fresh container spends about 60 s compiling.
 - The worker loads its model once, then loops: claim job → run node fn → write blobs to the media store → write the result row → next.
 - Jobs come from wonhee's SQLite (a `job` table: chain step, lane, node, cache key, status, attempts, timeout). Claim with an atomic `UPDATE … WHERE status='queued' … RETURNING`. No extra broker is needed on one box.
-- Health: a worker reports `lane`, `node versions`, `model`, `loaded_at` and `jobs_done`. The scheduler stops sending work to a worker that misses its heartbeat.
+- Health: a worker reports `lane`, its preloaded `models`, `started_at`, `loaded_at`, the heartbeat, `jobs_done` and `current_job` (`wonhee worker status`). It does not report node versions yet: a worker started before a code change runs the old code until restarted (drift D18). The scheduler stops sending work to a worker that misses its heartbeat.
 - Profile every worker once with `wonhee profile run …` alone and next to its usual neighbour before setting its lane limit.
 
 ### Running the cuda worker as a user service
@@ -91,7 +101,8 @@ TimeoutStopSec=120
 WantedBy=default.target
 ```
 
-Then run `systemctl --user enable --now wonhee-worker`. Choose `--preload` from X9, the resident VRAM budget in `docs/profiling/DATA_CARD.md`.
+Then run `systemctl --user enable --now wonhee-worker`. `--preload` takes any of `whisper`, `mask`, `separate` (Demucs) and `embed` (SigLIP2); check their combined resident
+VRAM in `docs/profiling/DATA_CARD.md` before preloading more than two.
 SIGTERM lets the current job finish. A worker killed mid-job is noticed after 60 s without a heartbeat, and its job is requeued.
 The worker does not hold the machine's gpu-lock, because it would hold it forever. Stop it before timed sweeps that need a quiet GPU.
 

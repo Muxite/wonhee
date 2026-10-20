@@ -1,6 +1,7 @@
 # wonhee — trend scout (sub-project 1) — design
 
-Status: approved · 2026-10-15
+Status: approved · 2026-10-15 · built. Amended 2026-10-20 to match later rulings (drift D5–D7 in [DESIGN.md](../DESIGN.md#drift)).
+Where this spec and DESIGN.md disagree, DESIGN.md wins.
 
 wonhee is the flagship for influencer-side automation: trend scouting, editing,
 skit props, and an agent that ties them together. This spec covers only the
@@ -30,7 +31,7 @@ The former `wonhee` (job-application form filler) moved out to its own repo,
 
 ```
 wonhee/
-  moeka/                 git submodule — LLM access (nanobot.api.complete), web search, Telegram agent
+  (moeka)                pinned pip dependency (ruling 2026-10-15, project-scoped keys) — LLM access in-process
   creator.yaml           what you can film: on_camera, locations, props, niches, language
   wonhee/
     db/                  connection, migration runner, repository (the ONLY write path)
@@ -39,7 +40,7 @@ wonhee/
     intent/              intent schemas + clarify loop (reused by later tools)
     pipeline/            stage registry, fixed orchestrator, resume
     scout/stages/        one module per stage
-    sources/             apify.py, websearch.py (via moeka), fetch.py (yt-dlp)
+    sources/             apify.py, websearch.py (direct Brave client), fetch.py (direct GET, yt-dlp fallback)
     analyze/             scenes.py (PySceneDetect), speech.py (faster-whisper),
                          frames.py (ffmpeg), phash.py (imagehash)
     llm.py               the ONLY module that calls a model
@@ -75,7 +76,8 @@ Required:
 - **R2** Loop: model extracts fields → deterministic gap check → all gaps asked in
   ONE message as numbered multiple choice with a recommended default → repeat
   until no gaps.
-- **R3** Always end with a one-line confirmation; nothing runs before "go".
+- **R3** Always end with a one-line confirmation; nothing runs before "go". "go" accepts every proposed default;
+  a gap with no sensible default (the niche) must be answered first (amended 2026-10-20).
   "go" accepts all proposed defaults.
 - **R4** Gap rules are written per field (missing / ambiguous / contradicts
   `creator.yaml`). The compiler may only ask about fields that have a firing rule.
@@ -86,7 +88,8 @@ Optimizations (later): learn habitual answers and stop asking; "just go" mode.
 
 ## 5. Stages
 
-Uniform contract: `run(ctx) -> StageResult`. A stage reads prior results from the
+Uniform contract: `run(ctx) -> "ok" | "weak"`; a hard failure raises `StageFailed(code, detail)` (amended
+2026-10-20; the same information as the original `StageResult`). A stage reads prior results from the
 DB, writes its outputs to tables through the repository, records raw payloads
 as `step_artifact` blobs, and returns `status` (ok | weak | failed) plus
 `step_flag` codes.
@@ -257,7 +260,7 @@ Run cost is derived (sum of `step.cost_usd`), not stored.
 
 ## 10. Defaults to confirm during planning
 
-- Web search: moeka's existing provider (Brave / Tavily / SearXNG).
+- Web search: a direct Brave client (`sources/websearch.py`), key from the project env (amended 2026-10-20).
 - Apify actors: Instagram hashtag, reel, and audio scrapers — exact actors and
   their date-filter behaviour verified in the plan's first task.
 - Reference reels per trend: 5. Cost cap per run: $1.

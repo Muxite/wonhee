@@ -1,20 +1,15 @@
 # wonhee
 
-The flagship for influencer-side automation: find what is trending in a niche
-(now, or 6 months to 2 years back for throwbacks), turn it into a shot list you
-can just film, edit raw recordings the way most of the platform currently does,
-and build small disposable prop projects for skits.
+A content creation pipeline for one creator and the agents working for them: find what is working in the niche,
+plan the post and the footage, guide the shoot, make the post (video, photo, audio, and stills drawn from data),
+check it, and deliver it. It supersedes vizkit (absorbed 2026-10-19).
 
-wonhee is agent-centric (moeka drives it over Telegram) but the work runs as a
-fixed pipeline over a relational store, so every output traces back to the run,
-step, and source content that produced it.
+wonhee is agent-centric (moeka over Telegram, Claude over MCP) but the work runs as typed nodes over a relational
+store, so every output traces back to the run, step, and source content that produced it.
 
-Sub-projects, in build order:
-
-1. **Trend scout**: [design](docs/specs/2026-10-15-trend-scout-design.md)
-2. Editor
-3. Prop builder
-4. Director / idea inbox
+**Design first.** [docs/VISION.md](docs/VISION.md) says what wonhee is for, [docs/DESIGN.md](docs/DESIGN.md) says
+what each part must do (with status and known drift), and [docs/PROCESS.md](docs/PROCESS.md) says how a change goes
+from design to code, and how to tell whether the code or the design is wrong when they disagree.
 
 The job-application form filler that used to live here is now `../awork-fill`.
 
@@ -63,8 +58,8 @@ spend is capped per call by the run's remaining budget, and each actor run
 waits at most 10 minutes before being aborted.
 
 ## Known limitations
-- LLM cost uses the provider-reported cost when moeka exposes one, else `WONHEE_LLM_PRICE_*`;
-  `wonhee doctor` warns when prices are unset.
+- LLM cost uses the provider-reported cost when moeka exposes one, else `WONHEE_LLM_PRICE_IN_PER_MTOK` /
+  `WONHEE_LLM_PRICE_OUT_PER_MTOK` (defaults 0.25 / 0.75); `wonhee doctor` warns when one is set to 0.
 - Whisper runs on CUDA by default. To use CPU on purpose, set
   `WONHEE_WHISPER_DEVICE=cpu` and `WONHEE_WHISPER_COMPUTE_TYPE=int8`.
 - A run left `running` after a hard kill is not picked up automatically, and
@@ -134,11 +129,11 @@ Data goes to `data/gauge/` (gitignored).
 
 ## Producing reels fast
 
-`docs/production/` has the rules for agent-planned video DAGs. Edit nodes write a timeline and one `render` encodes it. It also covers lanes and concurrency limits, which workers to build next from what's already on this machine, and the pitfalls found so far. All numbers are measured.
+`docs/production/` has the rules for agent-planned video DAGs. The target design is that edit nodes write a timeline and one `render` encodes it (approved, not built yet: see DESIGN.md › Stage 4). It also covers lanes and concurrency limits, which workers to build next from what's already on this machine, and the pitfalls found so far. All numbers are measured.
 
 Photos and audio, all on the box except the optional shooting guide:
 
-- `wonhee filter list | apply <name> <photos...> | make "<a vibe>" --name <name> --on <photos...> [--from <filter>] | show <name> --cube out.cube`: filters that give a vibe without copying anyone: a 13-filter pack, or a filter a local model drafts and tunes on your photos and saves for later; exports as a .cube LUT for phone and video editors.
+- `wonhee filter list | apply <name> <photos...> | make "<a vibe>" --name <name> --on <photos...> [--from <filter>] | show <name> --cube out.cube | calibrate --on <photos...>`: filters that give a vibe without copying anyone: a 13-filter pack, or a filter a local model drafts and tunes on your photos and saves for later; exports as a .cube LUT for phone and video editors.
 - `wonhee vibe <photos...> --like <ref folder | content:id> --name <look>`: learn a look from references, get a shooting guide, and edit your photos toward it (measured grade, subject mask, lens effects; no image generation). See `docs/production/photo-looks.md`.
 - `wonhee audio <clip> [--preset voice|mixed|music] [--check] [--isolate [--music-db -15]]`: denoise, tame peaks, -14 LUFS; `--isolate` splits voice from music/noise on the GPU.
 - GPU extras (SAM masks from a text prompt, Demucs voice isolation, shot search): `uv sync --group gpu`.

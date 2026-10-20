@@ -1,5 +1,7 @@
 # Policies: planning and running video DAGs
 
+Status: approved design. §1–2 (timeline, `render`, the one-encode validator) and the per-node timeout in §6 are **not built yet**; until they are, the encoding nodes (`look`, `text_video`, `burn_subtitles`) each encode once and chains should keep them to one per output. See [DESIGN.md](../DESIGN.md).
+
 These apply to any agent (or person) that writes a chain for wonhee's node runner (`wonhee chain run`, MCP `chain_run`).
 They extend the existing contracts: typed ports, content-hash cache, cost cap. See `docs/specs/2026-10-15-toolkit-design.md`.
 
