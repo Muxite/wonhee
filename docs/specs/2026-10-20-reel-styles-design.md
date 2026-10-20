@@ -112,7 +112,11 @@ as a still (`compose` with template `lecture_card`) for carousels.
 
 The writing side (deadpan theses about a mundane act) is a new `larp` register, `lecture`, in the existing `larp`
 node; its output fills the slots. Rule: the form is formal, the subject is trivial, and nothing claims a real
-credential, publication or institution (VISION: no faking real events).
+credential, publication or institution (VISION: no faking real events). Built 2026-10-20 (aligned): the register runs only when asked for
+(`--register lecture`) and writes `lecture: {title, subtitle, abstract, theses[2-5], footnotes[0-3], citation}`
+into larp's JSON. The citation must be `(Muk[ et al.], YYYY)`. A code check refuses institutions, credentials,
+publication identifiers and non-Muk author citations, with one retry. A bare real name outside citation form isn't
+caught. Footnote markers are anchored to caption words on the compose side.
 
 ## 8. Fixes found during the study
 
