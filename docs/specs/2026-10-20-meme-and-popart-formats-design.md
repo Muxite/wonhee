@@ -89,6 +89,25 @@ Layer kinds (each has box: {x, y, w, h} as fractions of the canvas, rotate (deg)
 - **`grid_plan`** stays its own node (`images` → `images`): it assigns a template and palette per tile so a 3, 6 or
   9 set reads as one grid.
 
+**Amendments from the alignment check (2026-10-20):**
+- A layer's discriminator is `type` (`photo`, `pattern`, `shape`, `sticker`, `text`, `band`); `kind` is its
+  sub-kind (`heart`, `halftone`, `bubble`, …). A `photo` with `src: "clip"` is the video window: it punches a
+  transparent hole that `frame_video` fills with the clip.
+- **Cache:** the salt of `compose`, `frame_video` and `grid_plan` includes a digest of the shipped templates, so
+  editing a template is a cache miss. A change to `compose.py` or the sticker text path bumps the node versions.
+- **No copying:** shipped template defaults must not reuse a saved reference's text. Sticker and text content can be
+  checked against an optional `refs: text?` input (the `ideate` copy check); a copied line is dropped and flagged
+  `IDEA_COPY`.
+- **Safe zones** for layout layers are the same rule as `edit/text.py`: on tall canvases, text and sticker layers
+  reaching the button strip are narrowed to the centred 72%, and the check uses the rotated extent.
+- **`focus: subject`** is opt-in (it runs the mask model) and keeps the subject box inside the shape. With no
+  subject found it falls back to the centre and flags `FOCUS_NO_SUBJECT`. The default is `center`.
+- **`grid_plan`:** tiles come out in reading order (row by row); post them in reverse. `split` needs a full-bleed
+  `rect` template without cutout, and is refused otherwise.
+- **Bands** are a colour (`black`, `white` or any). A blurred band is deferred.
+- Caption timing estimated from line times is flagged `WORDS_ESTIMATED` (the reel-styles name). Overlays switch with
+  `gte(t,a)*lt(t,b)`, so two caption groups never share a frame.
+
 What generalizing buys: a new format is a JSON template (the M lane becomes a data change with a test), and agents
 can write one-off layouts directly in a chain without new code.
 
