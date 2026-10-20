@@ -1,0 +1,25 @@
+{
+  "doc": "Format B: the photo cropped to a shape with 3 offset outlines on a flat background, plus a speech-bubble sticker with slanted two-stroke text.",
+  "slots": {
+    "text": {"default": "OOPS, MY BAD!", "doc": "the speech-bubble line"},
+    "photo": {"default": 0, "doc": "input index of the picture"},
+    "shape": {"default": "heart", "doc": "heart | circle | rounded | star | burst"},
+    "palette": {"default": "lilac", "doc": "named palette (popart-yellow, popart-pink, lilac, mint, tangerine, ink) or a list of colours"},
+    "bg": {"default": "#ffffff", "doc": "background colour"},
+    "focus": {"default": "center", "doc": "'subject' keeps the cutout engine's subject box inside the shape (runs the mask model)"}
+  },
+  "layout": {
+    "canvas": {"w": 1080, "h": 1350, "bg": "slot:bg"},
+    "palette": "slot:palette",
+    "layers": [
+      {"type": "photo", "src": "slot:photo", "shape": "slot:shape", "focus": "slot:focus",
+       "box": {"x": 0.03, "y": 0.1, "w": 0.94, "h": 0.86},
+       "outlines": [{"width_frac": 0.018, "colour": "pal:1"}, {"width_frac": 0.016, "colour": "pal:0"},
+                    {"width_frac": 0.014, "colour": "pal:3"}]},
+      {"type": "sticker", "kind": "bubble", "content": "slot:text", "slant": 8, "rotate": -5,
+       "colours": ["pal:1", "pal:2", "pal:0"],
+       "fill": {"kind": "halftone", "colours": ["pal:1", "pal:2"], "density": 0.55, "angle": 45},
+       "tail": {"x": 0.7, "y": 1.0}, "box": {"x": 0.02, "y": 0.0, "w": 0.6, "h": 0.28}}
+    ]
+  }
+}

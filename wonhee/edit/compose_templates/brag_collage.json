@@ -1,0 +1,32 @@
+{
+  "doc": "Format C: a real photo (desk, PC, props) piled with stickers: a headline, a badge, a checklist, a price/claim burst, a sticky note and a label. Photos are the creator's own.",
+  "slots": {
+    "photo": {"default": 0, "doc": "input index of the base photo"},
+    "headline": {"default": "MADE AT HOME", "doc": "big sticker headline"},
+    "badge": {"default": "100% LOCAL", "doc": "round badge text"},
+    "checklist": {"default": ["own GPU", "no cloud bill", "it compiles"], "doc": "checklist rows"},
+    "burst": {"default": "$0/mo", "doc": "starburst claim"},
+    "note": {"default": "ship it before it breaks", "doc": "sticky note text"},
+    "label": {"default": "built at home", "doc": "label text"},
+    "palette": {"default": "popart-yellow", "doc": "named palette or a list of colours"}
+  },
+  "layout": {
+    "canvas": {"w": 1080, "h": 1350, "bg": "pal:2"},
+    "palette": "slot:palette",
+    "layers": [
+      {"type": "photo", "src": "slot:photo", "fit": "cover", "box": {"x": 0, "y": 0, "w": 1, "h": 1}},
+      {"type": "band", "side": "top", "h_frac": 0.2, "colour": "pal:2", "opacity": 0.55},
+      {"type": "text", "content": "slot:headline", "preset": "sticker", "slant": 8, "size_frac": 0.07,
+       "stroke": ["pal:2", "pal:1"], "colour": "pal:0", "rotate": -3, "box": {"x": 0.04, "y": 0.03, "w": 0.92, "h": 0.15}},
+      {"type": "sticker", "kind": "badge", "content": "slot:badge", "rotate": 10, "colours": ["pal:1", "pal:2", "pal:0"],
+       "box": {"x": 0.7, "y": 0.2, "w": 0.26, "h": 0.2}},
+      {"type": "sticker", "kind": "checklist", "items": "slot:checklist", "rotate": -4, "colours": ["#ffffff", "pal:2", "pal:1"],
+       "box": {"x": 0.05, "y": 0.34, "w": 0.46, "h": 0.2}},
+      {"type": "sticker", "kind": "burst", "content": "slot:burst", "rotate": 8, "colours": ["pal:1", "pal:2", "pal:0"],
+       "slant": 6, "box": {"x": 0.58, "y": 0.58, "w": 0.4, "h": 0.28}},
+      {"type": "sticker", "kind": "note", "content": "slot:note", "rotate": -7, "box": {"x": 0.05, "y": 0.66, "w": 0.34, "h": 0.17}},
+      {"type": "sticker", "kind": "label", "content": "slot:label", "rotate": 3, "colours": ["pal:0", "pal:2"],
+       "box": {"x": 0.3, "y": 0.9, "w": 0.4, "h": 0.065}}
+    ]
+  }
+}

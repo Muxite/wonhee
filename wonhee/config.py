@@ -12,6 +12,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Project-scoped API keys. Entry points load them from .env; the detached child inherits these.
 KEY_NAMES = ("OPENROUTER_API_KEY", "BRAVE_API_KEY", "APIFY_API_KEY")
 # Only publish_muksite needs these (muksite's Supabase Storage); doctor reports them as warnings, not failures.
+# Optional keys: a feature works without them (doctor reports info, detached runs still receive them).
+OPTIONAL_KEY_NAMES = ("GITHUB_TOKEN",)
 PUBLISH_KEY_NAMES = ("SUPABASE_URL", "SUPABASE_SERVICE_KEY")
 
 

@@ -96,3 +96,4 @@ Other agent sessions on this machine run timed GPU sweeps. Any GPU use counts, e
 | decide whether the code or the design is wrong | `docs/PROCESS.md` §2 |
 | profile something | `docs/profiling/GUIDE.md`; experiments in `profiling/sweeps/x/` (run order: `profiling/sweeps/x/round2.sh`) |
 | understand the GPU numbers | `docs/profiling/DATA_CARD.md`, `profiling/report/shared-gpu-node.html` |
+| make GitHub slop (repo card sets) as an agent | `.claude/skills/github-slop/SKILL.md` (steps: `wonhee slop pick`, write `script.json`, `wonhee slop render`) |

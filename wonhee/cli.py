@@ -276,6 +276,27 @@ def _cmd_viz(a, settings) -> int:
     return 0 if out_dir else 1
 
 
+def _cmd_slop(a, settings) -> int:
+    conn, deps = _open(settings), build_deps(settings)
+    if a.sub == "next":
+        ok, text = service.slop_next(conn, settings, deps, a.n, a.engine, a.loop, progress=_progress)
+    elif a.sub == "pick":
+        ok, text = service.slop_pick(conn, settings, deps, a.repo)
+    elif a.sub == "render":
+        ok, text = service.slop_render(conn, settings, deps, a.dossier, Path(a.script).read_text(encoding="utf-8"),
+                                       progress=_progress)
+    else:  # feed / serve
+        server = service.slop_serve(settings, a.port)
+        print(f"feed: http://127.0.0.1:{a.port}/  (ctrl-c to stop)")
+        try:
+            server.serve_forever()
+        finally:
+            server.server_close()
+        return 0
+    print(text)
+    return 0 if ok else 1
+
+
 def _cmd_publish(a, settings) -> int:
     if not a.yes:
         print(f"This uploads to muksite's public image storage as projects/{a.slug}/{a.name}. Add --yes to go ahead.")
@@ -392,6 +413,21 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--register", action="append", metavar="NAME",
                    help="ask for specific registers (repeatable), e.g. linkedin_announcement, earnings_call")
     s.set_defaults(fn=_cmd_larp)
+    s = sub.add_parser("slop", help="GitHub slop machine: public repos as scrollable 4:5 card sets")
+    sl = s.add_subparsers(dest="sub", required=True)
+    n = sl.add_parser("next", help="pick, script and render N repos")
+    n.add_argument("-n", type=int, default=5)
+    n.add_argument("--engine", choices=["local", "remote"], default="local", help="who writes the voice lines")
+    n.add_argument("--loop", action="store_true", help="keep going forever, pausing 20 s between repos")
+    n = sl.add_parser("pick", help="pick one repo and print its dossier (the agent skill path)")
+    n.add_argument("--repo", metavar="OWNER/NAME")
+    n = sl.add_parser("render", help="render an agent-written script.json for a picked dossier")
+    n.add_argument("dossier", help="owner/name that `slop pick` saved, a dossier JSON file, or a blob sha")
+    n.add_argument("--script", required=True, metavar="FILE")
+    for name in ("feed", "serve"):
+        n = sl.add_parser(name, help="serve the endless feed page on 127.0.0.1")
+        n.add_argument("--port", type=int, default=8765)
+    s.set_defaults(fn=_cmd_slop)
     s = sub.add_parser("inspire", help="tear down stored posts and write an actionable report (what to film/build)")
     s.add_argument("ids", nargs="*", type=int, metavar="CONTENT_ID", help="default: every stored post with media")
     s.add_argument("--since", metavar="YYYY-MM-DD", help="only posts observed (grabbed) since this date")

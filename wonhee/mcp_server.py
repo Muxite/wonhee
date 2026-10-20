@@ -208,6 +208,44 @@ def larp(task: str, image: str | None = None, video: str | None = None, pick: in
 
 @mcp.tool()
 @_guard
+def slop_next(n: int = 2, engine: str = "local") -> str:
+    """GitHub slop: pick N unseen public repos, have a model write the voice lines (engine local|remote), render a
+    credited 4:5 card set for each into data/slop/<date>/. Returns the output folders."""
+    conn, settings = _open()
+    try:
+        return service.slop_next(conn, settings, _deps(settings), min(max(n, 1), 10), engine)[1]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def slop_pick(repo: str | None = None) -> str:
+    """GitHub slop, agent path step 1: pick one unseen public repo (or repo="owner/name") and return its dossier JSON.
+    Write a script from it (hook, what, why, roast, caption, hashtags; no invented facts), then call slop_render."""
+    conn, settings = _open()
+    try:
+        return service.slop_pick(conn, settings, _deps(settings), repo)[1]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def slop_render(dossier: str, script: dict) -> str:
+    """GitHub slop, agent path step 2: render the card set. dossier: "owner/name" from slop_pick (or a dossier file
+    path); script: {hook <=9 words, what <=24, why <=24, roast <=16, caption <=300 chars, hashtags <=6 without #}."""
+    import re
+    ref = dossier if re.fullmatch(r"[\w.-]+/[\w.-]+", dossier) and not Path(dossier).exists() else _ref(dossier)
+    conn, settings = _open()
+    try:
+        return service.slop_render(conn, settings, _deps(settings), ref, json.dumps(script))[1]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
 def inspire(content_ids: list[int] | None = None, since: str | None = None, relation: str | None = None) -> str:
     """Tear down stored inspiration posts (cached per post; ~$0.001 each, translation on-box) and write a report:
     formats, text/footage coupling, what to build, best to replicate, a shoot list and a line bank."""

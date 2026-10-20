@@ -1,0 +1,21 @@
+{
+  "doc": "Format A, still form: 9:16 canvas with bands, the photo in the middle, a bold title in the top band, an optional caption in the lower band (the video form is frame_video).",
+  "slots": {
+    "title": {"default": "when the build passes on the first try", "doc": "title text, 1-2 lines, full width in the top band"},
+    "caption": {"default": "", "doc": "optional short caption in the lower band (empty = none)"},
+    "photo": {"default": 0, "doc": "input index of the picture, or 'clip' to leave a transparent window for a video"},
+    "bg": {"default": "#000000", "doc": "band colour"},
+    "caption_colour": {"default": "#c9a0e6", "doc": "caption box colour"}
+  },
+  "layout": {
+    "canvas": {"w": 1080, "h": 1920, "bg": "slot:bg"},
+    "palette": "lilac",
+    "layers": [
+      {"type": "photo", "src": "slot:photo", "fit": "cover", "box": {"x": 0, "y": 0.33, "w": 1, "h": 0.32}},
+      {"type": "text", "content": "slot:title", "preset": "outline", "size_frac": 0.044,
+       "box": {"x": 0.04, "y": 0.125, "w": 0.92, "h": 0.19}},
+      {"type": "sticker", "kind": "label", "content": "slot:caption", "colours": ["slot:caption_colour", "#000000"],
+       "box": {"x": 0.16, "y": 0.675, "w": 0.68, "h": 0.07}}
+    ]
+  }
+}

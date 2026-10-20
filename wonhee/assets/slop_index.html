@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHub slop</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0b0d; color: #eee; font: 15px/1.4 system-ui, sans-serif; }
+  #feed { height: 100%; overflow-y: scroll; scroll-snap-type: y mandatory; }
+  .set { height: 100vh; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center;
+         justify-content: center; gap: 8px; box-sizing: border-box; padding: 8px 0; }
+  .slides { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; max-width: 100%;
+            height: calc(100vh - 90px); }
+  .slides img { height: 100%; aspect-ratio: 4 / 5; flex: none; scroll-snap-align: center; }
+  .meta { max-width: 560px; padding: 0 12px; font-size: 13px; opacity: .85; text-align: center;
+          white-space: pre-line; max-height: 70px; overflow: hidden; }
+  .meta a { color: #8ab4ff; }
+  #empty { padding: 40px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="feed"><div id="empty">Nothing yet. Run: wonhee slop next</div></div>
+<script>
+const PAGE = 10, feed = document.getElementById("feed");
+let all = [], shown = 0;
+const keyOf = e => e.repo + "|" + e.created;
+
+function card(e) {
+  const s = document.createElement("section");
+  s.className = "set"; s.dataset.key = keyOf(e);
+  const row = document.createElement("div"); row.className = "slides";
+  for (const src of e.slides) { const i = document.createElement("img"); i.loading = "lazy"; i.src = src; row.append(i); }
+  const m = document.createElement("div"); m.className = "meta";
+  const a = document.createElement("a"); a.href = e.url; a.target = "_blank"; a.rel = "noopener"; a.textContent = e.repo;
+  m.append(a, document.createTextNode("  " + (e.caption || "").split("\n")[0]));
+  s.append(row, m);
+  return s;
+}
+
+function more() {
+  const empty = document.getElementById("empty"); if (empty && all.length) empty.remove();
+  for (const e of all.slice(shown, shown + PAGE)) feed.append(card(e));
+  shown = Math.min(all.length, shown + PAGE);
+}
+
+async function load(first) {
+  let data;
+  try { data = await (await fetch("feed.json", { cache: "no-store" })).json(); } catch (_) { return; }
+  if (first) { all = data; more(); return; }
+  const have = new Set(all.map(keyOf)), fresh = data.filter(e => !have.has(keyOf(e)));
+  if (!fresh.length) return;
+  all = fresh.concat(all); shown += fresh.length;
+  document.getElementById("empty")?.remove();
+  for (const e of fresh.slice().reverse()) feed.prepend(card(e));
+}
+
+feed.addEventListener("scroll", () => {
+  if (shown < all.length && feed.scrollTop + feed.clientHeight * 3 > feed.scrollHeight) more();
+});
+load(true);
+setInterval(() => load(false), 30000);
+</script>
+</body>
+</html>

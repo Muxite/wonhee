@@ -1,0 +1,5 @@
+[
+  {"id": "pick", "node": "gh_pick"},
+  {"id": "script", "node": "slop_script", "in": {"dossier": "pick.dossier"}, "params": {"engine": "local"}},
+  {"id": "cards", "node": "slop_cards", "in": {"dossier": "pick.dossier", "script": "script.script"}}
+]

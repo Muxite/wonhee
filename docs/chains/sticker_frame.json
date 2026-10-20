@@ -1,0 +1,6 @@
+[
+  {"id": "p", "node": "content_images", "in": {"content": "content:12"}},
+  {"id": "f", "node": "compose", "in": {"images": "p.images"},
+   "params": {"template": "sticker_frame",
+              "slots": {"text": "OOPS, MY BAD!", "shape": "heart", "palette": "lilac", "focus": "subject"}}}
+]

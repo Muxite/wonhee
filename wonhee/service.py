@@ -1163,3 +1163,196 @@ def filter_show(settings, name: str, cube: Path | None = None) -> str:
         lines.append("  also not in the LUT: the correct-first step (auto exposure / white balance) and skin "
                      "undertone are per photo; in an editor, fix exposure and white balance by eye first")
     return "\n".join(lines)
+
+
+# --- GitHub slop machine (docs/specs/2026-10-20-github-slop-design.md) -----------------------------------------
+
+
+def _slop_dir(settings) -> Path:
+    return settings.home / "slop"
+
+
+def _slop_chain(engine: str) -> list[dict]:
+    import json
+
+    from wonhee.config import REPO_ROOT
+
+    nodes = json.loads((REPO_ROOT / "docs" / "chains" / "github_slop.json").read_text(encoding="utf-8"))
+    for n in nodes:
+        if n["node"] == "slop_script":
+            n["params"] = {**n.get("params", {}), "engine": engine}
+    return nodes
+
+
+def _blob_text(settings, ref: str) -> str:
+    from wonhee.media import path_for
+    return path_for(settings.media_dir, ref).read_text(encoding="utf-8")
+
+
+def _slop_write_set(conn, settings, dossier_ref: str, script_ref: str, images_ref: str) -> Path:
+    """Copy one finished set to data/slop/<date>/<owner>__<name>/ and prepend it to feed.json."""
+    import json
+    from datetime import date
+
+    from wonhee.clock import now_iso
+    from wonhee.media import path_for
+    from wonhee.nodes.images import load_images
+
+    d, script = json.loads(_blob_text(settings, dossier_ref)), json.loads(_blob_text(settings, script_ref))
+    root = _slop_dir(settings)
+    out = unique_dir(root / date.today().isoformat(), d["full_name"].replace("/", "__"))
+    slides = []
+    for i, item in enumerate(load_images(settings.media_dir, images_ref).items, 1):
+        write_atomic_bytes(out / f"{i:02d}.png", path_for(settings.media_dir, item.sha).read_bytes())
+        slides.append(f"{out.relative_to(root).as_posix()}/{i:02d}.png")
+    tags = " ".join(f"#{t}" for t in script["hashtags"])
+    caption = f"{script['caption']}\n\n{tags}\n\nRepo: {d['url']} ({d.get('license') or 'no licence stated'})\n"
+    write_atomic(out / "caption.txt", caption)
+    write_atomic(out / "script.json", json.dumps(script, indent=1))
+    feed_path = root / "feed.json"
+    feed = json.loads(feed_path.read_text(encoding="utf-8")) if feed_path.exists() else []
+    feed.insert(0, {"repo": d["full_name"], "url": d["url"], "created": now_iso(), "caption": caption,
+                    "slides": slides})
+    write_atomic(feed_path, json.dumps(feed, indent=1))
+    slop_index(settings)
+    return out
+
+
+def slop_index(settings) -> Path:
+    """Put the static feed page next to feed.json (data/slop/index.html)."""
+    src = Path(__file__).parent / "assets" / "slop_index.html"
+    return write_atomic(_slop_dir(settings) / "index.html", src.read_text(encoding="utf-8"))
+
+
+def slop_pick(conn, settings, deps, repo_name: str | None = None) -> tuple[bool, str]:
+    """Pick one repo and print its dossier (JSON). The dossier is also saved as data/slop/dossiers/<owner>__<name>.json
+    so `slop render owner/name` can find it."""
+    rid, text = node_run(conn, settings, deps, "gh_pick", {}, {"repo": repo_name} if repo_name else {})
+    o = _step_out(conn, rid, "gh_pick")
+    if o is None:
+        return False, text
+    body = _blob_text(settings, o["dossier"])
+    import json
+    path = write_atomic(_slop_dir(settings) / "dossiers" / (json.loads(body)["full_name"].replace("/", "__") + ".json"), body)
+    return True, f"dossier: {path}\n{body}"
+
+
+def _slop_dossier_ref(conn, settings, dossier: str) -> str:
+    """A dossier given as a blob sha, a JSON file, or owner/name of one `slop pick` saved."""
+    from wonhee.nodes.subtitles import save_text
+    from wonhee.nodes.types import SHA
+
+    if SHA.match(dossier):
+        return dossier
+    p = Path(dossier).expanduser()
+    if not p.is_file():
+        p = _slop_dir(settings) / "dossiers" / (dossier.replace("/", "__") + ".json")
+    if not p.is_file():
+        raise ValueError(f"no dossier {dossier!r}: give a sha, a JSON file, or an owner/name that `slop pick` saved")
+    return save_text(conn, settings.media_dir, p.read_text(encoding="utf-8"))
+
+
+def slop_render(conn, settings, deps, dossier: str, script_json: str, progress=None) -> tuple[bool, str]:
+    """Render an agent-written script (SlopScript JSON text) for a picked dossier."""
+    from wonhee.edit.slop import SlopScript
+    from wonhee.nodes.subtitles import save_text
+
+    try:
+        script = SlopScript.model_validate_json(script_json)
+    except ValueError as e:
+        raise ValueError(f"script does not match SlopScript: {e}") from e
+    dref = _slop_dossier_ref(conn, settings, dossier)
+    try:
+        from wonhee.edit.slop import check_numbers
+        check_numbers(script, _blob_text(settings, dref))
+    except ValueError as e:
+        raise ValueError(f"script refused: {e}") from e
+    sref = save_text(conn, settings.media_dir, script.model_dump_json(indent=1))
+    rid, text = node_run(conn, settings, deps, "slop_cards", {"dossier": dref, "script": sref}, progress=progress)
+    o = _step_out(conn, rid, "slop_cards")
+    if o is None:
+        return False, text
+    out = _slop_write_set(conn, settings, dref, sref, o["images"])
+    return True, f"{out}\n{(out / 'caption.txt').read_text(encoding='utf-8')}"
+
+
+def _sleep(s: float) -> None:  # tests replace this
+    import time
+    time.sleep(s)
+
+
+def _slop_prune_clones(settings, max_age_days: int = 7) -> int:
+    """design: github-slop §Store (age cap): delete clones in data/slop/repos older than 7 days."""
+    import shutil
+    import time
+
+    repos, n = _slop_dir(settings) / "repos", 0
+    if repos.is_dir():
+        for d in repos.iterdir():
+            if d.is_dir() and time.time() - d.stat().st_mtime > max_age_days * 86400:
+                shutil.rmtree(d, ignore_errors=True)
+                n += 1
+    return n
+
+
+def slop_next(conn, settings, deps, n: int = 5, engine: str = "local", loop: bool = False, progress=None) -> tuple[bool, str]:
+    """Pick, script and render n repos (forever with loop, pausing 20 s). A failed repo is reported and skipped;
+    ok means at least one set was made."""
+    lines, made, tries = [], 0, 0
+    _slop_prune_clones(settings)
+    while loop or (made < n and tries < 2 * n + 2):
+        tries += 1
+        rid, text = chain_run(conn, settings, deps, _slop_chain(engine), progress=progress)
+        o, s, c = (_step_out(conn, rid, k) for k in ("pick", "script", "cards"))
+        if o and s and c:
+            out = _slop_write_set(conn, settings, o["dossier"], s["script"], c["images"])
+            made += 1
+            lines.append(str(out))
+            if progress:
+                progress(f"set {made}: {out}")
+        else:
+            lines.append(f"run {rid} failed:\n{text}")
+            if progress:
+                progress(f"run {rid} failed")
+        if loop:
+            _sleep(20)
+    return made > 0, "\n".join(lines)
+
+
+def slop_servable(url_path: str) -> bool:
+    """design: github-slop §Surfaces (serve): index.html, feed.json and dated set folders only. The path is
+    decoded and slash-collapsed before the check, so //repos and %2Frepos cannot slip past."""
+    import re
+    from urllib.parse import unquote
+
+    p = unquote(re.split(r"[?#]", url_path, maxsplit=1)[0])  # not urlsplit: it reads //repos as a host
+    if "\\" in p or "\x00" in p:
+        return False
+    parts = [x for x in re.sub(r"/+", "/", p).split("/") if x]
+    if any(x in (".", "..") for x in parts):
+        return False
+    if not parts:
+        return True
+    if parts == ["index.html"] or parts == ["feed.json"]:
+        return True
+    return bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", parts[0]))
+
+
+def slop_serve(settings, port: int = 8765):
+    """The feed page over http on 127.0.0.1 only (the page fetches feed.json, which file:// blocks). Blocks."""
+    import functools
+    import http.server
+
+    root = _slop_dir(settings)
+    root.mkdir(parents=True, exist_ok=True)
+    slop_index(settings)
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def send_head(self):  # clones and dossiers sit in the same folder; only the page and the sets are served
+            if not slop_servable(self.path):
+                self.send_error(404)
+                return None
+            return super().send_head()
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), functools.partial(Handler, directory=str(root)))
+    return server

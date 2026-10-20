@@ -1,0 +1,20 @@
+{
+  "doc": "Format D: the subject cut out over a generated pattern (halftone dots, stars, stripes, glyphs or flat colour) in a named palette; one colour per grid row via grid_plan.",
+  "slots": {
+    "photo": {"default": 0, "doc": "input index of the picture"},
+    "palette": {"default": "popart-yellow", "doc": "named palette or a list of colours"},
+    "pattern": {"default": "halftone", "doc": "flat | halftone | stars | glyph | stripes"},
+    "cutout": {"default": true, "doc": "true cuts the subject out with the mask engine (CPU ONNX); false keeps the whole photo"},
+    "text": {"default": "", "doc": "optional sticker label (empty = none)"}
+  },
+  "layout": {
+    "canvas": {"w": 1080, "h": 1350, "bg": "pal:0"},
+    "palette": "slot:palette",
+    "layers": [
+      {"type": "pattern", "kind": "slot:pattern", "colours": ["pal:0", "pal:1"], "density": 0.5, "angle": 45},
+      {"type": "photo", "src": "slot:photo", "fit": "cover", "cutout": "slot:cutout", "box": {"x": 0.04, "y": 0.04, "w": 0.92, "h": 0.92}},
+      {"type": "sticker", "kind": "label", "content": "slot:text", "rotate": -4, "colours": ["pal:3", "pal:2"],
+       "box": {"x": 0.08, "y": 0.84, "w": 0.5, "h": 0.07}}
+    ]
+  }
+}

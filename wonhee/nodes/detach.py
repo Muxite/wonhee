@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from wonhee import envfile
-from wonhee.config import KEY_NAMES, PUBLISH_KEY_NAMES, REPO_ROOT, Settings
+from wonhee.config import KEY_NAMES, OPTIONAL_KEY_NAMES, PUBLISH_KEY_NAMES, REPO_ROOT, Settings
 from wonhee.procenv import clean_env
 
 
@@ -22,7 +22,7 @@ def child_env() -> dict[str, str]:
         if k in os.environ:
             env[k] = os.environ[k]
     for k, v in os.environ.items():
-        if k.startswith("WONHEE_") or k in KEY_NAMES or k in PUBLISH_KEY_NAMES:
+        if k.startswith("WONHEE_") or k in KEY_NAMES or k in PUBLISH_KEY_NAMES or k in OPTIONAL_KEY_NAMES:
             env[k] = str(Path(v).resolve()) if k.startswith("WONHEE_") and v and Path(v).exists() \
                 and not Path(v).is_absolute() else v
     return env

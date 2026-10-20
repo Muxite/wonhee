@@ -1,0 +1,23 @@
+{
+  "doc": "A dark developer-slop card: tag label, big title, body line and an accent band. The slop machine's own cards are not moved onto this yet.",
+  "slots": {
+    "tag": {"default": "REPO OF THE DAY", "doc": "label text, top left"},
+    "title": {"default": "it just works", "doc": "big title"},
+    "body": {"default": "", "doc": "one line of body text (empty = none)"},
+    "palette": {"default": "ink", "doc": "named palette or a list of colours"}
+  },
+  "layout": {
+    "canvas": {"w": 1080, "h": 1350, "bg": "pal:0"},
+    "palette": "slot:palette",
+    "layers": [
+      {"type": "pattern", "kind": "glyph", "glyph": "{ }", "colours": ["pal:0", "#1c1d22"], "density": 0.3},
+      {"type": "band", "side": "bottom", "h_frac": 0.06, "colour": "pal:1"},
+      {"type": "sticker", "kind": "label", "content": "slot:tag", "rotate": -2, "colours": ["pal:1", "pal:0"],
+       "box": {"x": 0.06, "y": 0.07, "w": 0.5, "h": 0.06}},
+      {"type": "text", "content": "slot:title", "preset": "sticker", "slant": 6, "size_frac": 0.07, "stroke": ["pal:0", "pal:3"],
+       "colour": "pal:1", "box": {"x": 0.06, "y": 0.25, "w": 0.88, "h": 0.4}},
+      {"type": "text", "content": "slot:body", "preset": "outline", "size_frac": 0.026, "colour": "pal:2",
+       "box": {"x": 0.08, "y": 0.7, "w": 0.84, "h": 0.14}}
+    ]
+  }
+}

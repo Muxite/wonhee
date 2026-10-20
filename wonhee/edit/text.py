@@ -21,7 +21,7 @@ CJK = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
 CJK_FACE = {"kr": 1, "sc": 2}  # .ttc face index: 0 JP, 1 KR, 2 SC, 3 TC
 EMOJI_PX = 109  # the only size the bitmap emoji font loads at; glyphs are scaled afterwards
 
-Preset = Literal["outline", "band", "script"]
+Preset = Literal["outline", "band", "script", "sticker"]
 Position = Literal["top", "upper", "center", "lower", "bottom"]
 # Instagram's reel UI, measured on a 1080x2181 phone (2026-10-20): header ~7.5% of the screen, caption block from ~79%,
 # buttons over the right 13% from 37-86%. A 9:16 video can sit low on a 20:9 screen, so these are the worst case.
@@ -40,9 +40,19 @@ class TextSpec:
     size_frac: float | None = None  # glyph size as a fraction of frame height; None = preset default
     width_frac: float = 0.84  # wrap width as a fraction of frame width
     band: Literal["dark", "light"] = "dark"  # band preset only: white-on-black or black-on-white
+    # colours: outline/script take (fill, stroke); sticker takes (fill, inner stroke, outer stroke). Emoji keep their own colours.
+    # sticker preset only (docs/specs/2026-10-20-meme-and-popart-formats-design.md, building block 1): fill, inner
+    # stroke and outer stroke colours (any PIL colour), the drop shadow's offset as a fraction of the glyph size, and
+    # a slant in degrees (clamped to 12, the spec's ceiling).
+    colours: tuple[str, ...] | None = None
+    slant: float = 0.0
+    drop: float = 0.06
+    align: Literal["left", "center", "right"] = "center"
 
 
-DEFAULT_SIZE = {"outline": 0.040, "band": 0.034, "script": 0.052}
+DEFAULT_SIZE = {"outline": 0.040, "band": 0.034, "script": 0.052, "sticker": 0.060}
+STICKER_COLOURS = ("#ffe600", "#5b21d6", "#ff3fa4")  # fill, inner stroke, outer stroke: only used when none are given
+MAX_SLANT = 12.0
 
 
 def available() -> dict[str, bool]:
@@ -110,14 +120,27 @@ class _Style:
     fill: str
     stroke: int
     stroke_fill: str
+    stroke2: int = 0  # sticker: a second, outer stroke
+    stroke2_fill: str = "black"
+    drop: int = 0  # sticker: shadow offset in px, down and right
+    shadow: str = "#000000aa"
+
+    @property
+    def pad(self) -> int:  # room a piece keeps around its glyphs for strokes and the shadow
+        return self.stroke + self.stroke2 + self.drop
 
 
 def _style(spec: TextSpec, px: int) -> _Style:
+    if spec.preset == "sticker":
+        fill, s1, s2 = (tuple(spec.colours or ()) + STICKER_COLOURS[len(spec.colours or ()):])[:3]
+        return _Style(fill, max(2, round(px * 0.09)), s1, max(2, round(px * 0.09)), s2, round(px * spec.drop), "#000000b0")
     if spec.preset == "band":
         return _Style("white" if spec.band == "dark" else "black", 0, "black")
+    fill = spec.colours[0] if spec.colours else "white"  # compose's text layers: fill, then stroke colour
+    stroke = spec.colours[1] if spec.colours and len(spec.colours) > 1 else "black"
     if spec.preset == "script":
-        return _Style("white", max(2, round(px * 0.06)), "black")
-    return _Style("white", max(2, round(px * 0.09)), "black")
+        return _Style(fill, max(2, round(px * 0.06)), stroke)
+    return _Style(fill, max(2, round(px * 0.09)), stroke)
 
 
 def _emoji_img(fonts: _Fonts, s: str, height: int) -> Image.Image | None:
@@ -144,10 +167,18 @@ def _piece(fonts: _Fonts, st: _Style, kind: str, s: str, line_h: int, base_y: in
             return strip
         kind = "base"  # no emoji font: fall back to the base font (likely tofu, but never crash)
     f = fonts.font(kind)
-    w = round(f.getlength(s)) + 2 * st.stroke + 2
+    w = round(f.getlength(s)) + 2 * st.pad + 2
     strip = Image.new("RGBA", (max(1, w), line_h), (0, 0, 0, 0))
-    ImageDraw.Draw(strip).text((st.stroke + 1, base_y), s, font=f, fill=st.fill, anchor="ls",
-                               stroke_width=st.stroke, stroke_fill=st.stroke_fill)
+    d = ImageDraw.Draw(strip)
+    x = st.pad + 1 - st.drop  # the shadow sits drop px right/down of the glyphs, inside the padding
+    if st.stroke2:
+        both = st.stroke + st.stroke2
+        if st.drop:
+            d.text((x + st.drop, base_y + st.drop), s, font=f, fill=st.shadow, anchor="ls", stroke_width=both,
+                   stroke_fill=st.shadow)
+        d.text((x, base_y), s, font=f, fill=st.stroke2_fill, anchor="ls", stroke_width=both,
+               stroke_fill=st.stroke2_fill)
+    d.text((x, base_y), s, font=f, fill=st.fill, anchor="ls", stroke_width=st.stroke, stroke_fill=st.stroke_fill)
     return strip
 
 
@@ -182,12 +213,12 @@ def _render_lines(spec: TextSpec, size: tuple[int, int]) -> tuple[list[Image.Ima
     px = max(10, round(H * (spec.size_frac or DEFAULT_SIZE[spec.preset])))
     fonts = _Fonts(spec.preset, px, spec.content)
     st = _style(spec, px)
-    line_h = round(px * 1.32) + 2 * st.stroke
-    base_y = round(px * 1.02) + st.stroke
+    line_h = round(px * 1.32) + 2 * st.pad
+    base_y = round(px * 1.02) + st.pad
     space = round(fonts.base.getlength(" "))
     max_w = W * spec.width_frac
 
-    pad = 2 * st.stroke + 2  # each text strip carries its stroke on both sides; neighbours overlap by it
+    pad = 2 * st.pad + 2  # each text strip carries its stroke on both sides; neighbours overlap by it
 
     def unit(s: str) -> list[tuple[Image.Image, int]]:
         return [(im, 0 if k == "emoji" else pad)
@@ -222,8 +253,20 @@ def _render_lines(spec: TextSpec, size: tuple[int, int]) -> tuple[list[Image.Ima
         for im, p in pieces:
             img.alpha_composite(im, (x, 0))
             x += im.width - p
+        if spec.preset == "sticker" and spec.slant:
+            img = _shear(img, min(abs(spec.slant), MAX_SLANT) * (1 if spec.slant > 0 else -1))
         out.append(img)
     return out, px
+
+
+def _shear(img: Image.Image, degrees: float) -> Image.Image:
+    """Slant a line to the right (positive degrees): the top leans right, the baseline stays put."""
+    import math
+    k = math.tan(math.radians(degrees))
+    extra = math.ceil(abs(k) * img.height)
+    w, h = img.width + extra, img.height
+    c = -k * h if k > 0 else 0.0  # source x = x' + k*y + c
+    return img.transform((w, h), Image.AFFINE, (1, k, c, 0, 1, 0), resample=Image.BICUBIC)
 
 
 def _place(spec: TextSpec, size: tuple[int, int]):
@@ -270,3 +313,34 @@ def draw_on(base: Image.Image, spec: TextSpec) -> Image.Image:
     rgba = base.convert("RGBA")
     rgba.alpha_composite(render_layer(spec, rgba.size))
     return rgba.convert("RGB")
+
+
+def render_block(spec: TextSpec, size: tuple[int, int], ref_h: int | None = None) -> Image.Image:
+    """The text as an RGBA image of exactly `size`, shrunk until every line fits inside it (compose's text and sticker
+    layers: a sticker's text never leaves its box, at any slant). `spec.size_frac` is a fraction of `ref_h` (the
+    canvas height; default the box height). Lines are aligned by `spec.align` and the block is centred vertically."""
+    import math
+    W, H = size
+    out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    if not spec.content.strip():
+        return out
+    ref = ref_h or H
+    frac = spec.size_frac or DEFAULT_SIZE[spec.preset]
+    k = math.tan(math.radians(min(abs(spec.slant), MAX_SLANT))) if spec.preset == "sticker" else 0.0
+    for _ in range(40):
+        sp = replace(spec, size_frac=frac, width_frac=1.0)
+        px = max(10, round(ref * frac))
+        lines, px = _render_lines(replace(sp, width_frac=max(0.2, 1 - k * px * 1.5 / max(W, 1))), (W, ref))
+        gap = round(px * 0.08)
+        block_h = sum(l.height for l in lines) + gap * max(0, len(lines) - 1)
+        if lines and max(l.width for l in lines) <= W and block_h <= H:
+            break
+        if px <= 10:
+            break
+        frac *= 0.93
+    y = max(0, (H - block_h) // 2)
+    for l in lines:
+        x = {"left": 0, "right": W - l.width}.get(spec.align, (W - l.width) // 2)
+        out.alpha_composite(l, (max(0, x), y))
+        y += l.height + gap
+    return out

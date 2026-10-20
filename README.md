@@ -82,6 +82,29 @@ and writes an `.srt` plus a subtitled video. Change the `url` param to use it on
 (node, version, inputs, params): rerunning an unchanged node costs nothing and shows `CACHED`.
 Agents use the same through MCP: `nodes_list`, `node_run`, `chain_run(chain, wait=False)`, `chain_show`.
 
+## Layouts (meme frame, sticker frame, collage, pop-art)
+
+One engine, `compose`, draws a canvas plus ordered layers (photo, pattern, shape, sticker, text, band) the same way
+every time; each format is a named template with slots (`uv run wonhee node show compose` lists them). The spec is
+`docs/specs/2026-10-20-meme-and-popart-formats-design.md`. Photos must be yours: no third-party imagery or marks.
+
+    uv run wonhee node run compose --in images=data/photos/desk.jpg --set template=brag_collage     # a desk, piled with stickers
+    uv run wonhee node run compose --in images=me.jpg --set template=popart_cutout --set 'slots={"palette":"mint"}'
+    uv run wonhee chain run docs/chains/sticker_frame.json                                          # heart-shaped photo + speech bubble
+    uv run wonhee node run frame_video --in video=clip.mp4 --set 'slots={"title":"my title"}'       # 9:16 frame, one encode
+    uv run wonhee node run grid_plan --in images=data/photos/nine/ --set cutout=true                # a 3x3 profile grid
+
+- Templates: `meme_frame`, `sticker_frame`, `brag_collage`, `popart_cutout`, `slop_card`. A one-off layout goes in the
+  `layout` param (see the schema); a new format is one JSON file in `wonhee/edit/compose_templates/`.
+- `docs/chains/sticker_frame.json` uses `content:12` as a placeholder: put a stored post's id there.
+- Text and stickers on tall canvases are moved out of the reel UI zones (12%-76% of the height, the centred 72% where the
+  buttons are, rotated extent included) and flagged `LAYOUT_ADJUSTED`.
+- `compose` takes an optional `refs` text (an inspiration digest or plain lines): a text or sticker line that copies it
+  is dropped and flagged `IDEA_COPY`.
+- `cutout` and `focus: subject` use the CPU ONNX mask models (downloaded on first use, as for `mask_cutout`).
+- `frame_video` captions come from `subtitles`; with line timing only, each line's time is split evenly across its words
+  (`WORDS_ESTIMATED`).
+
 ## Pictures from data (viz) and publishing to muksite
 
 wonhee also makes stills from data instead of footage (this absorbed `~/projects/vizkit` on 2026-10-19): a repo's
@@ -111,6 +134,23 @@ portfolio.
 - `viz_wavegen` needs the WaveSim docker image (`docker build -f wonhee/edit/viz/vendor/wavesim.Dockerfile -t
   wonhee-wavesim:dev wonhee/edit/viz/vendor`) and the GPU; take the GPU lock (AGENTS.md) before running it.
 - Agents: MCP tools `viz` and `publish_muksite`.
+
+## GitHub slop
+
+Public GitHub repos become short, credited 4:5 card sets (1080x1350) for a person to post by hand. Facts on the
+cards (stars, languages, dates, licence) come from GitHub through code; a model writes only the voice lines.
+
+```bash
+uv run wonhee slop next -n 5                  # pick, script (local model) and render 5 repos; --loop for endless
+uv run wonhee slop pick [--repo owner/name]   # agent path: print a dossier, write script.json, then:
+uv run wonhee slop render owner/name --script script.json
+uv run wonhee slop serve                      # (alias: slop feed) the endless scroll page, 127.0.0.1 only
+```
+
+Sets land in `data/slop/<date>/<owner>__<name>/` (`01.png` to `04.png`, `caption.txt`, `script.json`) and in
+`data/slop/feed.json`. `GITHUB_TOKEN` in the project `.env` is optional and raises the API rate limit. Slide 2 draws
+the repo's dependency graph and needs the viz browser (see below); without it slide 2 is text only. The local model
+needs Ollama (hold the GPU lock). Design: `docs/specs/2026-10-20-github-slop-design.md`.
 
 ## Workload profiling (optional)
 

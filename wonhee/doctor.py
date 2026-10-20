@@ -4,7 +4,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 
-from wonhee.config import KEY_NAMES, PUBLISH_KEY_NAMES, Settings, secret
+from wonhee.config import KEY_NAMES, OPTIONAL_KEY_NAMES, PUBLISH_KEY_NAMES, Settings, secret
 
 KEYS = KEY_NAMES
 
@@ -14,7 +14,7 @@ class Check:
     name: str
     ok: bool
     detail: str
-    severity: str = "required"  # "required" | "warning"
+    severity: str = "required"  # "required" | "warning" | "info"
     hint: str = ""  # hard-coded literal advice, never scrubbed (may contain "=")
 
     def __post_init__(self):
@@ -94,6 +94,9 @@ def checks(settings: Settings) -> list[Check]:
     out.append(_moeka_check())
     out += [_key_check(k) for k in KEYS]
     out += [_key_check(k, "warning") for k in PUBLISH_KEY_NAMES]  # only `wonhee publish` needs them
+    for k in OPTIONAL_KEY_NAMES:  # info only: wonhee slop works anonymously, just with a lower GitHub rate limit
+        c = _key_check(k)
+        out.append(Check(c.name, True, c.detail if c.ok else "not set (optional)", "info"))
     out.append(_cuda_check(settings))
     try:
         from wonhee.db.connect import open_db
