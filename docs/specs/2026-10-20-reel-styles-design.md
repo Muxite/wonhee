@@ -125,6 +125,39 @@ The command: `wonhee reel <video> --style <name> [--title "..."] [--cta "..."] [
 path. `wonhee reel styles` lists the styles with one line each. MCP twin: `reel(video, style, title, cta, items,
 insets, set)` and `reel_styles()`.
 
+Amendments from the wave-3 build (2026-10-20):
+- A template may carry `reel: {summary, words}` (marks it as a style for `wonhee reel`) and `params` (default
+  `compose_video` params; today `tighten`). `compose_video`'s `tighten` is `null` (the template's default) | `false` | `true` |
+  `{min_pause_ms, keep_ms}`. The talking-head styles (`explainer`, `scrapbook`, `series`, `lecture`) default it on.
+- A `photo` layer with `src: "none"` draws nothing (an empty inset slot). Timed slots are `{in_ms, out_ms}` dicts
+  (`thesis_1_t`, `inset1_t`, `card_t`, ...); a default of `{in_ms: 9999000}` means never.
+- `captions` has `marks` (word -> footnote marker, set after the word's first use); the `reel` command anchors the lecture's
+  footnotes on long words and shows each from that word.
+- `reel` runs `speech_subs` once as its own chain (it needs the words to place chapters, insets and theses), then
+  `speech_subs` (cached) -> `compose_video` as the recorded chain. `--set` also takes `tighten`, `encoder`, `quality`, `look`
+  (a look preset applied to the clip inside the same graph; still one encode, policies rule 1), `engine` (lecture writer) and `name`.
+- The `explainer` headline/closing line and the `series` closing lines sit on a translucent dark box (the live check showed bare
+  thin white type vanishing on bright footage); `legend`'s captions sit at 70.5-75.5% (inside the 76% safe line), not 75-80%.
+- All text boxes inside 35-88% of the height are within the centred 72% width, so no style triggers `LAYOUT_ADJUSTED`.
+
+Amendments from the wave-3 alignment check (2026-10-20). These correct the build amendments above where they
+conflict:
+- **Looks are part of the one encode.** `compose_video` takes `look` (a preset name) and applies its filter string to
+  the clip after the cuts and before scaling, never to text or bands. `reel` never runs a separate `look` node.
+- **Backings are deliberate.** The `explainer` and `series` text backings depart from c49's clean type, because the
+  study itself notes c49's type losing contrast on bright footage. A backing is one block per text layer (never one
+  box per line), with line height ≥ 1.05 when backed.
+- **`series`** has no pinned header. The title card owns the brand while it is up. When no inset is showing, the top
+  window is a flat panel.
+- **`list`:** title at y ≈ .11, list at y ≈ .28–.40, cards and clip *below* the list (c52: .39–.73).
+- **`legend`:** the window ends at y ≈ .70, so the captions (y .705–.755, moved up from c48's .745–.81 to stay above
+  the 76% line) sit fully in the black band.
+- `report.md` lists every timed slot with its in and out time, the effective params (tighten, encoder, look), and
+  marks truncation with "…".
+- Tests: one encode for every style, with and without `look`. `series` card and header never on screen together.
+  Two-line backed titles have no overlapping boxes. A live-style render with footnotes shows the marker and the
+  footnote line.
+
 ## 7. The `lecture` style (pseudo-intellectual, on purpose)
 
 Form: a paper ground (warm off-white), or a dark slide; the clip in a framed figure window labelled `Fig. 1` in
