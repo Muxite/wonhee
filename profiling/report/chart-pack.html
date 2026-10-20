@@ -1,0 +1,187 @@
+<title>GPU Profiling Chart Pack</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
+<style>
+/* Layout: one reading column; each chart is a figure followed by its spec and its CSV, so the page doubles as the data file. */
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --fg: #1b2029; --muted: #5d6675; --rule: #d9dde4; --accent: #2456c9;
+  --grid: #e6e9ee; --code-bg: #eef1f5; --heat: #2456c9;
+  --c0: #2456c9; --c1: #d0632a; --c2: #2f9a6a; --c3: #a23fa8; --c4: #b88a00; --c5: #0f8fa8; --c6: #c2364f; --c7: #6b7383; --c8: #5b4ed1;
+  --display: "Newsreader", Georgia, serif; --body: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12151b; --panel: #191d25; --fg: #e4e8ee; --muted: #98a1b0; --rule: #2d333e; --accent: #7aa2ff;
+  --grid: #262b35; --code-bg: #1f242d; --heat: #7aa2ff;
+  --c0: #7aa2ff; --c1: #f08a50; --c2: #5cc896; --c3: #d27ad8; --c4: #e3bb3c; --c5: #4cc3da; --c6: #f0708a; --c7: #9aa3b3; --c8: #9b91ff;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12151b; --panel: #191d25; --fg: #e4e8ee; --muted: #98a1b0; --rule: #2d333e; --accent: #7aa2ff;
+  --grid: #262b35; --code-bg: #1f242d; --heat: #7aa2ff;
+  --c0: #7aa2ff; --c1: #f08a50; --c2: #5cc896; --c3: #d27ad8; --c4: #e3bb3c; --c5: #4cc3da; --c6: #f0708a; --c7: #9aa3b3; --c8: #9b91ff;
+  color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 16px/1.55 var(--body); }
+.wrap { max-width: 920px; margin: 0 auto; padding-block: 40px 80px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2 { font-family: var(--display); font-weight: 600; text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: 2.2rem; }
+h2 { font-size: 1.45rem; }
+.eyebrow { font: 600 .72rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.lede { color: var(--muted); max-width: 65ch; }
+header { display: grid; gap: 12px; margin-bottom: 28px; }
+.howto { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 16px 20px; }
+.howto pre { white-space: pre-wrap; font: .82rem/1.55 var(--mono); margin: 0; }
+.toc { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 20px; margin: 20px 0 8px;
+  font-size: .9rem; }
+.toc a { color: var(--fg); text-decoration: none; display: flex; gap: 8px; min-width: 0; }
+.toc a span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toc a:hover span:last-child { color: var(--accent); text-decoration: underline; }
+.toc code { font: .72rem var(--mono); color: var(--muted); flex: none; padding-top: 3px; }
+.sec-title { margin: 44px 0 4px; border-top: 1px solid var(--rule); padding-top: 14px; }
+.chart { display: grid; gap: 10px; margin-top: 26px; min-width: 0; }
+.chart .take { margin: 0; max-width: 70ch; }
+.chart .meta { font: .75rem var(--mono); color: var(--muted); }
+figure { margin: 0; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; overflow-x: auto; }
+svg { display: block; width: 100%; min-width: 560px; height: auto; font-family: var(--mono); }
+svg text { fill: var(--muted); font-size: 11px; }
+svg .val { fill: var(--fg); font-size: 10px; }
+svg .ref { stroke: var(--muted); stroke-dasharray: 4 3; stroke-width: 1; fill: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font: .78rem var(--mono); color: var(--muted); padding: 8px 4px 0; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+details { background: var(--code-bg); border-radius: 6px; min-width: 0; }
+summary { cursor: pointer; padding: 8px 12px; font: 600 .8rem var(--mono); display: flex; gap: 10px; align-items: center; }
+summary:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+details pre { margin: 0; padding: 0 12px 12px; overflow-x: auto; font: .74rem/1.5 var(--mono); max-height: 360px; }
+button { font: 600 .72rem var(--mono); background: var(--panel); color: var(--accent); border: 1px solid var(--rule);
+  border-radius: 4px; padding: 3px 8px; cursor: pointer; margin-left: auto; }
+table { border-collapse: collapse; font-size: .85rem; width: 100%; }
+td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { font: 600 .72rem var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+td.n { font-variant-numeric: tabular-nums; font-family: var(--mono); white-space: nowrap; }
+.tbl { overflow-x: auto; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 8px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">wonhee · gauge · data for slides</div>
+    <h1>GPU profiling chart pack</h1>
+    <p class="lede" id="about"></p>
+    <div class="howto">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><strong>For agents building slides</strong>
+        <button type="button" id="copy-all">Copy whole pack (JSON)</button></div>
+      <pre id="format"></pre>
+      <p style="margin:10px 0 0;font-size:.85rem;color:var(--muted)">The full pack is embedded in this file as
+        <code>&lt;script type="application/json" id="chart-pack"&gt;</code>. Each chart below shows its spec and CSV.</p>
+    </div>
+  </header>
+  <nav class="toc" id="toc" aria-label="Charts"></nav>
+  <main id="charts"></main>
+</div>
+
+<script type="application/json" id="chart-pack">/*PACK*/null</script>
+<script>
+(() => {
+  const pack = JSON.parse(document.getElementById("chart-pack").textContent);
+  if (!pack) return;
+  document.getElementById("about").textContent = pack.about;
+  document.getElementById("format").textContent = pack.format;
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs = {}, parent) => {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  const fmt = v => v == null ? "" : typeof v === "number" ? (Math.abs(v) >= 1e4 ? v.toLocaleString("en-US", {maximumFractionDigits: 0}) : String(+v.toPrecision(4))) : String(v);
+  const color = i => `var(--c${i % 9})`;
+  const wrap = (s, n) => { const out = []; let line = ""; for (const w of String(s).split(" ")) { if ((line + " " + w).trim().length > n && line) { out.push(line); line = w; } else line = (line + " " + w).trim(); } if (line) out.push(line); return out.slice(0, 4); };
+  const copy = (btn, text) => {
+    const done = ok => { const t = btn.textContent; btn.textContent = ok ? "Copied" : "Select and copy"; setTimeout(() => btn.textContent = t, 1400); };
+    try { navigator.clipboard.writeText(text).then(() => done(true), () => done(false)); } catch { done(false); }
+  };
+  const toCSV = c => [c.columns, ...c.rows].map(r => r.map(v => v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v).join(",")).join("\n");
+  document.getElementById("copy-all").onclick = e => copy(e.target, JSON.stringify(pack, null, 1));
+
+  function plot(c) {
+    const heat = c.kind === "heatmap", cat = c.x.scale === "category";
+    const maxLab = cat ? Math.max(...c.x.categories.map(k => wrap(k.value, 16).length)) : 1;
+    const L = heat ? 190 : 64, R = 24, T = 22, B = 34 + 13 * maxLab, W = 820, H = 300 + (heat ? 0 : 0);
+    const pw = W - L - R, svg = el("svg", {viewBox: `0 0 ${W} ${H + T + B}`, role: "img", "aria-label": c.title});
+    const X = p => L + p * pw, Y = p => T + (1 - p) * H;
+    const ix = Object.fromEntries(c.columns.map((k, i) => [k, i]));
+    const get = (r, k) => ix[k] == null ? null : r[ix[k]];
+    const series = c.series;
+    if (!heat) {
+      for (const t of c.y.ticks) { el("line", {x1: L, x2: W - R, y1: Y(t.pos), y2: Y(t.pos), style: "stroke:var(--grid)"}, svg); el("text", {x: L - 8, y: Y(t.pos) + 4, "text-anchor": "end"}, svg).textContent = fmt(t.value); }
+      el("text", {x: 12, y: T + H / 2, transform: `rotate(-90 12 ${T + H / 2})`, "text-anchor": "middle"}, svg).textContent = `${c.y.label}${c.y.unit ? ` (${c.y.unit})` : ""}`;
+    }
+    for (const b of c.bands) { el("rect", {x: X(b.pos_from), y: T, width: X(b.pos_to) - X(b.pos_from), height: H, style: "fill:var(--accent);fill-opacity:.08"}, svg); el("text", {x: X(b.pos_from) + 4, y: T + 12}, svg).textContent = b.label; }
+    if (cat) {
+      c.x.categories.forEach(k => wrap(k.value, 16).forEach((ln, i) => { el("text", {x: X(k.pos), y: T + H + 16 + 13 * i, "text-anchor": "middle"}, svg).textContent = ln; }));
+    } else {
+      for (const t of c.x.ticks) { el("line", {x1: X(t.pos), x2: X(t.pos), y1: T, y2: T + H, style: "stroke:var(--grid)"}, svg); el("text", {x: X(t.pos), y: T + H + 16, "text-anchor": "middle"}, svg).textContent = fmt(t.value); }
+      el("text", {x: L + pw / 2, y: T + H + 32, "text-anchor": "middle"}, svg).textContent = `${c.x.label}${c.x.unit ? ` (${c.x.unit})` : ""}${c.x.scale.startsWith("log") ? `, ${c.x.scale} scale` : ""}`;
+    }
+    if (heat) {
+      c.y.categories.forEach(k => { el("text", {x: L - 8, y: Y(1 - k.pos) + 4, "text-anchor": "end"}, svg).textContent = k.value; });
+      const ch = H / c.y.categories.length;
+      for (const r of c.rows) {
+        const w = get(r, "pos_w") * pw, cx = X(get(r, "pos_x")), cy = Y(get(r, "pos_y")), v = get(r, "y");
+        el("rect", {x: cx - w / 2 + 1, y: cy - ch / 2 + 1, width: w - 2, height: ch - 2, rx: 3, style: `fill:var(--heat);fill-opacity:${0.08 + 0.85 * Math.max(0, Math.min(1, v))}`}, svg);
+        el("text", {x: cx, y: cy + 4, "text-anchor": "middle", class: "val", style: v > 0.55 ? "fill:var(--bg)" : ""}, svg).textContent = fmt(v);
+      }
+    } else if (c.kind === "bar" || c.kind === "stacked_bar") {
+      for (const r of c.rows) {
+        const s = series.indexOf(get(r, "series")), w = get(r, "pos_w") * pw, x = X(get(r, "pos_x")), y0 = Y(get(r, "pos_y0")), y1 = Y(get(r, "pos_y"));
+        el("rect", {x: x - w / 2 + 1, y: Math.min(y0, y1), width: Math.max(1, w - 2), height: Math.max(0.5, Math.abs(y0 - y1)), style: `fill:${color(s)}`}, svg).appendChild(document.createElementNS(NS, "title")).textContent = `${get(r, "x")} · ${get(r, "series") || ""} ${fmt(get(r, "y"))}`;
+        if (get(r, "y_max") != null) { const a = Y((get(r, "y_min") - c.y.domain[0]) / (c.y.domain[1] - c.y.domain[0])), b = Y((get(r, "y_max") - c.y.domain[0]) / (c.y.domain[1] - c.y.domain[0])); el("line", {x1: x, x2: x, y1: a, y2: b, style: "stroke:var(--fg);stroke-width:1.2"}, svg); }
+        if (c.kind === "bar" && w > 18) el("text", {x, y: (get(r, "y") < 0 ? y1 + 12 : y1 - 4), "text-anchor": "middle", class: "val"}, svg).textContent = fmt(get(r, "y"));
+      }
+    } else {
+      series.forEach((s, i) => {
+        const pts = c.rows.filter(r => get(r, "series") === s && get(r, "pos_y") != null).sort((a, b) => get(a, "pos_x") - get(b, "pos_x"));
+        if (c.kind === "line") el("path", {d: pts.map((r, j) => `${j ? "L" : "M"}${X(get(r, "pos_x")).toFixed(1)},${Y(get(r, "pos_y")).toFixed(1)}`).join(""), style: `fill:none;stroke:${color(i)};stroke-width:${/throughput/.test(s) ? 3 : 1.8}`}, svg);
+        for (const r of pts) el("circle", {cx: X(get(r, "pos_x")), cy: Y(get(r, "pos_y")), r: c.kind === "scatter" ? 5 : 3, style: `fill:${color(i)}`}, svg).appendChild(document.createElementNS(NS, "title")).textContent = `${s}: ${fmt(get(r, "x"))} → ${fmt(get(r, "y"))}${get(r, "label") ? " · " + get(r, "label") : ""}`;
+      });
+    }
+    for (const f of c.refs) { el("line", {x1: L, x2: W - R, y1: Y(f.pos), y2: Y(f.pos), class: "ref"}, svg); el("text", {x: W - R, y: Y(f.pos) - 4, "text-anchor": "end"}, svg).textContent = f.label; }
+    c.events.forEach((e, i) => { el("line", {x1: X(e.pos), x2: X(e.pos), y1: T, y2: T + H, class: "ref", style: "stroke:var(--c6)"}, svg); el("text", {x: X(e.pos) - 4, y: T + 12 + 12 * i, "text-anchor": "end", style: "fill:var(--c6)"}, svg).textContent = e.label; });
+    return svg;
+  }
+
+  function table(c) {
+    const box = document.createElement("div"); box.className = "tbl";
+    const t = document.createElement("table"), names = (c.notes.match(/columns?: (.*)$/) || [])[1];
+    const label = {}; if (names) for (const p of names.split(", ")) { const [k, v] = p.split(" = "); label[k.replace(/^kpi: /, "")] = v; }
+    if (c.kind === "kpi") Object.assign(label, {x: "id", y: "figure", series: "unit", label: "meaning"});
+    t.innerHTML = `<thead><tr>${c.columns.map(k => `<th>${label[k] || k}</th>`).join("")}</tr></thead>`;
+    const tb = document.createElement("tbody");
+    for (const r of c.rows) { const tr = document.createElement("tr"); r.forEach(v => { const td = document.createElement("td"); if (typeof v === "number") td.className = "n"; td.textContent = fmt(v); tr.appendChild(td); }); tb.appendChild(tr); }
+    t.appendChild(tb); box.appendChild(t); return box;
+  }
+
+  const main = document.getElementById("charts"), toc = document.getElementById("toc");
+  let section = null;
+  for (const c of pack.charts) {
+    if (c.section !== section) { section = c.section; const h = document.createElement("div"); h.className = "sec-title eyebrow"; h.textContent = section; main.appendChild(h); }
+    const a = document.createElement("a"); a.href = "#" + c.id; a.innerHTML = `<code>${c.id}</code><span></span>`; a.lastChild.textContent = c.title; toc.appendChild(a);
+    const s = document.createElement("section"); s.className = "chart"; s.id = c.id;
+    s.innerHTML = `<h2></h2><p class="take"></p>`; s.children[0].textContent = c.title; s.children[1].textContent = c.takeaway;
+    if (c.kind === "kpi" || c.kind === "table") s.appendChild(table(c));
+    else {
+      const fig = document.createElement("figure"); fig.appendChild(plot(c));
+      if (c.series.length > 1 || c.series[0]) { const lg = document.createElement("div"); lg.className = "legend"; c.series.forEach((n, i) => { const sp = document.createElement("span"); sp.innerHTML = `<i style="background:${color(i)}"></i>`; sp.append(n); lg.appendChild(sp); }); if (c.kind !== "heatmap") fig.appendChild(lg); }
+      s.appendChild(fig);
+    }
+    const meta = document.createElement("div"); meta.className = "meta"; meta.textContent = `${c.id} · ${c.kind} · source ${c.source}${c.notes ? " · " + c.notes : ""}`; s.appendChild(meta);
+    const spec = Object.fromEntries(Object.entries(c).filter(([k]) => !["rows", "columns"].includes(k)));
+    for (const [name, text] of [[`Plotted marks (CSV, ${c.rows.length} rows)`, toCSV(c)], ["Chart spec (JSON)", JSON.stringify(spec, null, 1)]]) {
+      const d = document.createElement("details"), sm = document.createElement("summary"), b = document.createElement("button"), pre = document.createElement("pre");
+      sm.textContent = name; b.type = "button"; b.textContent = "Copy"; b.onclick = e => { e.preventDefault(); copy(b, text); }; sm.appendChild(b);
+      pre.textContent = text; d.append(sm, pre); s.appendChild(d);
+    }
+    main.appendChild(s);
+  }
+})();
+</script>

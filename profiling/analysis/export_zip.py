@@ -86,6 +86,7 @@ Host: RTX 5070 Ti (16 GiB, 300 W limit, PCIe Gen4 x16), Ryzen 7 3700X (16 thread
 | `raw/` | `gauge dataset` export: runs, outcomes, 100 ms samples, Nsight per-process and per-kernel summaries, 10 ms kernel timeline, co-run interference, container starts |
 | `analysis/` | `round2.md` / `round2.json` (pre-registered rules applied to C0-C7), `capacity.md` / `capacity.json` (C8), `observer.md` / `observer.json` (how much measuring changed the results: Nsight, the host sampler, the idle floor, container launch, co-run attribution; C9), `audit.json` |
 | `experiments/` | The experiment files as run: each states its question, measure, analysis rule, tolerance and stopping rule |
+| `chart-pack/` | Every chart as spec + plotted-mark CSV with 0-1 positions (md, json, and a self-rendering html), for rebuilding slides without screenshots |
 | `docs/` | AUDIT.md (evidence audit), DATA_CARD.md, GUIDE.md (how gauge measures) |
 
 ## Reading the numbers
@@ -134,6 +135,9 @@ def main() -> int:
         for f in sorted((ROOT / "profiling" / "sweeps" / "x").glob("*")):
             if f.suffix in (".yaml", ".sh"):
                 z.write(f, f"experiments/{f.name}")
+        subprocess.run(py + ["profiling/analysis/chart_pack.py"], cwd=ROOT, check=True, capture_output=True)
+        for ext in ("md", "json", "html"):
+            z.write(paths.DATA / f"chart-pack.{ext}", f"chart-pack/chart-pack.{ext}")
         for f in ("docs/profiling/AUDIT.md", "docs/profiling/DATA_CARD.md", "docs/profiling/GUIDE.md"):
             z.write(ROOT / f, f"docs/{Path(f).name}")
     size = Path(a.out).stat().st_size
