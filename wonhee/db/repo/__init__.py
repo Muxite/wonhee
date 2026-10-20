@@ -10,7 +10,7 @@ from wonhee.db.repo.world import (  # noqa: F401
 )
 from wonhee.db.repo.work import (  # noqa: F401
     ShotAnalysis, ShotIn, add_intent_turn, add_output, add_reference, confirm_intent,
-    create_intent, create_project, create_shotlist, create_trend, save_analysis,
+    create_intent, create_project, create_shotlist, create_trend, save_analysis, save_image_analyses,
     set_project_status, set_project_trends, set_trend_card, update_intent,
 )
 from wonhee.db.repo.nodes import put_cache, set_step_outputs  # noqa: F401

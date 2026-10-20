@@ -59,10 +59,7 @@ class Ctx:
 
     def apify(self, actor: str, run_input: dict, *, max_items: int | None = None):
         """Run an actor within the run's remaining budget; cost is recorded even when the run fails."""
-        left = self.remaining_budget()
-        if left <= 0:
-            cap = queries.run_row(self.conn, self.run_id)["cost_cap_usd"]
-            raise StageFailed("COST_CAP", f"spent ${cap - left:.2f} of ${cap:.2f} during {self.stage_name()}")
+        left = self._require_budget()
         try:
             items, cost = self.deps.apify.run(actor, run_input, max_total_charge_usd=left, max_items=max_items)
         except Exception as e:
@@ -70,6 +67,14 @@ class Ctx:
             raise
         self.add_cost(cost)
         return items
+
+    def _require_budget(self) -> float:
+        """Contract 8: a paid call is refused with COST_CAP, before it is made, once the budget is spent."""
+        left = self.remaining_budget()
+        if left <= 0:
+            cap = queries.run_row(self.conn, self.run_id)["cost_cap_usd"]
+            raise StageFailed("COST_CAP", f"spent ${cap - left:.2f} of ${cap:.2f} during {self.stage_name()}")
+        return left
 
     def stage_name(self) -> str:
         row = self.conn.execute("SELECT stage FROM step WHERE id=?", (self.step_id,)).fetchone()
@@ -82,6 +87,7 @@ class Ctx:
         return sha
 
     def llm(self, model_cls, *, schema_name: str, system: str, prompt: str, images=(), max_tokens: int | None = None):
+        self._require_budget()
         try:
             res = llm.call_json(self.conn, self.settings, model_cls, schema_name=schema_name, system=system,
                                 prompt=prompt, images=images, step_id=self.step_id, max_tokens=max_tokens)

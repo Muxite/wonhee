@@ -158,12 +158,10 @@ def analyze_images(ctx: Ctx, content_id: int) -> int:
                         prompt=f"There are {len(shas)} images, numbered 1 to {len(shas)} in the order attached.",
                         images=thumbs)
     by_n = {t.n: t for t in reply.images if 1 <= t.n <= len(shas)}
-    with tx(ctx.conn):
-        for n, sha in enumerate(shas, 1):
-            t = by_n.get(n)
-            ctx.conn.execute("INSERT INTO image_analysis VALUES (?,?,?,?,?)",
-                             (sha, IMAGE_ANALYZER_VERSION, ctx.step_id, t.on_screen_text if t else None,
-                              t.visual if t else None))
+    repo.save_image_analyses(
+        ctx.conn, analyzer_version=IMAGE_ANALYZER_VERSION, step_id=ctx.step_id,
+        rows=[(sha, by_n[n].on_screen_text if n in by_n else None, by_n[n].visual if n in by_n else None)
+              for n, sha in enumerate(shas, 1)])
     return len(shas)
 
 

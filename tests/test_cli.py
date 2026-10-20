@@ -225,16 +225,18 @@ def test_mcp_server_tools_and_call(settings):
     assert props == {"scout_ask": {"text", "intent_id"}, "scout_go": {"intent_id"},
                      "scout_resume": {"run_id", "from_stage", "overrides"}, "scout_show_run": {"run_id"},
                      "library_grab": {"urls", "relation"},
-                     "nodes_list": set(), "node_run": {"node", "inputs", "params", "wait"},
-                     "chain_run": {"chain", "wait"}, "chain_show": {"run_id"}, "export": {"ref", "dest"}, "inspire": {"content_ids", "since", "relation"},
+                     "nodes_list": {"name"}, "node_run": {"node", "inputs", "params", "wait", "no_cache"},
+                     "chain_run": {"chain", "wait", "no_cache"}, "chain_show": {"run_id"}, "export": {"ref", "dest"}, "inspire": {"content_ids", "since", "relation"},
                      "ideate": {"n", "focus", "engine", "content_ids", "since"},
-                     "vibe": {"like", "photos", "name", "engine", "guide"}, "audio": {"file", "preset", "check"}, "shots": {"query", "video", "k"}, "workers": set(),
+                     "vibe": {"like", "photos", "name", "engine", "guide", "guide_engine", "set"},
+                     "audio": {"file", "preset", "check", "isolate", "music_db", "out"},
+                     "filter_show": {"name", "cube"}, "filter_calibrate": {"photos", "n", "engine"}, "shots": {"query", "video", "k"}, "workers": set(),
                      "filter_make": {"description", "photos", "name", "start", "rounds", "engine"},
                      "filter_apply": {"name", "photos", "intensity"},
                      "viz": {"kind", "path", "themes", "params", "then", "name"},
                      "publish_muksite": {"image", "slug", "name", "caption", "alt", "dark", "size", "fit",
                                          "overwrite"},
-                     "larp": {"task", "image", "video", "pick", "engine"}}
+                     "larp": {"task", "image", "video", "pick", "engine", "register"}}
     res = asyncio.run(mcp.call_tool("scout_show_run", {"run_id": 99}))
     assert "no run 99" in str(res)
 
@@ -335,3 +337,50 @@ def test_cli_go_and_resume_print_progress_to_stderr(conn, settings, monkeypatch,
     cap = capsys.readouterr()
     assert "stage 1/1 resolve…" in cap.err and "resolve: ok" in cap.err
     assert "stage 1/1" not in cap.out
+
+
+def test_mcp_nodes_list_name_shows_param_schema(settings):
+    """design: DESIGN contract 4 (CLI `node show` and MCP share one surface)."""
+    from wonhee import mcp_server
+    out = mcp_server.nodes_list(name="larp")
+    assert "params (JSON schema):" in out and '"properties"' in out
+    bad = mcp_server.nodes_list(name="nope")
+    assert bad.startswith("error: unknown node 'nope'") and "known:" not in bad
+    assert "viz_<kind>" in mcp_server.viz.__doc__ and "node_show" not in mcp_server.viz.__doc__
+
+
+def test_mcp_filter_show_and_cube_stays_under_home(settings):
+    """design: DESIGN contract 4 (parity with `filter show --cube`); MCP output paths go through _out_path."""
+    from wonhee import mcp_server
+    from wonhee.edit.filters import PACK
+    name = next(iter(PACK))
+    assert name in mcp_server.filter_show(name)
+    out = mcp_server.filter_show(name, cube=True)
+    cube = settings.home / "filters" / "cube" / f"{name}.cube"
+    assert cube.exists() and str(cube) in out
+    assert mcp_server.filter_show("../../../etc/x", cube=True).startswith("error")
+
+
+def test_mcp_parity_args_reach_service(settings, monkeypatch, tmp_path):
+    """design: DESIGN contract 4 (same service call, same capabilities)."""
+    from wonhee import mcp_server, service
+    seen = {}
+    monkeypatch.setattr(service, "audio", lambda *a, **k: seen.setdefault("audio", k) and "ok")
+    monkeypatch.setattr(service, "vibe", lambda *a, **k: seen.setdefault("vibe", k) and ("ok", None))
+    monkeypatch.setattr(service, "larp", lambda *a, **k: seen.setdefault("larp", k) and "ok")
+    monkeypatch.setattr(service, "node_run", lambda *a, **k: seen.setdefault("node_run", k) and (1, "ok"))
+    monkeypatch.setattr(service, "chain_run", lambda *a, **k: seen.setdefault("chain_run", k) and (1, "ok"))
+    monkeypatch.setattr(mcp_server, "_deps", lambda s: None)
+    settings.home.mkdir(parents=True, exist_ok=True)
+    f = settings.home / "a.mp4"; f.write_bytes(b"x")
+    mcp_server.audio(str(f), isolate=True, music_db=-15, out=str(settings.home / "o.mp4"))
+    assert seen["audio"]["isolate"] is True and seen["audio"]["music_db"] == -15
+    assert seen["audio"]["dest"] == (settings.home / "o.mp4").resolve()
+    assert mcp_server.audio(str(f), out="/etc/o.mp4").startswith("error")
+    mcp_server.vibe(["x"], guide_engine="local", set={"fisheye": 0.6})
+    assert seen["vibe"]["guide_engine"] == "local" and seen["vibe"]["overrides"] == {"fisheye": 0.6}
+    mcp_server.larp("t", register=["earnings_call"])
+    assert seen["larp"]["registers"] == ["earnings_call"]
+    mcp_server.node_run("larp", {}, no_cache=True)
+    mcp_server.chain_run([], no_cache=True)
+    assert seen["node_run"]["no_cache"] is True and seen["chain_run"]["no_cache"] is True

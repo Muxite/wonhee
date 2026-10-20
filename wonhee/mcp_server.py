@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import functools
+import json
 from pathlib import Path
 
 from wonhee import envfile, errlog, llm, service
@@ -138,9 +139,18 @@ def scout_show_run(run_id: int) -> str:
 
 @mcp.tool()
 @_guard
-def nodes_list() -> str:
-    """The building blocks of a chain: each node's name, input and output ports (with types) and what it does."""
+def nodes_list(name: str | None = None) -> str:
+    """The building blocks of a chain: each node's name, input and output ports (with types) and what it does.
+    With name: that one node's ports and its params JSON schema (what node_run / chain_run accept)."""
     from wonhee.nodes import registry
+    if name is not None:
+        if name not in registry.all_nodes():
+            raise ValueError(f"unknown node '{name}'; call nodes_list() with no name to see them")
+        n = registry.get(name)
+        return "\n".join([f"{n.name} (v{n.version}): {n.doc}",
+                          "inputs:  " + (", ".join(f"{k}:{v}" for k, v in n.inputs.items()) or "-"),
+                          "outputs: " + ", ".join(f"{k}:{v}" for k, v in n.outputs.items()),
+                          "params (JSON schema):", json.dumps(n.params.model_json_schema(), indent=2)])
     lines = []
     for n in registry.all_nodes().values():
         ins = ", ".join(f"{k}:{v}" for k, v in n.inputs.items()) or "-"
@@ -151,29 +161,30 @@ def nodes_list() -> str:
 
 @mcp.tool()
 @_guard
-def node_run(node: str, inputs: dict, params: dict | None = None, wait: bool = True) -> str:
+def node_run(node: str, inputs: dict, params: dict | None = None, wait: bool = True, no_cache: bool = False) -> str:
     """Run one node. inputs: port -> content:<id> | blob sha | local file path. wait=False returns a run id at once
-    (check with chain_show)."""
+    (check with chain_show). no_cache=True re-runs instead of reusing a cached result."""
     inputs = {k: _ref(v) for k, v in inputs.items()}
     conn, settings = _open()
     try:
-        return service.node_run(conn, settings, _deps(settings), node, inputs, params or {}, wait)[1]
+        return service.node_run(conn, settings, _deps(settings), node, inputs, params or {}, wait,
+                               no_cache=no_cache)[1]
     finally:
         conn.close()
 
 
 @mcp.tool()
 @_guard
-def chain_run(chain: list | dict, wait: bool = True) -> str:
+def chain_run(chain: list | dict, wait: bool = True, no_cache: bool = False) -> str:
     """Run a chain: a list of {id, node, in: {port: "<id>.<port>" | ref | path}, params, cache}, or
-    {nodes: [...], cost_cap_usd, no_cache}. The whole chain is validated first and nothing runs if it is invalid.
+    {nodes: [...], cost_cap_usd, no_cache}. no_cache=True skips the cache for every node. The whole chain is validated first and nothing runs if it is invalid.
     wait=False returns a run id at once (check with chain_show)."""
     for n in chain if isinstance(chain, list) else (chain.get("nodes") or []) if isinstance(chain, dict) else []:
         if isinstance(n, dict) and isinstance(n.get("in"), dict):
             n["in"] = {k: _ref(v) for k, v in n["in"].items()}
     conn, settings = _open()
     try:
-        return service.chain_run(conn, settings, _deps(settings), chain, wait=wait)[1]
+        return service.chain_run(conn, settings, _deps(settings), chain, wait=wait, no_cache=no_cache)[1]
     finally:
         conn.close()
 
@@ -181,14 +192,16 @@ def chain_run(chain: list | dict, wait: bool = True) -> str:
 @mcp.tool()
 @_guard
 def larp(task: str, image: str | None = None, video: str | None = None, pick: int | None = None,
-         engine: str = "remote") -> str:
+         engine: str = "remote", register: list[str] | None = None) -> str:
     """Frame any mundane task as a professional moment (LinkedIn announcement, founder update, earnings call, ...):
     on-screen lines, captions, hashtags, the fitting text preset / look, and the shot to capture. With an image or
-    video (path or sha), also render the chosen line onto it. engine="local" uses the on-box model ($0)."""
+    video (path or sha), also render the chosen line onto it. engine="local" uses the on-box model ($0). register: ask for specific registers, e.g.
+    ["linkedin_announcement", "earnings_call"]."""
     image, video = (_ref(image) if image else image), (_ref(video) if video else video)
     conn, settings = _open()
     try:
-        return service.larp(conn, settings, _deps(settings), task, image=image, video=video, pick=pick, engine=engine)
+        return service.larp(conn, settings, _deps(settings), task, image=image, video=video, pick=pick, engine=engine,
+                             registers=register or None)
     finally:
         conn.close()
 
@@ -223,17 +236,18 @@ def ideate(n: int = 20, focus: str | None = None, engine: str = "remote", conten
 @mcp.tool()
 @_guard
 def vibe(like: list[str], photos: list[str] | None = None, name: str = "look", engine: str = "local",
-         guide: bool = True) -> str:
+         guide: bool = True, guide_engine: str = "remote", set: dict | None = None) -> str:
     """Learn a photographic look from references (folders, image files or content:<id> posts; reels give their
     keyframes), write a shooting guide for it (remote vision, ~$0.003, guide=False skips), and edit each photo
     toward it: a vision model picks clamped knobs (engine local = $0), the edit is deterministic (tone and
-    per-band colour match, subject mask, fisheye / blur / bloom / vignette / grain). No image generation."""
+    per-band colour match, subject mask, fisheye / blur / bloom / vignette / grain). No image generation.
+    guide_engine: remote | local, who writes the guide. set: force edit knobs, e.g. {"fisheye": 0.6}."""
     like = [_ref(x) for x in like]
     photos = [_in_path(p) for p in photos or []]
     conn, settings = _open()
     try:
         return service.vibe(conn, settings, _deps(settings), like, photos, name=name,
-                            engine=engine, guide=guide)[0]
+                            engine=engine, guide=guide, guide_engine=guide_engine, overrides=set or {})[0]
     finally:
         conn.close()
 
@@ -259,7 +273,7 @@ def filter_make(description: str, photos: list[str], name: str, start: str | Non
 def viz(kind: str, path: str | None = None, themes: list[str] | None = None, params: dict | None = None,
         then: str | None = None, name: str | None = None) -> str:
     """Picture from data. kind: depgraph | diskviz | history | wavegen. params: rev, include, exclude, focus, hops,
-    chart, layout, title, size, ... (see node_show viz_<kind>). then: look=<preset> | filter=<name> |
+    chart, layout, title, size, ... (see nodes_list(name="viz_<kind>")). then: look=<preset> | filter=<name> |
     cutout=<kind>[:<background>]. themes default ["paper"]; ["paper", "dark"] for a light/dark pair."""
     folder = str(_in_path(path)) if path else None
     conn, settings = _open()
@@ -303,14 +317,47 @@ def filter_apply(name: str, photos: list[str] | None = None, intensity: float | 
 
 @mcp.tool()
 @_guard
-def audio(file: str, preset: str = "voice", check: bool = False) -> str:
-    """Measure a clip's audio (LUFS, true peak, range, speech-to-noise) and, unless check, clean it on the box:
-    rumble cut, RNNoise denoise, compression, two-pass loudness to -14 LUFS / -1.5 dBTP. Writes <file>.clean.mp4.
-    preset: voice | mixed | music."""
-    src = _in_path(file)
+def filter_show(name: str, cube: bool = False) -> str:
+    """One filter's knobs and history (a pack or saved filter). cube=True also writes its colour part as a .cube LUT
+    (CapCut, VN, Lightroom, Resolve) under the wonhee data home and returns its path."""
     conn, settings = _open()
     try:
-        return service.audio(conn, settings, _deps(settings), src, preset=preset, check_only=check)
+        out = None
+        if cube:
+            out = _out_path(str(settings.home / "filters" / "cube" / f"{name}.cube"))
+        return service.filter_show(settings, name, cube=out)
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def filter_calibrate(photos: list[str], n: int = 40, engine: str = "local") -> str:
+    """Measure which filter knobs the reviewer model can see (move one knob, show before|after, ask which moved);
+    `filter_make` then hides the knobs it cannot see from the reviewer. Writes <data home>/filters/_calibration.json.
+    engine local = $0."""
+    paths = [_in_path(p) for p in photos]
+    conn, settings = _open()
+    try:
+        return service.filter_calibrate(conn, settings, _deps(settings), paths, n=n, engine=engine)[0]
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def audio(file: str, preset: str = "voice", check: bool = False, isolate: bool = False,
+          music_db: float | None = None, out: str | None = None) -> str:
+    """Measure a clip's audio (LUFS, true peak, range, speech-to-noise) and, unless check, clean it on the box:
+    rumble cut, RNNoise denoise, compression, two-pass loudness to -14 LUFS / -1.5 dBTP. Writes <file>.clean.mp4,
+    or out (a file path under the wonhee data home). preset: voice | mixed | music. isolate: GPU, split the voice
+    from music / street noise first; music_db (with isolate): keep the music this many dB down, e.g. -15."""
+    src = _in_path(file)
+    dest = _out_path(out) if out else None
+    conn, settings = _open()
+    try:
+        return service.audio(conn, settings, _deps(settings), src, preset=preset, check_only=check, isolate=isolate,
+                             music_db=music_db, dest=dest)
     finally:
         conn.close()
 

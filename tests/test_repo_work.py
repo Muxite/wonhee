@@ -105,3 +105,12 @@ def test_trends_of_step_scoped(conn, ctx):
 def test_intent_row_unknown_raises(conn):
     with pytest.raises(KeyError):
         queries.intent_row(conn, 12345)
+
+
+def test_save_image_analyses(conn, ctx, tmp_path):
+    """design: DESIGN contract 6 (writes go through wonhee/db/repo/)."""
+    a = repo.save_media_bytes(conn, tmp_path, b"i1", "image", "image/png")
+    b = repo.save_media_bytes(conn, tmp_path, b"i2", "image", "image/png")
+    repo.save_image_analyses(conn, analyzer_version=1, step_id=ctx["step"], rows=[(a, "hello", "a gym"), (b, None, None)])
+    got = conn.execute("SELECT media_sha256, on_screen_text, visual FROM image_analysis ORDER BY media_sha256").fetchall()
+    assert {(r[0], r[1], r[2]) for r in got} == {(a, "hello", "a gym"), (b, None, None)}

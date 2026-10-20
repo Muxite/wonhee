@@ -57,6 +57,25 @@ def test_cost_cap_stops(conn, settings, run_id):
     assert [f["code"] for f in queries.step_flags(conn, b["id"])] == ["COST_CAP"]
 
 
+def test_llm_refused_before_call_when_budget_spent(conn, settings, run_id, fake_llm):
+    """design: DESIGN contract 8 (remote LLM calls are checked against the remaining budget before they're made)."""
+    from pydantic import BaseModel
+
+    class Out(BaseModel):
+        x: int
+
+    fake_llm.queue(Out=[{"x": 1}])
+
+    def ask(ctx):
+        ctx.add_cost(1.0)  # run cap is 1.0: spent
+        ctx.llm(Out, schema_name="Out", system="s", prompt="p")
+        return "ok"
+    assert run_stages(conn, settings, fake_deps(), run_id, [Stage("a", (), ask)]) == "failed"
+    assert fake_llm.calls() == []  # refused before the model was called
+    a = queries.current_step(conn, run_id, "a")
+    assert [f["code"] for f in queries.step_flags(conn, a["id"])] == ["COST_CAP"]
+
+
 def test_resume_supersedes_and_links_current(conn, settings, run_id):
     stages = [Stage("a", (), ok), Stage("b", ("a",), ok), Stage("c", ("b",), ok)]
     run_stages(conn, settings, fake_deps(), run_id, stages)

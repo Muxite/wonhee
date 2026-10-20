@@ -33,7 +33,8 @@ These hold everywhere; breaking one is a defect.
    Every call has a JSON schema, is validated, and gets one retry with the validation error as feedback.
    External text is passed as delimited data, never as instructions.
 8. **Money.** Each run has `cost_cap_usd` (default $1). Paid calls, Apify and remote LLM alike, are checked against
-   the remaining budget **before** they're made, and are refused with `COST_CAP` when it's spent.
+   the remaining budget **before** they're made, and are refused with `COST_CAP` when it's spent. Intent-compiler
+   turns happen before a run exists, so they sit outside any cap; they are logged in `llm_call` against the intent.
 9. **Gates.** Publishing, deleting media and spending over the cap need a person (`--yes`, or a `resume --set`).
 10. **Keys** come from the process env or the repo `.env` (or `--env-file`). Subprocesses get `procenv.clean_env()`.
     No user-level config is read.
@@ -49,7 +50,7 @@ These hold everywhere; breaking one is a defect.
 | Area | Contract | Detail | Status |
 |---|---|---|---|
 | Nodes and chains | Chains are JSON (a list, or `{nodes, cost_cap_usd, no_cache}`). Ids match `^[a-z][a-z0-9_]{0,31}$`. Validation happens before anything is recorded and reports every problem in one error (exit 2). Nodes run in topological order with ties in file order. A failed node stops its downstream. Detached runs hand off to a live worker of the right lane, else spawn `wonhee chain exec` | [toolkit R0](specs/2026-10-15-toolkit-design.md) (as amended by contracts 1–3 above) | built |
-| Agent discovery | MCP `nodes_list()` returns name, ports and doc for every node. `nodes_list(name)` also returns that node's param JSON schema, because 40 schemas in one reply wastes context | this page | approved |
+| Agent discovery | MCP `nodes_list()` returns name, ports and doc for every node. `nodes_list(name)` also returns that node's param JSON schema, because 40 schemas in one reply wastes context | this page | built |
 | Warm workers | One process per lane. It claims jobs atomically from `job` and heartbeats in `worker`. A dead worker's job is requeued, up to 3 attempts | [workers.md › Worker contract](production/workers.md#worker-contract) | built |
 | Production rules | Touch pixels once, lanes and limits, batching, failure, human gates | [policies.md](production/policies.md) | approved (rules 1, 5 and §2 wait on `render`) |
 | Profiling (gauge) | Measures any job in a container. Never imported by normal wonhee use | [profiling/GUIDE.md](profiling/GUIDE.md) | built |
@@ -59,7 +60,7 @@ These hold everywhere; breaking one is a defect.
 | Area | Contract | Detail | Status |
 |---|---|---|---|
 | Intent compiler | Freeform text → `ScoutRequest`. Gaps come from deterministic rules, and all questions go in one numbered message. Nothing runs before "go". "go" accepts the proposed defaults; a gap with no sensible default (niche) must be answered | [scout spec §4](specs/2026-10-15-trend-scout-design.md) | built |
-| Trend scout | resolve → discover → pick → fetch → analyze → describe → shotlist. Pick records why it chose and why it passed. Every shot cites ≥1 source, or it is flagged `UNCITED_CLAIM` and the run is weak | [scout spec §5](specs/2026-10-15-trend-scout-design.md) | built (see drift) |
+| Trend scout | resolve → discover → pick → fetch → analyze → describe → shotlist. Pick records the decision and the model's reason as a step artifact. Every shot cites ≥1 source, or it is flagged `UNCITED_CLAIM` and the run is weak | [scout spec §5](specs/2026-10-15-trend-scout-design.md) | built (see drift) |
 | Library grab | `grab URL` stores a post (reel, photo, carousel) with metrics, media and analysis. Every item seen gets a metric snapshot | toolkit §1, scout R14 | built |
 | Teardown and inspire | Creator-blind teardown of each stored post (closed vocabularies), cached per post. `inspire` aggregates them into a report: what to build, what to shoot, a line bank, looks | [workers.md](production/workers.md) row `teardown` | built |
 | Shot search | `shots index` cuts footage into shots and embeds the keyframes (SigLIP2). `shots search` finds shots by description | workers.md row 6 | built |
@@ -146,10 +147,10 @@ Every known mismatch between this design and the code, with the verdict from [PR
 
 | # | Where | Mismatch | Verdict | Action |
 |---|---|---|---|---|
-| D1 | scout pick | Pick discards its reasons (`PickChoice.reason`) | code wrong (scout §5 row 03, G3) | fix: record reasons as a step artifact |
-| D2 | cost cap | LLM calls aren't checked against the remaining budget before they're made, so one stage can overshoot | code wrong (contract 8, scout R9) | fix: pre-check in `pipeline/context.py` |
-| D3 | `library/grab.py` | A raw `INSERT INTO image_analysis` bypasses the repo | code wrong (contract 6) | fix: move it into `db/repo/` |
-| D4 | MCP `nodes_list` | No param schemas (toolkit R0 wanted them) | design wrong (detail: 40 schemas per call is too much context) | design → `nodes_list(name)`; code fix |
+| D1 | scout pick | Pick discards its reasons (`PickChoice.reason`) | code wrong (scout §5 row 03, G3) | **fixed**: decision + reason saved as a step artifact (`pick.py`). My first DESIGN row also demanded "why it passed", which the spec never said: design wrong (overreach), row corrected |
+| D2 | cost cap | LLM calls aren't checked against the remaining budget before they're made, so one stage can overshoot | code wrong (contract 8, scout R9) | **fixed**: `Ctx._require_budget()` before Apify and LLM calls |
+| D3 | `library/grab.py` | A raw `INSERT INTO image_analysis` bypasses the repo | code wrong (contract 6) | **fixed**: `repo.save_image_analyses` |
+| D4 | MCP `nodes_list` | No param schemas (toolkit R0 wanted them) | design wrong (detail: 40 schemas per call is too much context) | **fixed**: `nodes_list(name)` |
 | D5 | scout spec §2/§10 | Says moeka is a submodule and search goes via moeka | design wrong (ruling 2026-10-15: pinned pip dep; direct Brave client) | spec amended |
 | D6 | scout R3 | "go accepts all defaults", but niche has none | design wrong (underspecified) | spec amended: a gap with no default must be answered |
 | D7 | scout §5 contract | `StageResult` type vs `"ok"`/`"weak"` + `StageFailed` | design wrong (detail; same information) | spec amended |
@@ -160,9 +161,10 @@ Every known mismatch between this design and the code, with the verdict from [PR
 | D12 | about 27 nodes, worker, viz, publish | Code with no design | unowned → owned | designed on this page |
 | D13 | scout §7 | A hard-failure reply goes back through the intent compiler: not built (needs the moeka/Telegram side) | approved, not built | later, with the director |
 | D14 | viz | WaveSim source not pinned | design gap | open |
-| D15 | MCP tools | Fewer capabilities than their CLI twins: `audio` (isolate, music_db), `vibe` (set, guide_engine), `larp` (register), `node_run`/`chain_run` (no_cache). No MCP `filter show`/`filter calibrate` | code wrong (contract 4) | fix: add the args and tools |
+| D15 | MCP tools | Fewer capabilities than their CLI twins: `audio` (isolate, music_db), `vibe` (set, guide_engine), `larp` (register), `node_run`/`chain_run` (no_cache). No MCP `filter show`/`filter calibrate` | code wrong (contract 4) | **fixed**: args added; new `filter_show` (cube written under `<home>/filters/cube/`) and `filter_calibrate` |
 | D16 | MCP `publish_muksite` | Publishes with no `yes`. The only gate is the MCP client's tool-approval prompt plus the docstring ("only when the user asked") | **owner decision**: is a client approval prompt "a human yes" (contract 9)? | open |
 | D17 | text safe zones | watchouts.md says the IG UI covers the top 14% and bottom 20–25%; `edit/text.py` keeps text out of the top 12% and bottom 20% | design underspecified (a range, no measurement) | open: measure on a phone screenshot, then fix one side |
 | D18 | worker health | workers.md promised node versions in the health report; the `worker` table has none, so a worker started before a code change runs old code | design wrong (detail), real risk | doc amended; restart workers after deploys; versions in health = M change later |
 | D19 | production docs | README, policies.md and production/README stated `render`/timeline as live | doc stale | amended: marked approved, not built |
+| D21 | intent compiler | Its LLM calls aren't under a run's cost cap | design underspecified (no run exists yet) | contract 8 amended: outside the cap, logged per intent |
 | D20 | fonts | "never depend on host fonts": emoji, CJK and the date stamp use host fonts | doc stale (doctor warns) | watchouts.md amended |

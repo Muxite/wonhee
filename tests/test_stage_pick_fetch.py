@@ -65,6 +65,8 @@ def _flags(conn, r, stage):
 
 import json
 
+from wonhee.media import path_for
+
 
 def _pick_setup(conn, settings, fake_llm, tiny_video, pick_reply, items=None):
     apify = FakeApify({ACTOR_HASHTAG: [items or _items()], ACTOR_SCRAPER: [_items()[:3]]})
@@ -95,6 +97,19 @@ def test_pick_invalid_trend_id_uses_most_popular(conn, settings, fake_llm, tiny_
     flags = {(f["code"], f["detail"]) for f in _flags(conn, r, "pick")}
     assert [c for c, _ in flags] == ["INVALID_PICK"]
     assert queries.current_step(conn, r, "pick")["status"] == "weak"
+
+
+def test_pick_records_reason_on_step(conn, settings, fake_llm, tiny_video):
+    """design: DESIGN trend scout row ("pick records why it chose"); contract 5 (provenance in tables, not notes)."""
+    p, r, deps = _pick_setup(conn, settings, fake_llm, tiny_video,
+                             {"trend_id": 2, "reason": "easiest to film", "secondary_ids": [1]})
+    run_stages(conn, settings, deps, r, STAGES[:3], today=TODAY)
+    arts = queries.step_artifacts(conn, queries.current_step(conn, r, "pick")["id"])
+    decisions = [json.loads(path_for(settings.media_dir, a["blob_sha256"]).read_text())
+                 for a in arts if a["role"] == "llm_reply"]
+    rec = [d for d in decisions if d.get("decision") == "pick"]
+    assert len(rec) == 1 and rec[0]["reason"] == "easiest to film"
+    assert rec[0]["primary"] == 2 and rec[0]["secondary"] == [1] and rec[0]["by"] == "model"
 
 
 def _fetch_run(conn, settings, fake_llm, deps_kw, tiny_video):

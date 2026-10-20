@@ -121,6 +121,14 @@ class ShotAnalysis:
     visual: str | None = None
 
 
+def save_image_analyses(conn: sqlite3.Connection, *, analyzer_version: int, step_id: int,
+                        rows: list[tuple[str, str | None, str | None]]) -> None:
+    """One transaction of (media_sha, on_screen_text, visual) rows for stills."""
+    with tx(conn):
+        for sha, text, visual in rows:
+            conn.execute("INSERT INTO image_analysis VALUES (?,?,?,?,?)", (sha, analyzer_version, step_id, text, visual))
+
+
 def save_analysis(conn: sqlite3.Connection, *, sha: str, analyzer_version: int, step_id: int,
                   first_word_ms: int | None, language: str | None, transcript_sha: str | None,
                   shots: list[ShotAnalysis]) -> None:
