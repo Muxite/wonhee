@@ -68,6 +68,15 @@ Hand), `hand` (Mansalva), `autocaption` (Arimo), `pixel` (Press Start 2P), plus 
 pill | paper` with colour, padding and radius. The existing presets (`outline`, `band`, `script`, `sticker`) keep
 working.
 
+Amendments from the wave-1 alignment check:
+- Text has `stroke_em` (0..0.15). When absent, the preset's own stroke is used. Any `box` other than `none` defaults
+  it to 0. Clean titles (`headline`, `editorial`, `ui`, the lecture captions) set it to 0.
+- Weights are roles: `ui` is Inter Bold and `ui_medium` is Inter Medium. `caption` is Figtree SemiBold and
+  `caption_bold` is Figtree ExtraBold. `numeral` is Fraunces Black (SOFT 0, opsz 144) for chapter tiles.
+- The new typography params live on `compose` layers. The older `text_image`/`text_video` nodes keep their schema.
+- A missing bundled font is a doctor warning that says the package files are missing (not an apt command).
+- Licence files open with the font's own copyright line (name ID 0).
+
 ## 5. Looks
 
 New look preset `lofi_cam`: muted (saturation about 0.55), soft (a slight blur), a strong vignette, a magenta-tinted
@@ -109,7 +118,8 @@ credential, publication or institution (VISION: no faking real events).
 
 - Parallel remote-LLM calls fail with moeka `InstanceLockedError` when two processes share the moeka state
   directory (two teardowns failed). Design: each moeka kernel gets its own instance directory `<home>/moeka/<pid>/k<n>/` (moeka has no lock
-  wait), swept when its process is dead and removed at exit (the moeka-multi-instance rule).
+  wait), swept when its process is dead and removed at exit. Directories are named `<host>-<pid>`, and a sweep
+  only touches its own host's, because containers sharing one home can reuse pids (the moeka-multi-instance rule).
 
 ## 9. Tests (from this text)
 
