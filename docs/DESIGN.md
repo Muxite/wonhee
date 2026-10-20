@@ -91,6 +91,7 @@ These hold everywhere; breaking one is a defect.
 | Photo: filters | A parametric filter applies correct-first (`auto`), point ops with 8 colour ranges, effects, then skin undertone. `filter make` drafts, renders, measures, guards, reviews and saves. Reviewer calibration hides knobs the model can't see, unless the model is guessing. Usage logs set the default intensity | [photo-looks.md › Filters](production/photo-looks.md#filters-a-vibe-of-your-own-no-reference-needed) | built |
 | Photo: vibe | Look profile from references → per-photo grade along the ladder global → gentler → range → soft mask → mask. The first step that keeps skin readable wins. If none does, the least-bad step wins and is flagged unreadable | photo-looks.md, workers.md row `vibe` | built |
 | Photo: formats | `poster`, `carousel`, `mask_cutout` | workers.md | built |
+| Meme frame, sticker, pop-art formats | `meme_frame`, `word_captions`, sticker text preset, `sticker`, `pattern_bg`, `shape_frame`, `grid_plan` (from the 2026-10-20 references) | [formats spec](specs/2026-10-20-meme-and-popart-formats-design.md) | **proposed** |
 | Audio | `audio_check` measures loudness, peak, range and speech-to-noise. `audio_clean` brings a clip to -14 LUFS and -1.5 dBTP, denoises, and can optionally isolate the voice | [photo-looks.md › Audio defaults](production/photo-looks.md#audio-defaults-why) | built |
 | Data stills (from vizkit) | See [Data stills](#data-stills-viz) below | this page | built |
 
