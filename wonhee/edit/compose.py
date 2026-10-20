@@ -77,10 +77,16 @@ class Canvas(BaseModel):
     bg: str | PatternSpec = "#ffffff"
 
 
+class TimeSpan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    in_ms: int = Field(default=0, ge=0)
+    out_ms: int | None = Field(default=None, ge=0)
+
+
 class Layer(BaseModel):
     """One layer. Only the fields of its `type` are read; the rest must stay at their defaults' meaning."""
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
-    type: Literal["photo", "pattern", "shape", "sticker", "text", "band"]
+    type: Literal["photo", "pattern", "shape", "sticker", "text", "band", "captions", "stack", "list"]
     box: Box = Box()
     rotate: float = Field(default=0.0, ge=-180, le=180)
     opacity: float = Field(default=1.0, ge=0, le=1)
@@ -111,6 +117,34 @@ class Layer(BaseModel):
     # band
     side: Literal["top", "bottom"] = "top"
     h_frac: float = Field(default=0.15, gt=0, le=1)
+    # typography (reel-styles spec §4); `bg_box` is the text's background (the layer's own `box` is its geometry)
+    role: str | None = None
+    tracking_em: float = Field(default=0.0, ge=-0.1, le=0.2)
+    line_height: float | None = Field(default=None, ge=0.8, le=1.6)
+    stroke_em: float | None = Field(default=None, ge=0, le=0.15)
+    bg_box: Literal["none", "box", "pill", "paper"] = "none"
+    bg_colour: str | None = None
+    bg_pad_em: float = Field(default=0.25, ge=0, le=1)
+    bg_radius_em: float | None = Field(default=None, ge=0, le=1)
+    # time (spec §2): shown from t.in_ms to t.out_ms (absent = the whole duration), with an entrance animation
+    t: TimeSpan | None = None
+    anim: Literal["none", "fade", "pop", "type", "rise"] = "none"
+    dur_ms: int = Field(default=250, ge=50, le=3000)  # the animation's length
+    cursor: bool = False  # anim type: a cursor bar after the typed characters
+    # video: how a clip fills its window ("contain" keeps the whole picture, padded black; "cover" crops)
+    clip_fit: Literal["contain", "cover"] = "contain"
+    # word-driven layers (captions, stack, list)
+    mode: Literal["chunk", "word", "karaoke"] = "chunk"  # captions
+    max_words: int = Field(default=3, ge=1, le=3)  # captions
+    pause_ms: int = Field(default=350, ge=50, le=3000)  # a pause this long breaks a chunk / phrase
+    case: Literal["none", "lower", "upper"] = "none"
+    highlight: str | None = None  # karaoke: the active word's pill colour
+    active_colour: str | None = None  # karaoke: the active word's text colour
+    max_lines: int = Field(default=4, ge=1, le=8)  # stack
+    window: int = Field(default=5, ge=1, le=9)  # list: lines shown (odd numbers centre the active entry)
+    at_ms: list[int] | None = None  # list: when each of `items` becomes active (else spread over the layer's time)
+    keyword_colours: dict[str, str] | None = None  # list: entry text -> colour
+    scroll_ms: int = Field(default=470, ge=0, le=2000)  # list: how long the scroll to the next entry takes
 
     @field_validator("kind")
     @classmethod
@@ -133,6 +167,10 @@ class Layout(BaseModel):
         if isinstance(self.palette, str) and self.palette not in PALETTES:
             raise ValueError(f"unknown palette '{self.palette}'; known: {', '.join(PALETTES)}")
         for i, ly in enumerate(self.layers):
+            if ly.type in ("captions", "stack", "list") and ly.anim != "none":
+                raise ValueError(f"layer {i}: anim is for entrances; {ly.type} layers are driven by the words (use t to clip them)")
+            if ly.type == "photo" and ly.src in ("clip", "video") and (ly.shape != "rect" or ly.rotate or ly.outlines):
+                raise ValueError(f"layer {i}: the clip layer takes no shape, rotate or outlines")
             if ly.type == "sticker" and ly.kind not in STICKER_KINDS:
                 raise ValueError(f"layer {i}: sticker kind must be one of {', '.join(STICKER_KINDS)}")
             if ly.type == "shape" and ly.kind not in (None, "rect", "rounded", "circle", "heart", "star", "burst",
@@ -562,18 +600,6 @@ def safe_box(box: tuple[int, int, int, int], W: int, H: int,
 
 # ---- render ------------------------------------------------------------------------------------------------------
 
-def _paste_rotated(canvas: Image.Image, layer_img: Image.Image, box: tuple[int, int, int, int], rotate: float,
-                   opacity: float) -> None:
-    if opacity < 1:
-        a = layer_img.getchannel("A").point(lambda v: round(v * opacity))
-        layer_img = layer_img.copy()
-        layer_img.putalpha(a)
-    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
-    if rotate:
-        layer_img = layer_img.rotate(-rotate, resample=Image.BICUBIC, expand=True)
-    _paste_clipped(canvas, layer_img, round(cx - layer_img.width / 2), round(cy - layer_img.height / 2))
-
-
 def _paste_clipped(canvas: Image.Image, im: Image.Image, x: int, y: int) -> None:
     """alpha_composite with a negative offset (layers may overhang the canvas, as collage stickers do)."""
     sx, sy = max(0, -x), max(0, -y)
@@ -583,57 +609,129 @@ def _paste_clipped(canvas: Image.Image, im: Image.Image, x: int, y: int) -> None
     canvas.alpha_composite(crop, (max(0, x), max(0, y)))
 
 
+WORD_TYPES = ("captions", "stack", "list")  # drawn only by compose_video (they need the subtitles' word times)
+
+
+@dataclass
+class Ctx:
+    """What a layer needs to draw itself: the canvas, palette, input photos and the mask engine."""
+    W: int
+    H: int
+    pal: list[str]
+    seed: int
+    inputs: list[Image.Image]
+    mask_fn: MaskFn | None
+    notes: Notes
+
+    @property
+    def short(self) -> int:
+        return min(self.W, self.H)
+
+
+def layer_box(ly: Layer, c: Ctx, index: int, safe: bool = True) -> tuple[int, int, int, int]:
+    """The layer's pixel box; text-like layers are moved into the safe zone (and noted) on tall canvases."""
+    W, H = c.W, c.H
+    box = (round(ly.box.x * W), round(ly.box.y * H), round((ly.box.x + ly.box.w) * W), round((ly.box.y + ly.box.h) * H))
+    if safe and ly.type in ("text", "sticker", *WORD_TYPES):
+        box, moved = safe_box(box, W, H, ly.rotate)
+        if moved:
+            c.notes.adjusted.append(f"layer {index} ({ly.type}) moved into the safe zone")
+    return box
+
+
+def text_spec(ly: Layer, pal: list[str], content: str, preset: str | None = None,
+              size_frac: float | None = None) -> T.TextSpec:
+    """A layer's text settings as a TextSpec (colours resolved against the palette; typography from spec §4)."""
+    preset = preset or ly.preset or "outline"
+    strokes = ly.stroke or ["#000000", "#000000"]
+    cols = tuple("#%02x%02x%02x" % colour(c, pal)[:3] for c in [ly.colour or "#ffffff", *strokes])
+    return T.TextSpec(content, preset, "center", size_frac or ly.size_frac, 1.0,  # type: ignore[arg-type]
+                      "light" if (ly.colour or "").lower() in ("#000000", "black") else "dark", cols, ly.slant, 0.06,
+                      ly.align, role=ly.role, tracking_em=ly.tracking_em, line_height=ly.line_height, box=ly.bg_box,
+                      box_colour="#%02x%02x%02x%02x" % colour(ly.bg_colour, pal) if ly.bg_colour else None,
+                      box_pad_em=ly.bg_pad_em, box_radius_em=ly.bg_radius_em, stroke_em=ly.stroke_em)
+
+
+def layer_image(ly: Layer, i: int, c: Ctx, content: str | None = None) -> tuple[Image.Image, tuple[int, int, int, int]] | None:
+    """One layer drawn on its own: (RGBA image of the layer's box size, the pixel box). None for a layer that draws
+    nothing here (an empty slot, a clip window, or a word-driven layer, which compose_video draws from the words).
+    `content` overrides a text/sticker layer's text (the `type` animation reveals it a few characters at a time)."""
+    W, H = c.W, c.H
+    rng = np.random.default_rng([c.seed, i])
+    if ly.type in WORD_TYPES:
+        return None
+    if ly.type == "band":
+        bh = round(ly.h_frac * H)
+        y0 = 0 if ly.side == "top" else H - bh
+        return Image.new("RGBA", (W, bh), colour(ly.colour or "#000000", c.pal)), (0, y0, W, y0 + bh)
+    text = ly.content if content is None else content
+    if ly.type in ("text", "sticker") and not (text or "").strip() and not ly.items:
+        return None  # an empty slot draws nothing
+    box = layer_box(ly, c, i)
+    bw, bh = max(1, box[2] - box[0]), max(1, box[3] - box[1])
+    if ly.type == "photo":
+        if ly.src in ("clip", "video"):
+            return None
+        img, _ = _photo(ly, c.inputs, (bw, bh), c.pal, c.short, c.mask_fn, c.notes, i)
+    elif ly.type == "pattern":
+        img = pattern_image(_pattern_of(ly), (bw, bh), c.pal, rng)
+    elif ly.type == "shape":
+        content_img = _fill_image(ly.fill, (bw, bh), c.pal, rng, "pal:0")
+        img, _ = _shaped(content_img, ly.kind or "rect", ly.outlines, c.pal, c.short, ly.tail)
+    elif ly.type == "sticker":
+        img = _sticker(ly if content is None else ly.model_copy(update={"content": content}), (bw, bh), c.pal, rng, H,
+                       c.short)
+    else:  # text
+        img = T.render_block(text_spec(ly, c.pal, text or ""), (bw, bh), H)  # colours go through text._style
+    return img, box
+
+
+def placed(img: Image.Image, box: tuple[int, int, int, int], rotate: float, opacity: float
+           ) -> tuple[Image.Image, int, int]:
+    """The layer rotated about its box centre and faded: (image, x, y) of its top-left on the canvas."""
+    if opacity < 1:
+        img = img.copy()
+        img.putalpha(img.getchannel("A").point(lambda v: round(v * opacity)))
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    if rotate:
+        img = img.rotate(-rotate, resample=Image.BICUBIC, expand=True)
+    return img, round(cx - img.width / 2), round(cy - img.height / 2)
+
+
+def clip_hole(canvas: Image.Image, box: tuple[int, int, int, int], notes: Notes) -> None:
+    """A `photo` layer with src clip/video: the window becomes transparent (paste, not composite)."""
+    canvas.paste(Image.new("RGBA", (box[2] - box[0], box[3] - box[1]), (0, 0, 0, 0)), (box[0], box[1]))
+    notes.windows.append(box)
+
+
+def new_canvas(layout: Layout, seed: int, transparent: bool = False) -> Image.Image:
+    W, H = layout.canvas.w, layout.canvas.h
+    canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    if not transparent:
+        canvas.alpha_composite(_fill_image(layout.canvas.bg, (W, H), palette_of(layout), np.random.default_rng(seed),
+                                           "#ffffff"))
+    return canvas
+
+
 def render_ex(layout: Layout, inputs: list[Image.Image] | None = None, seed: int | None = None, *,
               mask_fn: MaskFn | None = None) -> tuple[Image.Image, Notes]:
-    inputs = inputs or []
+    """The still render: every layer, in order. Time is ignored (timed layers are drawn at rest) and word-driven
+    layers are skipped; compose_video (edit/reel.py) draws those."""
     W, H = layout.canvas.w, layout.canvas.h
-    short = min(W, H)
-    pal = palette_of(layout)
     base_seed = layout.seed if seed is None else seed
-    notes = Notes()
-    canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    bg = layout.canvas.bg
-    canvas.alpha_composite(_fill_image(bg, (W, H), pal, np.random.default_rng(base_seed), "#ffffff"))
+    c = Ctx(W, H, palette_of(layout), base_seed, inputs or [], mask_fn, Notes())
+    canvas = new_canvas(layout, base_seed)
     for i, ly in enumerate(layout.layers):
-        rng = np.random.default_rng([base_seed, i])
-        box = (round(ly.box.x * W), round(ly.box.y * H), round((ly.box.x + ly.box.w) * W), round((ly.box.y + ly.box.h) * H))
-        if ly.type == "band":
-            bh = round(ly.h_frac * H)
-            y0 = 0 if ly.side == "top" else H - bh
-            band = Image.new("RGBA", (W, bh), colour(ly.colour or "#000000", pal))
-            _paste_rotated(canvas, band, (0, y0, W, y0 + bh), 0, ly.opacity)
+        if ly.type == "photo" and ly.src in ("clip", "video"):
+            clip_hole(canvas, layer_box(ly, c, i, safe=False), c.notes)
             continue
-        if ly.type in ("text", "sticker") and not (ly.content or "").strip() and not ly.items:
-            continue  # an empty slot draws nothing
-        if ly.type in ("text", "sticker"):
-            box, moved = safe_box(box, W, H, ly.rotate)
-            if moved:
-                notes.adjusted.append(f"layer {i} ({ly.type}) moved into the safe zone")
-        bw, bh = max(1, box[2] - box[0]), max(1, box[3] - box[1])
-        if ly.type == "photo":
-            if ly.src == "clip":
-                hole = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
-                canvas.paste(hole, (box[0], box[1]))  # paste (not composite): the window becomes transparent
-                notes.windows.append(box)
-                continue
-            img, _ = _photo(ly, inputs, (bw, bh), pal, short, mask_fn, notes, i)
-        elif ly.type == "pattern":
-            img = pattern_image(_pattern_of(ly), (bw, bh), pal, rng)
-        elif ly.type == "shape":
-            content = _fill_image(ly.fill, (bw, bh), pal, rng, "pal:0")
-            img, _ = _shaped(content, ly.kind or "rect", ly.outlines, pal, short, ly.tail)
-        elif ly.type == "sticker":
-            img = _sticker(ly, (bw, bh), pal, rng, H, short)
-        else:  # text
-            preset = ly.preset or "outline"
-            strokes = ly.stroke or ["#000000", "#000000"]
-            cols = tuple("#%02x%02x%02x" % colour(c, pal)[:3] for c in [ly.colour or "#ffffff", *strokes])
-            spec = T.TextSpec(ly.content or "", preset, "center", ly.size_frac, 1.0,  # type: ignore[arg-type]
-                              "light" if (ly.colour or "").lower() in ("#000000", "black") else "dark", cols, ly.slant,
-                              0.06, ly.align)
-            img = T.render_block(spec, (bw, bh), H)  # colours go through text._style, so emoji keep their own
-        _paste_rotated(canvas, img, box, ly.rotate, ly.opacity)
-    return canvas, notes
+        got = layer_image(ly, i, c)
+        if got is None:
+            continue
+        img, box = got
+        im, x, y = placed(img, box, 0 if ly.type == "band" else ly.rotate, ly.opacity)
+        _paste_clipped(canvas, im, x, y)
+    return canvas, c.notes
 
 
 def render(layout: Layout, inputs: list[Image.Image] | None = None, seed: int | None = None, *,

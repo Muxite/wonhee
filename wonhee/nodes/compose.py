@@ -110,12 +110,43 @@ def compose_fn(ctx, inputs, p: ComposeParams) -> dict[str, str]:
         return {"image": _store_png(ctx, img, Path(tmp))}
 
 
-# ---- frame_video -------------------------------------------------------------------------------------------------
+# ---- compose_video / frame_video ---------------------------------------------------------------------------------
+
+class Tighten(BaseModel):
+    """Pause trimming (reel-styles spec §3): a pause of at least min_pause_ms between words is cut down to keep_ms."""
+    model_config = ConfigDict(extra="forbid")
+    min_pause_ms: int = Field(default=250, ge=50, le=5000)
+    keep_ms: int = Field(default=80, ge=0, le=1000)
+
+
+_VIDEO_DOC = ("A reel: a layout over time around a clip, in ONE ffmpeg encode (reel-styles spec §2, §3). Give `layout` "
+              "or `template` + `slots`. The clip goes into the layout's `photo` layer whose `src` is `clip` (or `video`), or "
+              "fills the canvas when there is none. Layers may carry `t` {in_ms, out_ms} and `anim` (none | fade | pop | type "
+              "| rise); layer types `captions` (chunk | word | karaoke), `stack` and `list` read the `subtitles` words; "
+              "photo layers read the `images` input by index (insets). `tighten` cuts pauses and re-times every layer.")
+
+
+class ComposeVideoParams(BaseModel):
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"description": _VIDEO_DOC + "\nTemplates:\n" + _TEMPLATES})
+    layout: C.Layout | None = None
+    template: str | None = Field(default=None, description="named template; one of the templates in this schema's description")
+    slots: dict = Field(default_factory=dict)
+    clip_slot: str = Field(default="photo", description="the template slot that becomes the clip window (if it has one)")
+    tighten: Tighten | None = None
+    seed: int | None = None
+    encoder: Literal["auto", "nvenc", "x264"] = "auto"
+    quality: int = Field(default=20, ge=12, le=35)
+
+    @model_validator(mode="after")
+    def _one(self):
+        if (self.layout is None) == (self.template is None):
+            raise ValueError("give exactly one of layout or template")
+        return self
+
 
 class FrameVideoParams(BaseModel):
-    """A video in a layout: the template's bands and title around the clip, optional captions, one encode. The
-    template must have a photo layer whose `src` is the slot's value `clip` (meme_frame: slot `photo`=clip, the
-    default here). Templates: see `compose`."""
+    """The first form of compose_video (kept as an alias): a template's bands and title around the clip, plus one
+    `captions` layer in the lower band unless the template has its own. Templates: see `compose`."""
     model_config = ConfigDict(extra="forbid")
     template: str = "meme_frame"
     slots: dict = Field(default_factory=dict)
@@ -124,6 +155,7 @@ class FrameVideoParams(BaseModel):
     words_per_group: int = Field(default=3, ge=1, le=3)
     caption_colour: str = "#c9a0e6"
     caption_box: C.Box = C.Box(x=0.14, y=0.665, w=0.72, h=0.085)
+    tighten: Tighten | None = None
     seed: int | None = None
     encoder: Literal["auto", "nvenc", "x264"] = "auto"
     quality: int = Field(default=20, ge=12, le=35)
@@ -138,68 +170,102 @@ def _even(v: int) -> int:
     return max(2, v - v % 2)
 
 
-def frame_video_fn(ctx, inputs, p: FrameVideoParams) -> dict[str, str]:
+def silence_cuts(src: Path, t: Tighten) -> tuple[tuple[int, int], ...]:
+    """Cuts from ffmpeg's silencedetect, for a take with no subtitles: an analysis pass (decode to null), not an encode."""
+    proc = run_timed(["ffmpeg", "-nostats", "-vn", "-i", str(src), "-af", f"silencedetect=noise=-35dB:d={t.min_pause_ms / 1000}",
+                      "-f", "null", "-"], env=clean_env(), capture_output=True, text=True)
+    starts = [float(m) for m in re.findall(r"silence_start: (-?[\d.]+)", proc.stderr)]
+    ends = [float(m) for m in re.findall(r"silence_end: ([\d.]+)", proc.stderr)]
+    cuts = []
+    for a, b in zip(starts, ends):
+        a, b = max(0, round(a * 1000)), round(b * 1000)
+        if a > 0 and b - a >= t.min_pause_ms and b - a > t.keep_ms:  # a leading silence is not a pause between speech
+            cuts.append((a + t.keep_ms // 2, b - (t.keep_ms - t.keep_ms // 2)))
+    return tuple(cuts)
+
+
+def _render_video(ctx, inputs, layout: C.Layout, tighten: Tighten | None, seed, encoder: str, quality: int) -> str:
+    from wonhee.edit import reel as R
+    from wonhee.edit import timeline as TL
+    from wonhee.nodes.subtitles import line_words
     d = ctx.settings.media_dir
     src = media.path_for(d, inputs["video"]).resolve()
-    layout = C.load_template(p.template, {**p.slots, p.clip_slot: "clip"})
-    wins = C.clip_windows(layout)
-    if not wins:
-        raise ValueError(f"template '{p.template}' has no clip window (a photo layer with src 'clip')")
-    W, H = _even(layout.canvas.w), _even(layout.canvas.h)
-    layout.canvas.w, layout.canvas.h = W, H
-    overlay, notes = C.render_ex(layout, [], p.seed)
-    if notes.adjusted:
-        ctx.flag("LAYOUT_ADJUSTED", "; ".join(notes.adjusted))
-    x0, y0, x1, y1 = (_even(v) for v in wins[0])
-    ww, wh = x1 - x0, y1 - y0
-    groups: list[tuple[float, float, str]] = []
-    cbox = None
-    if p.captions != "none" and inputs.get("subtitles"):
-        subs = load_subs(d, inputs["subtitles"])
-        groups = C.caption_groups([(ln.start_ms, ln.end_ms, ln.text) for ln in subs.lines], p.words_per_group)
-        if len(groups) > 250:
-            raise ValueError(f"{len(groups)} caption groups; trim the subtitles (limit 250)")
-        if groups:
-            ctx.flag("WORDS_ESTIMATED", "subtitles carry line timing only; words timed evenly within each line")
-        box = (round(p.caption_box.x * W), round(p.caption_box.y * H), round((p.caption_box.x + p.caption_box.w) * W),
-               round((p.caption_box.y + p.caption_box.h) * H))
-        cbox, moved = C.safe_box(box, W, H)
-        if moved:
-            ctx.flag("LAYOUT_ADJUSTED", "caption box moved into the safe zone")
-    enc = {"nvenc": ["-c:v", "h264_nvenc", "-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", str(p.quality),
-                     "-b:v", "0"],
-           "x264": ["-c:v", "libx264", "-preset", "medium", "-crf", str(p.quality)]}
-    order = ["nvenc", "x264"] if p.encoder == "auto" else [p.encoder]
-    with tempfile.TemporaryDirectory(prefix="wonhee-frame-") as tmp:
+    info = media.probe(src)
+    if not info.duration_ms:
+        raise RuntimeError("cannot read the clip's duration")
+    layout.canvas.w, layout.canvas.h = _even(layout.canvas.w), _even(layout.canvas.h)
+    W, H = layout.canvas.w, layout.canvas.h
+    words, estimated = [], False
+    if inputs.get("subtitles"):
+        for ln in load_subs(d, inputs["subtitles"]).lines:
+            ws, est = line_words(ln)
+            words += ws
+            estimated = estimated or est
+    word_driven = any(ly.type in C.WORD_TYPES for ly in layout.layers)
+    if estimated and (word_driven or tighten):
+        ctx.flag("WORDS_ESTIMATED", "subtitles carry line timing only; words timed evenly within each line")
+    cuts: tuple[tuple[int, int], ...] = ()
+    has_audio = media.has_audio(src)
+    if tighten and not words and not has_audio:
+        ctx.flag("TIGHTEN_SKIPPED", "no word timings and no audio to find pauses in; the take is left untrimmed")
+        tighten = None
+    if tighten:
+        raw = TL.find_pauses(words, tighten.min_pause_ms, tighten.keep_ms) if words else silence_cuts(src, tighten)
+        cuts = TL.snap_cuts(raw, info.fps, info.duration_ms)  # on the frame grid, so audio and video are cut together
+    tl = TL.Timeline(cuts)
+    plan = R.plan_reel(layout, words, info.duration_ms, _images(ctx, inputs.get("images")), seed,
+                       mask_fn=C.default_mask_fn(ctx.settings.home / "models"), timeline=tl)
+    if plan.notes.adjusted:
+        ctx.flag("LAYOUT_ADJUSTED", "; ".join(plan.notes.adjusted))
+    for note in plan.notes.no_subject:
+        ctx.flag("FOCUS_NO_SUBJECT", note)
+    if tighten:
+        ctx.flag("PAUSES_TRIMMED", f"removed {tl.removed_ms() / 1000:.2f} s in {len(cuts)} cut(s): "
+                                   f"{info.duration_ms / 1000:.2f} s -> {plan.duration_ms / 1000:.2f} s")
+    enc = {"nvenc": ["-c:v", "h264_nvenc", "-preset", "p5", "-tune", "hq", "-rc", "vbr", "-cq", str(quality), "-b:v", "0"],
+           "x264": ["-c:v", "libx264", "-preset", "medium", "-crf", str(quality)]}
+    order = ["nvenc", "x264"] if encoder == "auto" else [encoder]
+    with tempfile.TemporaryDirectory(prefix="wonhee-reel-") as tmp:
         tmpd = Path(tmp)
-        overlay.save(tmpd / "overlay.png")
-        args = ["-i", str(src), "-i", "overlay.png"]
-        graph = (f"[0:v]scale={ww}:{wh}:force_original_aspect_ratio=decrease:force_divisible_by=2,"
-                 f"pad={W}:{H}:trunc(({x0}+({ww}-iw)/2)/2)*2:trunc(({y0}+({wh}-ih)/2)/2)*2:color=black,setsar=1[b0];"
-                 f"[b0][1:v]overlay=0:0:format=auto[o1]")
-        last = "o1"
-        for i, (a, b, text) in enumerate(groups):
-            cap = C.caption_image(text, p.captions, (cbox[2] - cbox[0], cbox[3] - cbox[1]), p.caption_colour, H)
-            cap.save(tmpd / f"cap{i}.png")
-            args += ["-i", f"cap{i}.png"]
-            nxt = f"o{i + 2}"
-            graph += (f";[{last}][{i + 2}:v]overlay={cbox[0]}:{cbox[1]}:format=auto:"
-                      f"enable='gte(t,{a:.3f})*lt(t,{b:.3f})'[{nxt}]")  # half-open: no frame shows two groups
-            last = nxt
-        graph += f";[{last}]format=yuv420p[o]"
+        args, graph, alabel = R.graph_for(plan, (W, H), tmpd, tl.kept(info.duration_ms) if cuts else None, has_audio)
+        audio = ["-map", alabel, "-c:a", "aac", "-b:a", "160k"] if alabel else (
+            ["-map", "0:a?", "-c:a", "copy"] if not cuts else [])
         out = tmpd / "out.mp4"
         proc = None
         for name in order:
-            proc = _ffmpeg([*args, "-filter_complex", graph, "-map", "[o]", "-map", "0:a?", *enc[name], "-c:a", "copy",
+            proc = _ffmpeg(["-i", str(src), *args, "-filter_complex", graph, "-map", "[o]", *audio, *enc[name],
                             "-movflags", "+faststart", str(out)], tmpd)
             if proc.returncode == 0 and out.exists():
                 if name != order[0]:
                     ctx.flag("ENCODER_FALLBACK", f"{order[0]} failed, used {name}")
                 break
         else:
-            raise RuntimeError(f"ffmpeg frame_video failed: {proc.stderr.strip()[-400:]}")
-        sha = repo.save_file(ctx.conn, d, out, "video", "video/mp4")
-    return {"video": sha}
+            raise RuntimeError(f"ffmpeg compose_video failed: {proc.stderr.strip()[-400:]}")
+        return repo.save_file(ctx.conn, d, out, "video", "video/mp4")
+
+
+def compose_video_fn(ctx, inputs, p: ComposeVideoParams) -> dict[str, str]:
+    declared = {t["name"]: t["slots"] for t in C.list_templates()}.get(p.template or "", {})
+    slots = {**p.slots, **({p.clip_slot: "clip"} if p.clip_slot in declared and p.clip_slot not in p.slots else {})}
+    layout = p.layout if p.layout is not None else C.load_template(p.template, slots)  # type: ignore[arg-type]
+    return {"video": _render_video(ctx, inputs, layout, p.tighten, p.seed, p.encoder, p.quality)}
+
+
+def frame_video_fn(ctx, inputs, p: FrameVideoParams) -> dict[str, str]:
+    layout = C.load_template(p.template, {**p.slots, p.clip_slot: "clip"})
+    if not C.clip_windows(layout):
+        raise ValueError(f"template '{p.template}' has no clip window (a photo layer with src 'clip')")
+    if p.captions != "none" and not any(ly.type == "captions" for ly in layout.layers):
+        box = p.caption_box
+        layout.layers.append(C.Layer(
+            type="captions", mode="chunk", max_words=p.words_per_group, size_frac=0.034,
+            box=C.Box(x=box.x, y=box.y, w=box.w, h=box.h), bg_box="box",
+            bg_colour=p.caption_colour if p.captions == "box" else p.caption_colour + "aa" if len(p.caption_colour) == 7
+            else p.caption_colour,
+            colour="#000000" if p.captions == "box" else "#ffffff", preset="band" if p.captions == "box" else "outline"))
+    elif p.captions == "none":
+        layout.layers = [ly for ly in layout.layers if ly.type != "captions"]
+    return {"video": _render_video(ctx, inputs, layout, p.tighten, p.seed, p.encoder, p.quality)}
 
 
 # ---- grid_plan ---------------------------------------------------------------------------------------------------
@@ -278,14 +344,19 @@ def _salt(_settings) -> dict:
     return {"mask": "u2net-onnx", "templates": C.templates_digest()}  # editing a template is a cache miss
 
 
-registry.register(Node("compose", 2, {"images": "images?", "refs": "text?"}, {"image": "image"}, ComposeParams, compose_fn,
+registry.register(Node("compose", 3, {"images": "images?", "refs": "text?"}, {"image": "image"}, ComposeParams, compose_fn,
                        "Render a layout (canvas + layers: photo, pattern, shape, sticker, text, band) or a named "
                        "template (meme_frame, sticker_frame, brag_collage, popart_cutout, slop_card) with slots.",
                        salt=_salt))
-registry.register(Node("frame_video", 2, {"video": "video", "subtitles": "subtitles?"}, {"video": "video"},
+registry.register(Node("compose_video", 2, {"video": "video", "subtitles": "subtitles?", "images": "images?"},
+                       {"video": "video"}, ComposeVideoParams, compose_video_fn,
+                       "A reel from a layout or style template: timed layers, animated text, word captions "
+                       "(chunk / word / karaoke), kinetic stack, scrolling list, insets, optional pause trimming; "
+                       "one encode.", salt=_salt))
+registry.register(Node("frame_video", 4, {"video": "video", "subtitles": "subtitles?"}, {"video": "video"},
                        FrameVideoParams, frame_video_fn,
-                       "Put a video in a layout (meme frame: bands, title) with optional 1-3 word captions; one encode.",
-                       salt=_salt))
-registry.register(Node("grid_plan", 2, {"images": "images"}, {"images": "images"}, GridPlanParams, grid_plan_fn,
+                       "Put a video in a layout (meme frame: bands, title) with optional 1-3 word captions; one encode "
+                       "(the first form of compose_video).", salt=_salt))
+registry.register(Node("grid_plan", 3, {"images": "images"}, {"images": "images"}, GridPlanParams, grid_plan_fn,
                        "Render a 3/6/9 post set as one profile grid: a template, palette and pattern per tile.",
                        salt=_salt))

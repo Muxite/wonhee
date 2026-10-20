@@ -102,6 +102,11 @@ every time; each format is a named template with slots (`uv run wonhee node show
 - `compose` takes an optional `refs` text (an inspiration digest or plain lines): a text or sticker line that copies it
   is dropped and flagged `IDEA_COPY`.
 - `cutout` and `focus: subject` use the CPU ONNX mask models (downloaded on first use, as for `mask_cutout`).
+- `compose_video` (video, subtitles?, images? -> video) is the timed form: layers take `t` {in_ms, out_ms} and `anim`
+  (fade, pop, type, rise); layer types `captions` (chunk, word, karaoke), `stack` and `list` read the subtitles' words;
+  photo layers from `images` are insets; `tighten: {}` cuts pauses and re-times everything (`PAUSES_TRIMMED` reports the
+  seconds removed). It is one ffmpeg encode (a take with no subtitles adds one silencedetect analysis pass).
+  `frame_video` stays as its first form. Spec: `docs/specs/2026-10-20-reel-styles-design.md` §2-§3.
 - `frame_video` captions come from `subtitles`; with line timing only, each line's time is split evenly across its words
   (`WORDS_ESTIMATED`).
 
