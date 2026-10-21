@@ -1,0 +1,809 @@
+{
+ "sunset-waves": {
+  "palette": "Sunset trio",
+  "palette_hex": {
+   "canvas": "#150512",
+   "structure": "#b2417f",
+   "structure2": "#e77f3e",
+   "accent": "#ffdb68"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "pixel waves",
+    "d": 0.05,
+    "seed": 3
+   },
+   {
+    "fn": "wheel-bl",
+    "d": 0.55,
+    "seed": 4,
+    "blur": 1.5
+   },
+   {
+    "fn": "pills",
+    "seed": 9,
+    "scale": 0.82,
+    "dx": 0.09
+   }
+  ],
+  "background": "glow",
+  "bloom": 0.5,
+  "grain": 0.035,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "neon-digital": {
+  "palette": "Neon trio",
+  "palette_hex": {
+   "canvas": "#06061d",
+   "structure": "#0096af",
+   "structure2": "#ce35a8",
+   "accent": "#c0f447"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "pixel waves",
+    "d": 0.0,
+    "seed": 4
+   },
+   {
+    "fn": "digital waves",
+    "d": 0.5,
+    "seed": 4
+   },
+   {
+    "fn": "lattice",
+    "d": 0.15,
+    "seed": 8,
+    "scale": 0.86,
+    "dx": -0.07,
+    "dy": 0.03
+   }
+  ],
+  "background": "dots",
+  "bloom": 0.8,
+  "grain": 0.03,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "ember-waves-spiral": {
+  "palette": "Ember",
+  "palette_hex": {
+   "canvas": "#120603",
+   "structure": "#ac3031",
+   "structure2": "#d67523",
+   "accent": "#f9e03f"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "waves",
+    "d": 0.35,
+    "seed": 6
+   },
+   {
+    "fn": "spiral-br",
+    "d": 0.45,
+    "seed": 5
+   },
+   {
+    "fn": "flow",
+    "seed": 7,
+    "scale": 0.82,
+    "dx": -0.09
+   }
+  ],
+  "background": "glow",
+  "bloom": 0.6,
+  "grain": 0.04,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "ocean-pixels": {
+  "palette": "Ocean trio",
+  "palette_hex": {
+   "canvas": "#000d18",
+   "structure": "#1c719a",
+   "structure2": "#1d9999",
+   "accent": "#5bf0b8"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "pixel waves",
+    "d": 0.05,
+    "seed": 2
+   },
+   {
+    "fn": "bundle",
+    "d": 0.1,
+    "seed": 7,
+    "scale": 0.88,
+    "dx": 0.06
+   }
+  ],
+  "background": "grad",
+  "bloom": 0.45,
+  "grain": 0.03,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "ink-digital": {
+  "palette": "Ink on paper",
+  "palette_hex": {
+   "canvas": "#f4f3f0",
+   "structure": "#65635e",
+   "structure2": "#65635e"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "digital waves",
+    "d": 0.3,
+    "seed": 4
+   },
+   {
+    "fn": "wheel-tr",
+    "d": 0.5,
+    "seed": 5
+   },
+   {
+    "fn": "bundle",
+    "seed": 5,
+    "scale": 0.88,
+    "dx": -0.06
+   }
+  ],
+  "background": "halftone",
+  "bloom": 0,
+  "grain": 0.09,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "red-pixels": {
+  "palette": "Red poster",
+  "palette_hex": {
+   "canvas": "#b71a18",
+   "structure": "#f1e7d2",
+   "structure2": "#f1e7d2"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "pixel waves",
+    "d": 0.2,
+    "seed": 3
+   },
+   {
+    "fn": "wheel-br",
+    "d": 0.5,
+    "seed": 3
+   },
+   {
+    "fn": "lattice",
+    "seed": 8,
+    "scale": 0.86,
+    "dx": -0.06,
+    "echo": [
+     "accent",
+     5,
+     4,
+     0.55
+    ]
+   }
+  ],
+  "background": "flat",
+  "bloom": 0,
+  "grain": 0.06,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "plum-olive-digital": {
+  "palette": "Plum olive",
+  "palette_hex": {
+   "canvas": "#f5f2e3",
+   "structure": "#653161",
+   "structure2": "#506e2c",
+   "accent": "#cc272e"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "digital waves",
+    "d": 0.4,
+    "seed": 2
+   },
+   {
+    "fn": "pills",
+    "seed": 9,
+    "scale": 0.8,
+    "dx": -0.1,
+    "echo": [
+     "structure",
+     3,
+     3,
+     0.25
+    ]
+   }
+  ],
+  "background": "grad",
+  "bloom": 0,
+  "grain": 0.07,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "blue-violet-whisper": {
+  "palette": "Blue violet",
+  "palette_hex": {
+   "canvas": "#0a071d",
+   "structure": "#4b64ae",
+   "structure2": "#4b64ae"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "waves",
+    "d": 0.55,
+    "seed": 3
+   },
+   {
+    "fn": "matrix",
+    "d": 0.8,
+    "scale": 1.0,
+    "seed": 3
+   },
+   {
+    "fn": "bundle",
+    "d": 0.25,
+    "seed": 6,
+    "scale": 0.86,
+    "dx": 0.07
+   }
+  ],
+  "background": "glow",
+  "bloom": 0.9,
+  "grain": 0.03,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "green-gold-wave-spiral": {
+  "palette": "Green gold",
+  "palette_hex": {
+   "canvas": "#020f06",
+   "structure": "#317a45",
+   "structure2": "#317a45"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "waves",
+    "d": 0.45,
+    "seed": 3
+   },
+   {
+    "fn": "spiral-bl",
+    "d": 0.5,
+    "seed": 3
+   },
+   {
+    "fn": "lattice",
+    "d": 0.1,
+    "seed": 8,
+    "scale": 0.86,
+    "dx": 0.07
+   }
+  ],
+  "background": "glow",
+  "bloom": 0.55,
+  "grain": 0.04,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "rose-gold-waves": {
+  "palette": "Rose gold",
+  "palette_hex": {
+   "canvas": "#110908",
+   "structure": "#966259",
+   "structure2": "#966259"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "waves",
+    "d": 0.2,
+    "seed": 2
+   },
+   {
+    "fn": "swimlane",
+    "d": 0.1,
+    "seed": 5,
+    "scale": 0.84,
+    "dx": 0.08
+   }
+  ],
+  "background": "glow",
+  "bloom": 0.5,
+  "grain": 0.04,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "white-dark-digital": {
+  "palette": "White dark",
+  "palette_hex": {
+   "canvas": "#08090b",
+   "structure": "#66696f",
+   "structure2": "#66696f"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "digital waves",
+    "d": 0.45,
+    "seed": 2
+   },
+   {
+    "fn": "lattice",
+    "seed": 7,
+    "scale": 0.84,
+    "dx": -0.08,
+    "echo": [
+     "accent",
+     4,
+     0,
+     0.35
+    ]
+   }
+  ],
+  "background": "flat",
+  "bloom": 0.4,
+  "grain": 0.05,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "cobalt-waves-wheel": {
+  "palette": "Cobalt poster",
+  "palette_hex": {
+   "canvas": "#0538ab",
+   "structure": "#b2dffa",
+   "structure2": "#b2dffa"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "waves",
+    "d": 0.3,
+    "seed": 3
+   },
+   {
+    "fn": "wheel-tr",
+    "d": 0.5,
+    "seed": 3
+   },
+   {
+    "fn": "flow",
+    "seed": 4,
+    "scale": 0.84,
+    "dx": -0.08,
+    "echo": [
+     "accent",
+     4,
+     4,
+     0.5
+    ]
+   }
+  ],
+  "background": "flat",
+  "bloom": 0,
+  "grain": 0.05,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "forest-pixels": {
+  "palette": "Forest poster",
+  "palette_hex": {
+   "canvas": "#004424",
+   "structure": "#abdea0",
+   "structure2": "#abdea0"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "pixel waves",
+    "d": 0.1,
+    "seed": 2
+   },
+   {
+    "fn": "bundle",
+    "seed": 6,
+    "scale": 0.88,
+    "dx": 0.05
+   }
+  ],
+  "background": "grad",
+  "bloom": 0.2,
+  "grain": 0.05,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "cream-red-pixels": {
+  "palette": "Red on cream",
+  "palette_hex": {
+   "canvas": "#f9f2c4",
+   "structure": "#bb0a10",
+   "structure2": "#c46d00",
+   "accent": "#391411"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "pixel waves",
+    "d": 0.15,
+    "seed": 2
+   },
+   {
+    "fn": "pills",
+    "seed": 9,
+    "scale": 0.76,
+    "dx": -0.12
+   }
+  ],
+  "background": "halftone",
+  "bloom": 0,
+  "grain": 0.07,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "mint-pink-soft": {
+  "palette": "Mint pink",
+  "palette_hex": {
+   "canvas": "#e6f6ee",
+   "structure": "#095b46",
+   "structure2": "#095b46"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "waves",
+    "d": 0.5,
+    "seed": 3
+   },
+   {
+    "fn": "matrix",
+    "d": 0.62,
+    "seed": 3
+   },
+   {
+    "fn": "lattice",
+    "d": 0.3,
+    "seed": 4,
+    "scale": 0.85,
+    "dx": 0.06
+   }
+  ],
+  "background": "grad",
+  "bloom": 0,
+  "grain": 0.05,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "blue-violet-light-pixels": {
+  "palette": "Blue violet light",
+  "palette_hex": {
+   "canvas": "#f3f2fd",
+   "structure": "#3d51a0",
+   "structure2": "#3d51a0"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "pixel waves",
+    "d": 0.3,
+    "seed": 3
+   },
+   {
+    "fn": "pills",
+    "d": 0.2,
+    "seed": 9,
+    "scale": 0.8,
+    "dx": 0.1
+   }
+  ],
+  "background": "glow",
+  "bloom": 0,
+  "grain": 0.05,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "yellow-poster-bold": {
+  "palette": "Yellow poster",
+  "palette_hex": {
+   "canvas": "#f7db4a",
+   "structure": "#17182d",
+   "structure2": "#17182d"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "pixel waves",
+    "d": 0.1,
+    "seed": 2
+   },
+   {
+    "fn": "lattice",
+    "seed": 8,
+    "scale": 0.82,
+    "dx": -0.08,
+    "echo": [
+     "accent",
+     4,
+     4,
+     0.45
+    ]
+   }
+  ],
+  "background": "flat",
+  "bloom": 0,
+  "grain": 0.07,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "black-cherry-bold": {
+  "palette": "Black cherry",
+  "palette_hex": {
+   "canvas": "#110305",
+   "structure": "#91394b",
+   "structure2": "#91394b"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "waves",
+    "d": 0.45,
+    "seed": 3
+   },
+   {
+    "fn": "wheel-tl",
+    "d": 0.5,
+    "seed": 3
+   },
+   {
+    "fn": "flow",
+    "seed": 6,
+    "scale": 0.84,
+    "dx": 0.08,
+    "echo": [
+     "structure",
+     5,
+     0,
+     0.5
+    ]
+   }
+  ],
+  "background": "glow",
+  "bloom": 0.45,
+  "grain": 0.04,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "violet-poster-trio": {
+  "palette": "Violet poster",
+  "palette_hex": {
+   "canvas": "#531d8d",
+   "structure": "#e9a1e3",
+   "structure2": "#7adff7",
+   "accent": "#f7ea3c"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "waves",
+    "d": 0.4,
+    "seed": 2
+   },
+   {
+    "fn": "wheel-br",
+    "d": 0.45,
+    "seed": 3
+   },
+   {
+    "fn": "swimlane",
+    "seed": 7,
+    "scale": 0.84,
+    "dx": -0.07,
+    "echo": [
+     "accent",
+     4,
+     4,
+     0.4
+    ]
+   }
+  ],
+  "background": "flat",
+  "bloom": 0,
+  "grain": 0.05,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "teal-coral-soft": {
+  "palette": "Teal coral light",
+  "palette_hex": {
+   "canvas": "#ebf6f5",
+   "structure": "#006266",
+   "structure2": "#006266"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "digital waves",
+    "d": 0.4,
+    "seed": 4
+   },
+   {
+    "fn": "snake",
+    "d": 0.6,
+    "seed": 5
+   },
+   {
+    "fn": "pills",
+    "seed": 9,
+    "scale": 0.8,
+    "dx": 0.1
+   }
+  ],
+  "background": "halftone",
+  "bloom": 0,
+  "grain": 0.06,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "violet-pixels-only": {
+  "palette": "Violet dusk",
+  "palette_hex": {
+   "canvas": "#0d071a",
+   "structure": "#5d55a9",
+   "structure2": "#bb5faa",
+   "accent": "#1be5ee"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "pixel waves",
+    "d": 0,
+    "seed": 6
+   },
+   {
+    "fn": "waves",
+    "d": 0.5,
+    "seed": 2
+   }
+  ],
+  "background": "glow",
+  "bloom": 0.5,
+  "grain": 0.04,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ },
+ "mint-pixel-outline": {
+  "palette": "Mint pink",
+  "palette_hex": {
+   "canvas": "#e6f6ee",
+   "structure": "#095b46",
+   "structure2": "#095b46"
+  },
+  "size": [
+   1080,
+   1920
+  ],
+  "layers": [
+   {
+    "fn": "pixel outline",
+    "d": 0.1,
+    "seed": 7
+   },
+   {
+    "fn": "pixel waves",
+    "d": 0.3,
+    "seed": 8
+   },
+   {
+    "fn": "pills",
+    "d": 0.3,
+    "seed": 9,
+    "scale": 0.7,
+    "dx": 0.1
+   }
+  ],
+  "background": "grad",
+  "bloom": 0,
+  "grain": 0.05,
+  "vignette": 0,
+  "seed_default": 1,
+  "note": "layer d = how far structure/accent are pulled toward the canvas (0 full contrast, 1 invisible); scale/dx/dy move a layer uniformly; echo = (colour role, dx px, dy px, alpha) misregistered copy under the layer"
+ }
+}

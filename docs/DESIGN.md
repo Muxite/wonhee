@@ -165,6 +165,8 @@ site gives it (muksite cards are always 16:9; OG is 1.91:1; bento cells run 1:2 
 Reference looks to keep: `wavesim-glow` (matrix on a dark split-tone glow) and `framering` (ring buffer, green,
 monochrome halftone).
 
+Reference: `docs/art-reference/` keeps the prototype methods, 22 composed recipes and a contact sheet (not built; presets for the engine above).
+
 ## Drift
 
 Every known mismatch between this design and the code, with the verdict from [PROCESS.md §2](PROCESS.md). Audited
