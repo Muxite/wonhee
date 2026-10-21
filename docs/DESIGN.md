@@ -145,6 +145,26 @@ if a use appears.
 **WaveSim source:** `github.com/Muxite/WaveSim`, pinned by `ARG WAVESIM_REV` in `wonhee/edit/viz/vendor/wavesim.Dockerfile`
 and patched at build time. Bump the pin on purpose, never float it.
 
+### Project art (scene)
+
+Approved 2026-10-21. A picture that stands for a project, not a diagram of it: best when drawn from the project's
+own data or visuals, next best a related data structure, at worst a seeded abstract. It has to fill whatever box a
+site gives it (muksite cards are always 16:9; OG is 1.91:1; bento cells run 1:2 to 3:3), stay readable at card size
+(about 288×162 CSS px) and follow the site's light/dark toggle.
+
+| Area | Contract | Status |
+|---|---|---|
+| Scene | One JSON file per project: key hue, light and dark role palettes, layouts per ratio (3, 2.33, 1.78, 1.33, 1, 0.75, 0.5) each drawn with about 12% bleed, and detail tiers per layout (CSS width under 320, 320–700, over 700) where a higher tier only adds elements. Primitives are `line`, `curve`, `dot`, `box`, each with a colour role (`canvas`, `structure`, `edge`, `accent`, `ink`), opacity and a width in `u` (1/100 of the short side). The site draws it as SVG sized to the real box; wonhee rasterises the same scene to PNG for OG and fallback, through one code path | approved, not built |
+| Fill | Layouts use the whole box (margin ≤ 3% of the short side). A render fails `ART_SPARSE` unless its ink spans ≥ 92% of both axes and ≥ 90% of an 8×8 tile grid holds elements. A failed seed retries up to twice | approved, not built |
+| Detail | The element budget follows CSS display size, not file pixels (about area/2600, clamped 14–120; features ≥ 3 CSS px, lines ≥ 1 CSS px), so a high-DPR screen gets the same count, sharper | approved, not built |
+| Colour | OKLCH roles. Canvas about 60%: light L 95–98, dark L 12–18, chroma ≤ .03, tinted 2–4% toward the key hue, never `#000`/`#FFF`. Structure about 30%: L .30–.50, C .02–.06 (lifted in dark so ΔL to canvas ≥ .25). Accent about 10%: C .18–.26, dark L .65–.80, light L .50–.62, ΔL to canvas ≥ .30. Edges ≥ 25% dimmer than their vertices. Key hue comes from the project's domain (compute 220–260, simulation/data life cycle 110–145, agents/queues 45–75, diagnostics 0–25, editorial 80–95 at ultra-low chroma), never a name hash. Harmony by structure: monochrome (matrix, timeline, ring), analogous ±30° (DAG, pipeline), complementary +180° (flagged nodes), split-tone (dark glow). One polarity per project row | approved, not built |
+| Bases | Flat tinted canvas, grid, single-hue soft wash (ΔL ≤ .06 from canvas), accent halo, and monochrome halftone for named recipes. No multi-hue full-field gradients (they read as mud) | approved, not built |
+| Structures | graph, tree, heap, dag, radial, btree, hash, skip, ring, matrix, plus `cascade` (mirage), `curves` (training curves) and `frame` (real frame with detection boxes). Counts come from the box and tier | approved, not built |
+| Recipes | Per project: domain, structures (primary and alternates), base, harmony, optional data source adapter. Real source beats related structure beats seeded abstract. A native image or live component stays the primary where it is good (`art: native`); a scene then only covers OG, tile and banner (`extras`) | approved, not built |
+
+Reference looks to keep: `wavesim-glow` (matrix on a dark split-tone glow) and `framering` (ring buffer, green,
+monochrome halftone).
+
 ## Drift
 
 Every known mismatch between this design and the code, with the verdict from [PROCESS.md §2](PROCESS.md). Audited
