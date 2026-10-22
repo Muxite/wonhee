@@ -72,3 +72,42 @@ If it still looks off, the remaining suspect is the phone's variable frame rate;
 - `data/projects/` is a folder convention for now. There is no project command yet; a project is these files plus this page.
 - Teardown lesson for later: the isolation step removed enough car noise to transcribe the clip, but speech under a
   passing car can still be lost. A look at the waveform (or a second whisper pass on the un-isolated audio) would have caught "no overtime btw".
+
+## Lessons (written 2026-10-22, after v6)
+
+The reel shipped in six versions in about an hour. Most of the rework was avoidable.
+
+### What cost rounds, and what to do next time
+
+| What happened | Rounds lost | Do this instead |
+|---|---|---|
+| Captions were my guess at style: small first, then bigger, then closer to the speech, then info-style, then closer again | 4 | Before the first render, show the owner **one still frame** with the caption layout and the first three caption lines, and ask size and wording style in one question. Still previews take seconds |
+| Whisper heard "codecs" and dropped "no overtime btw" under a passing car | 2 | After transcription, list **low-confidence or suspicious spans** (rare words, long single words, gaps inside speech) and have the owner confirm them. Compare the transcript of the raw and the cleaned audio to find dropped words |
+| `audio_clean` delayed the voice 40 ms and nobody checked | 1 | Run a sync check (loudness-envelope correlation against the raw audio) after any audio step. Logged as D23, so the step should compensate itself |
+| The chat upload limit (30 MiB) was found after the first send | 1 | Always make a share copy under 29 MiB (two-pass at about 5.3 Mb/s video for 45 s) alongside the master |
+| Inline `layout=` JSON on the command line, copied and patched by hand five times | n/a | A `raw` reel style (template with slots for the top caption lines and a caption file) so a re-render is one command |
+
+### Rules this project settled (the owner's taste, for raw vlogs)
+
+- Raw means: no pause trimming, no grade, no music, no big bold text. Plain white small text on a translucent dark box.
+- Captions are information for the viewer, not a transcript. They can add context, should appear slightly before the
+  speech and stay until the next caption, and should still follow what was said (close, not verbatim).
+- Top caption is the context card (what the day was); it should be a little bigger than the speech captions' size
+  in v1 but plain. The location tag is added in the Instagram editor, not burned in.
+- Clear voice beats clean voice. Isolate the voice, normalise to −14 LUFS, accept leftover noise.
+- Speed matters for posting windows. Deliver a postable cut first, then iterate.
+
+### Caveats on this cut
+
+- **No one listened.** Loudness, the voice clean-up and the sync were checked by measurement, and the captions by looking at
+  six frames. Intelligibility was checked only by whisper transcribing the whole clip.
+- The `no overtime btw` caption (20.2 to 24.0 s) is placed by guess; the words are masked by the car in the audio.
+- Isolation costs 40 ms of delay (fixed in v6 by shifting the audio), and may still leave the voice a little off if the
+  phone's variable frame rate is the real cause.
+- The share copy has been compressed twice (the render, then the two-pass resize), and Instagram will compress it a third
+  time. If quality matters, post the master from the flash drive (48 MB) rather than the chat copy.
+- Footage is dark (night, phone camera) and was left dark on purpose. A lift adds noise.
+- The caption claims (`jiuwenswarm ai4research`, `open source btw`, `rogue agent fixed ✅`, "14 hours") are the
+  owner's own statements and were not checked against anything.
+- The flash drive was not auto-mounted. It was mounted with `sudo mount` and unmounted after each copy, and a shell sitting inside
+  the mount blocks the unmount.
