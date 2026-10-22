@@ -50,6 +50,15 @@ Files: `raw.mp4`, `clean.mp4` (cleaned audio, original picture), `subs.json`, `l
 
 v1 to v4 were deleted (local and on the flash drive) once v5 existed. **v5 is the current cut**: speech captions follow the owner's words phrase by phrase at 3.4 % of the height (v2-v4 were looser, info-style lines), the top caption is 3.2 % and its first line is `14h internship day`. Master 48 MB and a 28.8 MiB share copy, both on the flash drive in `wonhee/`. Caption text and timings: `captions.json`.
 
+## Sync fix (v6)
+
+The owner reported the voice slightly out of sync. Measured by cross-correlating loudness envelopes: `audio_clean`
+(isolation and denoise) delays the voice by **40 ms** against the raw audio; the raw audio's speech onset lines up
+with the first mouth movement within about one frame. v6 is v5 with the audio advanced 40 ms (video stream copied, audio
+re-encoded); the same measurement against the raw audio now gives 0 ms. **v6 is the current cut**; v5 was deleted.
+Follow-up for the tool: `audio_clean` should compensate its own delay (or report it); logged as a drift item.
+If it still looks off, the remaining suspect is the phone's variable frame rate; the owner says which direction.
+
 ## Owner corrections (2026-10-22)
 
 - The word was **Codex**, as guessed.
