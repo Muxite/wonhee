@@ -27,7 +27,7 @@ The speech was clear enough to transcribe in full (13 lines, 0.6 s to 43.8 s).
 | Voice isolation + loudness | `audio_clean isolate=true` (Demucs on the GPU, under the lock; 11 s) | −14.8 LUFS, LRA 5.2 |
 | Transcript with word timings | `speech_subs` (whisper) | 13 lines, all words timed |
 | Captions | hand-written info lines (`captions.json`), timed text layers | v2: each line appears about 0.3 s before the speech and stays until the next one; wording adds context and need not match the speech |
-| Render | `compose_video`, inline layout (`layout2.json`), `tighten=false` | v2: one encode, 1080x1920, 44.3 s, 51 MB |
+| Render | `compose_video`, inline layout (`layout5.json`), `tighten=false` | v2: one encode, 1080x1920, 44.3 s, 51 MB |
 | Share copy | two-pass x264, 5.3 Mb/s video + 128 kb/s AAC | 28.8 MiB, under the 30 MiB chat upload limit |
 | Archive | copied to the flash drive, `wonhee/` folder, checksum matched | master and share copy |
 
@@ -45,6 +45,10 @@ Files: `raw.mp4`, `clean.mp4` (cleaned audio, original picture), `subs.json`, `l
 - The picture is dark (night, phone camera). It was left as shot; a lift would lose the raw feel and noise grows.
 - Pauses and filler words are kept (owner's call).
 - No music: the owner adds in-app audio, or none, when posting.
+
+## Versions
+
+v1 to v4 were deleted (local and on the flash drive) once v5 existed. **v5 is the current cut**: speech captions follow the owner's words phrase by phrase at 3.4 % of the height (v2-v4 were looser, info-style lines), the top caption is 3.2 % and its first line is `14h internship day`. Master 48 MB and a 28.8 MiB share copy, both on the flash drive in `wonhee/`. Caption text and timings: `captions.json`.
 
 ## Owner corrections (2026-10-22)
 
