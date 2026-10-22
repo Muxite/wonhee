@@ -52,6 +52,8 @@ Files: `raw.mp4`, `clean.mp4` (cleaned audio, original picture), `subs.json`, `l
 - Under the car noise at about 20-24 s he said "**no overtime btw**"; whisper had dropped it. It is in the caption.
 - Captions are information for the viewer, not a transcript, and should stay up longer than the speech.
 
+- v3: top caption gains `14h internship day` as its first line (owner's pick from five options). The bottom first line reads `14 hours at work today`. The Waterloo, Ontario location is added by the owner as an Instagram location tag when posting.
+
 ## Open items
 
 - `data/projects/` is a folder convention for now. There is no project command yet; a project is these files plus this page.
