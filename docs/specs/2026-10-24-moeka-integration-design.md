@@ -296,3 +296,14 @@ source-preserving intake, per-project peer sessions, recorded execution phases a
 Both intake and derived-index writers serialize across processes. Contact sheets and previews are real CPU
 media artifacts with node provenance. The source and service are deployed, but live Telegram/Drive and phone
 acceptance await creator files; status remains approved until that acceptance is recorded.
+
+### Live intake error correction
+
+2026-10-24 live evidence: the creator supplied a public Drive folder. V1 correctly rejected its unsupported
+shape, but the moeka CLI boundary hid the permanent error and retried it five times. This violates actionable
+intake errors and prevents an otherwise valid creator message from reaching memory/conversation.
+Creative CLI expected errors now use a bounded JSON error envelope on stdout with code/message/retryable and
+nonzero exit. `invalid_request` is permanent; `transfer_failed` distinguishes transient network/server failures
+from sharing, unsupported-link and size errors. Do not include URLs or structured request arguments in ordinary
+error logs. Moeka forwards the creator's message and any successful assets even when a source is permanently
+unsupported, with source warnings in signed `input_errors`; unsupported inputs are never reported as imported.
