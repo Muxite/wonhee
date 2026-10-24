@@ -208,3 +208,17 @@ A cold GPU node reloads its model on every call (whisper ~5 s, masks ~10 s, demu
     uv run wonhee worker status                                     # workers, heartbeats, queue
 
 Detached chains with a `cuda` node go to a live worker. Without one they start a background process as before. A job whose worker dies is requeued (up to 3 attempts). See `wonhee/worker.py`.
+
+## Telegram creative workspace
+
+The approved moeka integration is being built to
+[`docs/specs/2026-10-24-moeka-integration-design.md`](docs/specs/2026-10-24-moeka-integration-design.md).
+The existing Telegram moeka hands creative conversations to its paired wonny instance. Public Drive links
+are imports; outputs return through Telegram or a private Tailscale download page. Publishing remains separate.
+
+New structured actions have matching MCP tools and CLI calls:
+`wonhee creative <action> --data '<JSON object>'`. Start with `project_create`, `inbox_add`,
+`memory_remember`, `memory_query`, and `make_submit`; inspect saved work with `project_show`, `inbox_list`,
+`make_show`, and `outbox_list`. The CLI returns JSON receipts rather than requiring an agent to parse prose.
+`wonhee creative serve` will run background submissions and the private download page.
+Deployment and live acceptance remain pending until the integration design records their evidence.
