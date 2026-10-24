@@ -49,3 +49,14 @@ consumed and completed a real queued test job. Wonny registered the four new all
 tools without changing its filesystem restriction or Bubblewrap configuration.
 Detailed artifacts and capture checks: sibling Stagecraft docs/VALIDATION.md.
 No Telegram test was sent; creator phone playback is the first-request acceptance.
+
+## Coding dispatch extension
+
+Approved by the owner's request for a later agent-built stdio mesh demo. Existing
+submit accepts a spec with optional coding {task, primitive: stdio_mesh}; Stagecraft
+dispatches its local Codex builder, verifies real subprocess pipe traffic in an
+offline container, binds the observed trace to a cinematic dashboard, captures and
+stages via the same trusted route. No new Wonhee tools or provider credentials.
+The schema/instructions expose this capability and coding/verifying status. Failed
+verification cannot be delivered as successful real primitive work. See sibling
+Stagecraft docs/CODING_DESIGN.md. Implementation pending.
