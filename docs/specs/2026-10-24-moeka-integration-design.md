@@ -307,3 +307,13 @@ nonzero exit. `invalid_request` is permanent; `transfer_failed` distinguishes tr
 from sharing, unsupported-link and size errors. Do not include URLs or structured request arguments in ordinary
 error logs. Moeka forwards the creator's message and any successful assets even when a source is permanently
 unsupported, with source warnings in signed `input_errors`; unsupported inputs are never reported as imported.
+
+### Automatic memory provenance
+
+Live evidence 2026-10-24: wonny saved the folder reference with an empty `source`, and initially proposed an
+unsupported memory kind. Memory kinds/status/scope/operations must be enums in the MCP schema. For the
+owner-configured local wonhee MCP connection, moeka forwards only the validated creative peer context in MCP
+request metadata (`wonhee`), outside model-controlled arguments. Wonhee attaches its immutable request/message/
+route identity to memory, idea and brief writes and binds delivery actions to the original destination. The
+model can add domain citations but cannot override the transport identity. This opt-in is disabled for other
+MCP connections and restricted to local stdio. Manual CLI calls remain explicit-source operations.
