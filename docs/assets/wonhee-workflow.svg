@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="530" viewBox="0 0 1200 530" role="img" aria-labelledby="title desc">
+  <title id="title">From the first idea to a post worth sharing</title>
+  <desc id="desc">The intended six-stage workflow: discover what resonates, plan your angle, capture real footage, make the edit, check the result, and deliver it to the creator. Some stages are still being connected.</desc>
+  <rect width="1200" height="530" rx="24" fill="#f4f1e9"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="42" y="49" fill="#234c3d" font-size="18" font-weight="700" letter-spacing="2">THE WORKFLOW WE’RE BUILDING TOWARD</text>
+    <text x="42" y="91" fill="#20251f" font-size="31" font-weight="700">One creative journey, from idea to delivery.</text>
+    <path d="M393 214H418M782 214H807M993 290V316H220V345M393 417H418M782 417H807" fill="none" stroke="#a1b197" stroke-width="3" stroke-linejoin="round"/>
+    <path d="m410 208 8 6-8 6m389-12 8 6-8 6M214 337l6 8 6-8m184 74 8 6-8 6m389-12 8 6-8 6" fill="none" stroke="#a1b197" stroke-width="3" stroke-linejoin="round"/>
+    <g>
+      <rect x="42" y="132" width="351" height="158" rx="16" fill="#fffdf8" stroke="#d6dbcd"/>
+      <text x="66" y="170" fill="#687c5d" font-size="18" font-weight="700">01</text>
+      <text x="66" y="211" fill="#20251f" font-size="30" font-weight="700">Discover</text>
+      <text x="66" y="251" fill="#526052" font-size="21">Find what resonates.</text>
+    </g>
+    <g>
+      <rect x="431" y="132" width="351" height="158" rx="16" fill="#fffdf8" stroke="#d6dbcd"/>
+      <text x="455" y="170" fill="#687c5d" font-size="18" font-weight="700">02</text>
+      <text x="455" y="211" fill="#20251f" font-size="30" font-weight="700">Plan</text>
+      <text x="455" y="251" fill="#526052" font-size="21">Find your own angle.</text>
+    </g>
+    <g>
+      <rect x="820" y="132" width="338" height="158" rx="16" fill="#fffdf8" stroke="#d6dbcd"/>
+      <text x="844" y="170" fill="#687c5d" font-size="18" font-weight="700">03</text>
+      <text x="844" y="211" fill="#20251f" font-size="30" font-weight="700">Capture</text>
+      <text x="844" y="251" fill="#526052" font-size="21">Bring in real footage.</text>
+    </g>
+    <g>
+      <rect x="42" y="345" width="351" height="143" rx="16" fill="#234c3d"/>
+      <text x="66" y="380" fill="#b6c99f" font-size="18" font-weight="700">04</text>
+      <text x="66" y="421" fill="#fffdf8" font-size="30" font-weight="700">Make</text>
+      <text x="66" y="461" fill="#d8e5ce" font-size="21">Shape it into a post.</text>
+    </g>
+    <g>
+      <rect x="431" y="345" width="351" height="143" rx="16" fill="#fffdf8" stroke="#d6dbcd"/>
+      <text x="455" y="380" fill="#687c5d" font-size="18" font-weight="700">05</text>
+      <text x="455" y="421" fill="#20251f" font-size="30" font-weight="700">Check</text>
+      <text x="455" y="461" fill="#526052" font-size="21">Review the result.</text>
+    </g>
+    <g>
+      <rect x="820" y="345" width="338" height="143" rx="16" fill="#e8a17f"/>
+      <text x="844" y="380" fill="#513c2e" font-size="18" font-weight="700">06</text>
+      <text x="844" y="421" fill="#20251f" font-size="30" font-weight="700">Deliver</text>
+      <text x="844" y="461" fill="#513c2e" font-size="21">Put it in your hands.</text>
+    </g>
+  </g>
+</svg>

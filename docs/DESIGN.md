@@ -114,7 +114,7 @@ These hold everywhere; breaking one is a defect.
 
 | Area | Contract | Detail | Status |
 |---|---|---|---|
-| Export | `export <ref> <dir>` copies outputs out of the store. `dest` must be a folder | README | built |
+| Export | `export <ref> <dir>` copies outputs out of the store. `dest` must be a folder | [Usage › Export](USAGE.md#export-a-result) | built |
 | Phone outbox | Download finished edits on the phone, with check badges | toolkit R4 | approved, not built |
 | Publish to muksite | Uploads a light/dark pair to muksite's Supabase Storage and prints the YAML entry. It refuses to overwrite without `--overwrite` and needs `--yes` (public) | [Data stills](#data-stills-viz) | built |
 | Social posting | Never | [VISION › Never](VISION.md#never) | n/a |

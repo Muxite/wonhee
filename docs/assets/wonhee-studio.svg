@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="480" viewBox="0 0 1200 480" role="img" aria-labelledby="title desc">
+  <title id="title">wonhee: a creative studio for one</title>
+  <desc id="desc">An editorial illustration of ideas, footage and finished edits coming together around one creator.</desc>
+  <rect width="1200" height="480" rx="24" fill="#f4f1e9"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <rect x="48" y="44" width="106" height="32" rx="16" fill="#234c3d"/>
+    <text x="101" y="66" text-anchor="middle" fill="#fff" font-size="18" font-weight="700">wonhee</text>
+    <text x="48" y="165" fill="#20251f" font-size="66" font-weight="700" letter-spacing="-2">A creative studio</text>
+    <text x="48" y="240" fill="#20251f" font-size="66" font-weight="700" letter-spacing="-2">for one.</text>
+    <text x="50" y="303" fill="#4f5b50" font-size="24">Your ideas. Your footage. Your point of view.</text>
+    <path d="M50 351H592" stroke="#c8cec0" stroke-width="2"/>
+    <text x="50" y="391" fill="#234c3d" font-size="20" font-weight="700">RESEARCH</text>
+    <text x="189" y="391" fill="#8c9a87" font-size="22">/</text>
+    <text x="215" y="391" fill="#234c3d" font-size="20" font-weight="700">DIRECTION</text>
+    <text x="356" y="391" fill="#8c9a87" font-size="22">/</text>
+    <text x="382" y="391" fill="#234c3d" font-size="20" font-weight="700">PRODUCTION</text>
+    <g transform="translate(732 78) rotate(-8 120 160)">
+      <rect x="9" y="10" width="224" height="302" rx="18" fill="#d7d9cf"/>
+      <rect width="224" height="302" rx="18" fill="#fffdf8" stroke="#c8cec0" stroke-width="2"/>
+      <text x="24" y="43" fill="#526052" font-size="17" font-weight="700">THE IDEA</text>
+      <circle cx="59" cy="104" r="22" fill="#e8a17f"/>
+      <path d="M99 93H186M99 111H169M25 161H190M25 184H173M25 207H183" stroke="#afbba7" stroke-width="8" stroke-linecap="round"/>
+      <rect x="24" y="244" width="130" height="29" rx="14" fill="#e3ebd6"/>
+    </g>
+    <g transform="translate(918 112) rotate(8 100 150)">
+      <rect x="8" y="10" width="194" height="288" rx="18" fill="#c9cec2"/>
+      <rect width="194" height="288" rx="18" fill="#234c3d"/>
+      <rect x="14" y="16" width="166" height="180" rx="10" fill="#b6c99f"/>
+      <rect x="35" y="39" width="124" height="134" rx="5" fill="none" stroke="#eaf0df" stroke-width="2"/>
+      <circle cx="97" cy="91" r="23" fill="#e8a17f"/>
+      <path d="M58 154C58 112 136 112 136 154" fill="#4b7253"/>
+      <rect x="32" y="211" width="130" height="25" rx="6" fill="#fffdf8"/>
+      <text x="97" y="229" text-anchor="middle" fill="#234c3d" font-size="13" font-weight="700">YOUR STORY</text>
+      <path d="M30 260H164" stroke="#8ca984" stroke-width="3"/>
+      <path d="M35 260V253M43 260V247M51 260V256M59 260V242M67 260V248M75 260V254M83 260V246M91 260V251M99 260V241M107 260V248M115 260V252M123 260V245M131 260V253M139 260V249M147 260V255M155 260V251" stroke="#b6c99f" stroke-width="3"/>
+    </g>
+    <circle cx="1097" cy="71" r="25" fill="#e8a17f"/>
+    <path d="M1086 71H1108M1097 60V82" stroke="#234c3d" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>

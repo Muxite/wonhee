@@ -1,235 +1,81 @@
+<div align="center">
+
 # wonhee
 
-A content creation pipeline for one creator and the agents working for them: find what is working in the niche,
-plan the post and the footage, guide the shoot, make the post (video, photo, audio, and stills drawn from data),
-check it, and deliver it. It supersedes vizkit (absorbed 2026-10-19).
+**An AI production studio for one creator.**
 
-wonhee is agent-centric (moeka over Telegram, Claude over MCP) but the work runs as typed nodes over a relational
-store, so every output traces back to the run, step, and source content that produced it.
+From “what should I post?” to something worth sharing.
 
-**Design first.** [docs/VISION.md](docs/VISION.md) says what wonhee is for, [docs/DESIGN.md](docs/DESIGN.md) says
-what each part must do (with status and known drift), and [docs/PROCESS.md](docs/PROCESS.md) says how a change goes
-from design to code, and how to tell whether the code or the design is wrong when they disagree.
+[The vision](docs/VISION.md) · [What’s built](docs/DESIGN.md) · [Setup & usage](docs/USAGE.md)
 
-The job-application form filler that used to live here is now `../awork-fill`.
+</div>
 
-Changing the code? Start with [AGENTS.md](AGENTS.md): code map, add-a-node checklist, tests, GPU etiquette.
+![wonhee — a creative studio for one. Ideas, footage and creative direction come together in one production workflow.](docs/assets/wonhee-studio.svg)
 
-## Setup
-    uv sync --all-extras          # moeka is a pinned pip dependency; there is no submodule
-    cp creator.example.yaml creator.yaml   # what you can film
-    cp .env.example .env          # then fill in OPENROUTER_API_KEY, BRAVE_API_KEY, APIFY_API_KEY
-    uv run wonhee doctor
+Making a post involves a lot more than pressing record. There is the idea, the research, the footage you
+forgot you shot, the edit, the captions, the sound, and the next round of changes. For a solo creator,
+every handoff lands back on the same person.
 
-Keys come from the process environment only. `wonhee` loads a `KEY=VALUE` file at startup
-(`--env-file PATH`, else `$WONHEE_ENV_FILE`, else `.env` in the repo), and anything you already
-exported in your shell wins over the file. `.env` is gitignored. `wonhee doctor` reports, by name
-only, whether each key came from the shell or the file. wonhee never reads `~/.nanobot` or any
-other user-level moeka state; the LLM runs in-process through the pinned moeka kernel, and
-subprocesses (ffmpeg, yt-dlp) get a minimal environment with no keys.
+**wonhee brings that work into one creative pipeline.** It combines research, planning and media tools
+with AI assistants that can carry out the work. The goal is to give one person the support of a small
+production team, while keeping their taste and creative direction at the centre.
 
-## Use
-    uv run wonhee scout "gym humor, what was trending a year ago"
-    # asks, confirms, runs (progress on stderr), prints the shot list
-    uv run wonhee ask "gym humor now" [--intent 4]   # one compile turn
-    uv run wonhee go 4                               # run a confirmed intent
-    uv run wonhee show run 3                         # steps: status, flags, cost
-    uv run wonhee show project 2                     # the shot list
-    uv run wonhee resume 3 --from fetch --set cost_cap_usd=3
-    uv run wonhee db sql "SELECT * FROM v_trend_popularity"
-    uv run wonhee account mark some_friend friend
+## What wonhee brings to the studio
 
-Live smoke test (spends real money, cap $0.75): `uv run pytest -m live -s`.
+| The creative challenge | What wonhee can do today |
+|---|---|
+| **“I have no idea what to make.”** | Study relevant posts, surface patterns, and turn a brief or reference into ideas and shot lists. |
+| **“The clip I need is somewhere in my footage.”** | Import public Google Drive files and folders, index footage, and search shots by description. |
+| **“I shot it. Now comes the editing.”** | Build styled reels with timed captions, animated text, photo insets and optional pause trimming. |
+| **“These photos need to feel like they belong together.”** | Apply or develop photo looks, adjust colour, and compose posters, carousels and collages. |
+| **“The sound and subtitles need work.”** | Transcribe speech, translate subtitles, reduce noise and balance loudness. |
+| **“My work is code or data. How do I show it?”** | Turn repository structure, project history and other data into visuals and credited card sets. |
 
-## Debugging a bad result
-1. `wonhee show run <id>`: which stage is weak/failed, and why (flag codes).
-2. `wonhee db sql "SELECT role, blob_sha256 FROM step_artifact WHERE step_id=<n>"`:
-   raw API replies and model prompts/replies are files under
-   `data/media/<sha[:2]>/<sha>`.
-3. Fix the input and `wonhee resume <id> --from <stage>`; earlier attempts stay
-   in the DB. If a stage found nothing (NO_CANDIDATES), resuming will not help:
-   start a new scout with a wider window or a different niche.
-4. Run stopped on the cost cap? Continue with
-   `wonhee resume <id> --from <stage> --set cost_cap_usd=3`.
+Projects can also keep ideas, preferences and feedback together, so a creative assistant can pick up
+an ongoing project with its context intact.
 
-Errors: model-call failures print one line plus the log path; every error's
-traceback is appended to `data/logs/wonhee.log` (under `WONHEE_HOME`). Apify
-spend is capped per call by the run's remaining budget, and each actor run
-waits at most 10 minutes before being aborted.
+## The bigger picture
 
-## Known limitations
-- LLM cost uses the provider-reported cost when moeka exposes one, else `WONHEE_LLM_PRICE_IN_PER_MTOK` /
-  `WONHEE_LLM_PRICE_OUT_PER_MTOK` (defaults 0.25 / 0.75); `wonhee doctor` warns when one is set to 0.
-- Whisper runs on CUDA by default. To use CPU on purpose, set
-  `WONHEE_WHISPER_DEVICE=cpu` and `WONHEE_WHISPER_COMPUTE_TYPE=int8`.
-- A run left `running` after a hard kill is not picked up automatically, and
-  `resume` refuses a running run: take it over with
-  `wonhee resume <id> --from <stage> --set force=true`. Ctrl-C is handled: the
-  run is marked stopped and resumes normally.
+![The intended wonhee workflow: discover what resonates, plan an original idea, bring in real footage, make the edit, check the result, and deliver it to the creator.](docs/assets/wonhee-workflow.svg)
 
-## Nodes and chains
-Every tool is a typed node; a chain wires nodes together and wonhee pipes each result into the next.
+The ambition is one connected journey: **discover → plan → capture → make → check → deliver.**
+A reference should help shape an original idea. A plan should guide the shoot. The footage should flow
+into an edit, and feedback should inform the next version.
 
-    uv run wonhee node list                                   # what exists: ports in -> out, one-line doc
-    uv run wonhee node show translate                         # params (JSON schema)
-    uv run wonhee node run to_srt --in subtitles=subs.json    # one node; inputs are refs, content:<id>, or local files
-    uv run wonhee chain run docs/chains/translate_reel.json --detach   # returns a run id at once
-    uv run wonhee chain show 7                                # per-node status, cost, final outputs with file paths
-    uv run wonhee resume 7 --from t --set no_cache=true       # redo from a node id (cache skipped)
+That is the direction of the project. Today, many of the research, planning, editing and import tools
+are built. The next priority is to connect reel editing, comprehensive output checks and phone delivery
+into a complete workflow. The Telegram integration is deployed, with an original video successfully
+delivered and played back on a phone; the full edited-reel round trip still needs live validation.
 
-`docs/chains/translate_reel.json` grabs a reel, reads speech and on-screen text, merges them, translates to English,
-and writes an `.srt` plus a subtitled video. Change the `url` param to use it on another reel. Results are cached per
-(node, version, inputs, params): rerunning an unchanged node costs nothing and shows `CACHED`.
-Agents use the same through MCP: `nodes_list`, `node_run`, `chain_run(chain, wait=False)`, `chain_show`.
+## Built around the creator
 
-## Layouts (meme frame, sticker frame, collage, pop-art)
+**Your footage and your point of view.** Photo and video edits work with real captured media. References
+help explore a direction while the result stays original.
 
-One engine, `compose`, draws a canvas plus ordered layers (photo, pattern, shape, sticker, text, band) the same way
-every time; each format is a named template with slots (`uv run wonhee node show compose` lists them). The spec is
-`docs/specs/2026-10-20-meme-and-popart-formats-design.md`. Photos must be yours: no third-party imagery or marks.
+**Conversation backed by tools.** In the current Telegram setup, moeka is the conversational front door
+and wonny is the dedicated creative assistant. Wonhee provides the media workspace and production tools
+behind them. Other AI assistants can connect through MCP, a standard way for assistants to use tools.
 
-    uv run wonhee node run compose --in images=data/photos/desk.jpg --set template=brag_collage     # a desk, piled with stickers
-    uv run wonhee node run compose --in images=me.jpg --set template=popart_cutout --set 'slots={"palette":"mint"}'
-    uv run wonhee chain run docs/chains/sticker_frame.json                                          # heart-shaped photo + speech bubble
-    uv run wonhee node run frame_video --in video=clip.mp4 --set 'slots={"title":"my title"}'       # 9:16 frame, one encode
-    uv run wonhee node run grid_plan --in images=data/photos/nine/ --set cutout=true                # a 3x3 profile grid
+**Local work where it makes sense.** Media processing runs on the machine. Research and some AI tasks can
+use external services, with spending limits on paid production runs.
 
-- Templates: `meme_frame`, `sticker_frame`, `brag_collage`, `popart_cutout`, `slop_card`. A one-off layout goes in the
-  `layout` param (see the schema); a new format is one JSON file in `wonhee/edit/compose_templates/`.
-- `docs/chains/sticker_frame.json` uses `content:12` as a placeholder: put a stored post's id there.
-- Text and stickers on tall canvases are moved out of the reel UI zones (12%-76% of the height, the centred 72% where the
-  buttons are, rotated extent included) and flagged `LAYOUT_ADJUSTED`.
-- `compose` takes an optional `refs` text (an inspiration digest or plain lines): a text or sticker line that copies it
-  is dropped and flagged `IDEA_COPY`.
-- `cutout` and `focus: subject` use the CPU ONNX mask models (downloaded on first use, as for `mask_cutout`).
-- `compose_video` (video, subtitles?, images? -> video) is the timed form: layers take `t` {in_ms, out_ms} and `anim`
-  (fade, pop, type, rise); layer types `captions` (chunk, word, karaoke), `stack` and `list` read the subtitles' words;
-  photo layers from `images` are insets; `tighten: {}` cuts pauses and re-times everything (`PAUSES_TRIMMED` reports the
-  seconds removed). It is one ffmpeg encode (a take with no subtitles adds one silencedetect analysis pass).
-  `frame_video` stays as its first form. Spec: `docs/specs/2026-10-20-reel-styles-design.md` §2-§3.
-- `frame_video` captions come from `subtitles`; with line timing only, each line's time is split evenly across its words
-  (`WORDS_ESTIMATED`).
+**You decide what goes out.** Wonhee prepares files for you to review and share. Social posting stays
+with the creator.
 
-## Reels
+## Where it’s headed
 
-One command turns a talking clip into a styled reel (speech to words, then one encode with timed text, captions and insets):
+- **A complete reel workflow:** an integrated editing timeline, full file checks, and phone inbox and outbox.
+- **A more personal creative voice:** style memory for the rhythm of captions and cuts.
+- **More help before the shoot:** a director that turns an idea inbox into plans, plus small prop projects for skits.
 
-```bash
-uv run wonhee reel styles                                   # the six styles, one line each
-uv run wonhee reel clip.mp4 --style explainer --title "a trick i wish i had known"
-uv run wonhee reel clip.mp4 --style scrapbook --items "the problem, the fix, the catch" --inset a.png --inset b.png
-uv run wonhee reel clip.mp4 --style lecture            # the larp lecture register writes the title, theses, footnotes
-```
+Wonhee is an actively developed personal production system. Its aim is practical: give a solo creator
+more room to make things by taking on the work that surrounds making them.
 
-Output lands in `data/reels/<date>/<name>/` (the mp4 and a `report.md` with the style, seconds of pauses trimmed and
-flags). Speech uses whisper on the GPU (take the lock first). Each style, its slots and what it copies from the
-references: [docs/production/reels.md](docs/production/reels.md). MCP: `reel` and `reel_styles`.
+---
 
-## Pictures from data (viz) and publishing to muksite
+For a closer look: [product vision](docs/VISION.md), [capabilities and roadmap](docs/DESIGN.md),
+[reel styles](docs/production/reels.md), [photo looks](docs/production/photo-looks.md),
+and [Telegram workspace](docs/production/telegram-creative.md).
 
-wonhee also makes stills from data instead of footage (this absorbed `~/projects/vizkit` on 2026-10-19): a repo's
-file dependency graph, a disk-usage treemap, a commit heatmap, a lines-of-code-per-language bar, and WaveSim shader
-stills. They are ordinary nodes (`viz_depgraph`, `viz_diskviz`, `viz_history`, `viz_wavegen`), so a render chains
-into `look_image`, `filter_image`, `poster` or the new `mask_cutout`, and `publish_muksite` puts the result on the
-portfolio.
-
-    uv sync --extra viz && uv run playwright install chromium-headless-shell   # graphs and treemaps render in Chromium
-    uv run wonhee viz depgraph ~/projects/awork --exclude profiles/ share/ --theme both
-    uv run wonhee viz depgraph ~/projects/webRAG --rev 7c91f087 --theme both        # the repo as it was in March 2026
-    uv run wonhee viz depgraph ~/projects/webRAG/agent/app --focus '**/ledger_*' --hops 1   # one module + neighbours
-    uv run wonhee viz history ~/projects/webRAG --chart commits --title "webRAG commits"
-    uv run wonhee viz depgraph ~/projects/muksite/src --then look=faded              # finish with a look/filter/cutout
-    uv run wonhee publish muksite data/viz/.../x-paper.png --dark data/viz/.../x-dark.png \
-        --slug awork --name dependency-graph --caption "..." --alt "..." --yes
-
-- A working-tree render of a git repo draws only the files git tracks (no ignored data, venvs or submodules);
-  `--set tracked=false` draws everything on disk. `--rev` reads a past commit through `git archive` and never touches
-  the working tree. Every render flags `VIZ_SOURCE` with the path, resolved commit and counts.
-- Python imports resolve from each package's import root, so pointing at a repo root still links `from app.x import`
-  inside `backend/app/`. `VIZ_NO_EDGES` means nothing resolved.
-- `publish muksite` uploads to muksite's Supabase Storage (`portfolio-images/projects/<slug>/<name>[-dark].png`) and
-  prints the YAML `photos:` entry. It needs `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` in `.env`, refuses to replace an
-  existing image without `--overwrite`, and asks for `--yes` because the image becomes public. muksite's
-  `scripts/build_image_variants.py` then makes the WebP variants.
-- `viz_wavegen` needs the WaveSim docker image (`docker build -f wonhee/edit/viz/vendor/wavesim.Dockerfile -t
-  wonhee-wavesim:dev wonhee/edit/viz/vendor`) and the GPU; take the GPU lock (AGENTS.md) before running it.
-- Agents: MCP tools `viz` and `publish_muksite`.
-
-## GitHub slop
-
-Public GitHub repos become short, credited 4:5 card sets (1080x1350) for a person to post by hand. Facts on the
-cards (stars, languages, dates, licence) come from GitHub through code; a model writes only the voice lines.
-
-```bash
-uv run wonhee slop next -n 5                  # pick, script (local model) and render 5 repos; --loop for endless
-uv run wonhee slop pick [--repo owner/name]   # agent path: print a dossier, write script.json, then:
-uv run wonhee slop render owner/name --script script.json
-uv run wonhee slop serve                      # (alias: slop feed) the endless scroll page, 127.0.0.1 only
-```
-
-Sets land in `data/slop/<date>/<owner>__<name>/` (`01.png` to `04.png`, `caption.txt`, `script.json`) and in
-`data/slop/feed.json`. `GITHUB_TOKEN` in the project `.env` is optional and raises the API rate limit. Slide 2 draws
-the repo's dependency graph and needs the viz browser (see below); without it slide 2 is text only. The local model
-needs Ollama (hold the GPU lock). Design: `docs/specs/2026-10-20-github-slop-design.md`.
-
-## Workload profiling (optional)
-
-The repo also carries **gauge**, a profiler that runs one job per Docker container and measures it from the host:
-CPU and RAM from cgroup v2, VRAM per process from NVML, and, optionally, kernel-level GPU traces from Nsight Systems.
-Day-to-day wonhee use never touches it. Use it to find out what a node (or any GPU task) actually costs, alone or next to another job.
-
-```bash
-uv run wonhee profile doctor                          # same as: uv run gauge doctor
-uv run wonhee profile build                           # workload images in profiling/images
-uv run wonhee profile run wonhee.speech_subs clip_s=30
-```
-
-How it works, and the results so far: `docs/profiling/GUIDE.md` and `profiling/report/shared-gpu-node.html`.
-Data goes to `data/gauge/` (gitignored).
-
-## Producing reels fast
-
-`docs/production/` has the rules for agent-planned video DAGs. The target design is that edit nodes write a timeline and one `render` encodes it (approved, not built yet: see DESIGN.md › Stage 4). It also covers lanes and concurrency limits, which workers to build next from what's already on this machine, and the pitfalls found so far. All numbers are measured.
-
-Photos and audio, all on the box except the optional shooting guide:
-
-- `wonhee filter list | apply <name> <photos...> | make "<a vibe>" --name <name> --on <photos...> [--from <filter>] | show <name> --cube out.cube | calibrate --on <photos...>`: filters that give a vibe without copying anyone: a 13-filter pack, or a filter a local model drafts and tunes on your photos and saves for later; exports as a .cube LUT for phone and video editors.
-- `wonhee vibe <photos...> --like <ref folder | content:id> --name <look>`: learn a look from references, get a shooting guide, and edit your photos toward it (measured grade, subject mask, lens effects; no image generation). See `docs/production/photo-looks.md`.
-- `wonhee audio <clip> [--preset voice|mixed|music] [--check] [--isolate [--music-db -15]]`: denoise, tame peaks, -14 LUFS; `--isolate` splits voice from music/noise on the GPU.
-- GPU extras (SAM masks from a text prompt, Demucs voice isolation, shot search): `uv sync --group gpu`.
-- `wonhee shots index <video>` / `wonhee shots search "bus at sunset"`: cut footage into shots, embed and tag each keyframe (SigLIP2), then find shots by description across everything indexed.
-
-## Warm GPU worker
-
-A cold GPU node reloads its model on every call (whisper ~5 s, masks ~10 s, demucs ~5 s, SigLIP2 ~7 s). A worker keeps them loaded:
-
-    uv run wonhee worker serve --lane cuda --preload whisper,mask   # foreground; SIGTERM finishes the current job
-    uv run wonhee node run speech_subs --in video=clip.mp4 --detach # goes to the worker while it is alive
-    uv run wonhee worker status                                     # workers, heartbeats, queue
-
-Detached chains with a `cuda` node go to a live worker. Without one they start a background process as before. A job whose worker dies is requeued (up to 3 attempts). See `wonhee/worker.py`.
-
-## Telegram creative workspace
-
-The existing Telegram moeka now hands creative work to its paired wonny instance. Select a project with
-`/wonhee project <name>`, send a take or public Drive file link, and ask for an edit. Videos return in Telegram;
-oversized originals use a private Tailscale download page. Wonhee memory supports ordinary-word hybrid search,
-project-scoped decisions, corrections, ideas and feedback, with readable exports.
-
-See [Telegram creative workspace](docs/production/telegram-creative.md) for setup, recovery and current
-validation. Implementation is deployed; one Drive video has passed original-file Telegram delivery and phone playback.
-Raw Telegram intake, live reel rendering and full file checking remain separate acceptance steps. [Integration design](docs/specs/2026-10-24-moeka-integration-design.md).
-
-### Download from Google Drive
-
-Use a public file or folder shared with “Anyone with the link”:
-
-```bash
-uv run wonhee download 'https://drive.google.com/drive/folders/FOLDER_ID' data/takes
-uv run wonhee creative inbox_add --data '{"source":"https://drive.google.com/drive/folders/FOLDER_ID","project_id":1}'
-```
-
-Downloads preserve subfolders and refuse to overwrite existing files. The first command also accepts an
-individual file link. MCP exposes `drive_download(url, dest)` and `inbox_add(source, project_id, dest)`; MCP
-output folders must be under wonhee's data directory. Folder intake registers each file as an asset without
-starting analysis. Private links and native Google Docs/Sheets/Slides are unsupported.
+For builders: [setup and commands](docs/USAGE.md) · [contributing guide](AGENTS.md) ·
+[system design](docs/DESIGN.md).

@@ -1,7 +1,8 @@
 # Working in wonhee (for agents and humans)
 
-The README covers what wonhee is and how to use it. This page tells you where code lives, how to change it safely, and
-the house rules. Read this first, then follow the links for the part you are touching.
+The README introduces wonhee; [docs/USAGE.md](docs/USAGE.md) covers how to use it. This page tells you where
+code lives, how to change it safely, and the house rules. Read this first, then follow the links for the part
+you are touching.
 
 ## Design first
 
@@ -90,7 +91,7 @@ Other agent sessions on this machine run timed GPU sweeps. Any GPU use counts, e
 
 | You want to … | Read |
 |---|---|
-| know what a run did, or why it failed | `wonhee show run <id>` / `wonhee chain show <id>`, then README › Debugging |
+| know what a run did, or why it failed | `wonhee show run <id>` / `wonhee chain show <id>`, then [Usage › Debugging](docs/USAGE.md#debugging-a-bad-result) |
 | decide what runs where, or how many at once | `docs/production/policies.md` |
 | pick the next thing to build | `docs/VISION.md` › Where it's going, then `docs/DESIGN.md` (rows `approved, not built`) and `docs/production/workers.md` › Build next |
 | decide whether the code or the design is wrong | `docs/PROCESS.md` §2 |
