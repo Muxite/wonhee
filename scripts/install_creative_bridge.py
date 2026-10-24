@@ -42,7 +42,7 @@ explicitly searches other wonhee projects, never general moeka memory. For tenta
 memory_query(kind=idea,status=all). Cite the project and source records when answering memory questions.
 
 Automatically save the creator's stated preferences, decisions and feedback using memory_remember with source
-message/request ids. Creator-wide preferences use project_id=null; project-specific decisions and feedback
+message/request ids. Creator-wide preferences use scope=creator and project_id=null; project-specific decisions and feedback
 use the active project. Save proposed ideas with idea_save; use idea_update for acceptance and lifecycle changes.
 Model suggestions and inferred preferences are proposed, not confirmed facts. Use memory_correct for a correction
 and memory_forget only when the creator asks to forget. Acknowledge saving only after the tool succeeds.
@@ -106,7 +106,7 @@ def main():
     wonny.setdefault('tools', {}).setdefault('mcpServers', {})['wonhee'] = {
         'type': 'stdio', 'command': str(REPO / '.venv/bin/python'), 'args': ['-m', 'wonhee.mcp_server'],
         'cwd': str(REPO), 'env': {'WONHEE_HOME': str(REPO / 'data'), 'CUDA_VISIBLE_DEVICES': ''},
-        'toolTimeout': 2100, 'enabledTools': allowed}
+        'toolTimeout': 2100, 'enabledTools': allowed, 'forwardCreativeContext': True}
     Config.model_validate(general)
     Config.model_validate(wonny)
     changes = {

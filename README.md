@@ -217,5 +217,5 @@ oversized originals use a private Tailscale download page. Wonhee memory support
 project-scoped decisions, corrections, ideas and feedback, with readable exports.
 
 See [Telegram creative workspace](docs/production/telegram-creative.md) for setup, recovery and current
-validation. Implementation is deployed; live acceptance with creator files is pending. Full file checking
-remains separate. [Integration design](docs/specs/2026-10-24-moeka-integration-design.md).
+validation. Implementation is deployed; one Drive video has passed original-file Telegram delivery and phone playback.
+Raw Telegram intake, live reel rendering and full file checking remain separate acceptance steps. [Integration design](docs/specs/2026-10-24-moeka-integration-design.md).

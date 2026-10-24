@@ -8,6 +8,9 @@ from pathlib import Path
 from wonhee import envfile, errlog, llm, service
 from wonhee.config import REPO_ROOT, get_settings
 from wonhee.db.connect import open_db
+from mcp.server.fastmcp import Context
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 try:  # mcp 1.x
     from mcp.server.fastmcp import FastMCP as _Server
@@ -481,16 +484,62 @@ def chain_show(run_id: int) -> str:
 
 
 
+class _CreativeRoute(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    channel: Literal['telegram']
+    chat_id: str = Field(min_length=1, max_length=64)
+    owner_id: str = Field(min_length=1, max_length=128)
+    message_id: int | None = None
+    message_thread_id: int | None = None
+    route_key: str = Field(min_length=1, max_length=256)
+
+
+class _CreativeOrigin(BaseModel):
+    version: Literal[1]
+    project_id: int = Field(gt=0)
+    request_id: str = Field(min_length=1, max_length=256)
+    route: _CreativeRoute
+
+
+def _creative_arguments(action: str, kwargs: dict, ctx: Context | None) -> dict:
+    """Bind provenance and destination outside the model-controlled argument schema."""
+    if ctx is None or ctx.request_context.meta is None:
+        return kwargs
+    meta = ctx.request_context.meta.model_dump(mode='json')
+    if meta.get('wonhee') is None:
+        return kwargs
+    origin = _CreativeOrigin.model_validate(meta['wonhee'])
+    route = origin.route.model_dump(mode='json')
+    kwargs = dict(kwargs)
+    if action in {'memory_remember', 'memory_correct', 'memory_forget', 'idea_save', 'idea_update'}:
+        source = dict(kwargs.get('source') or {})
+        source.update({**route, 'request_id': origin.request_id, 'origin_project_id': origin.project_id})
+        kwargs['source'] = source
+    if action in {'memory_remember', 'memory_query', 'idea_save', 'make_submit', 'outbox_add', 'inbox_add'}:
+        if kwargs.get('scope') == 'creator':
+            kwargs['project_id'] = None
+        elif kwargs.get('project_id') is None:
+            kwargs['project_id'] = origin.project_id
+    if action in {'make_submit', 'outbox_add'}:
+        kwargs['route'] = route
+    if action == 'make_submit':
+        kwargs['request_key'] = origin.request_id
+    if action == 'project_select':
+        kwargs['route_key'] = route['route_key']
+    return kwargs
+
+
 def _register_creative_tools() -> None:
     """Project services keep their real signatures while connections stay behind the MCP boundary."""
     import inspect
+    from typing import get_type_hints
     from wonhee.creative import ACTIONS
     descriptions = {
         'memory_query': 'Search wonhee memory with ordinary words and optional project, kind, status, since/until filters. '
                         'scope auto includes creator preferences and the project; all explicitly searches all wonhee projects. '
                         'Use operation count/list/timeline for structured questions. Sources accompany every record.',
         'memory_remember': 'Persist a stated user preference, decision or feedback before acknowledging it. '
-                           'Use project_id for project-specific facts, null for wonhee-wide preferences. '
+                           'In a creative conversation the active project is the default; scope=creator explicitly saves wonhee-wide preferences. '
                            'Save model suggestions as proposed, never confirmed.',
         'make_submit': 'Create one durable background reel from a stored video asset. request_key must identify the '
                        'source user request; reuse it after timeouts. Use make_show for status; never poll in a loop. '
@@ -507,7 +556,8 @@ def _register_creative_tools() -> None:
         target = getattr(service, name)
         def build(target=target, action=action):
             @functools.wraps(target)
-            def call(**kwargs):
+            def call(ctx: Context | None = None, **kwargs):
+                kwargs = _creative_arguments(action, kwargs, ctx)
                 if action == 'inbox_add' and not str(kwargs.get('source','')).startswith(('http:', 'https:')):
                     kwargs['source'] = str(_in_path(kwargs['source']))
                 conn, settings = _open()
@@ -516,8 +566,13 @@ def _register_creative_tools() -> None:
                 finally:
                     conn.close()
             signature = inspect.signature(target)
-            call.__signature__ = signature.replace(parameters=[p for k,p in signature.parameters.items()
-                                                               if k not in ('conn','settings')])
+            hints = get_type_hints(target)
+            parameters = [p.replace(annotation=hints.get(k, p.annotation)) for k, p in signature.parameters.items()
+                          if k not in ('conn', 'settings')]
+            parameters.append(inspect.Parameter('ctx', inspect.Parameter.KEYWORD_ONLY, default=None, annotation=Context))
+            call.__annotations__ = {k:v for k,v in hints.items() if k not in ('conn', 'settings')}
+            call.__annotations__['ctx'] = Context
+            call.__signature__ = signature.replace(parameters=parameters, return_annotation=hints.get('return', dict))
             call.__doc__ = descriptions.get(action, target.__doc__ or f'Wonhee creative action: {action}. Returns structured records.')
             return call
         mcp.tool(name=name)(_guard(build()))

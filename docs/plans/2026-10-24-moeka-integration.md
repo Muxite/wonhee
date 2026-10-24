@@ -116,3 +116,10 @@ must not imply that the live acceptance has passed. Full wonhee suite: 868 passe
 additional focused failure-reporting coverage; focused moeka bridge/peer/channel/gateway checks: 185 passed.
 The existing Telegram bot, paired wonny and private creative worker are running. The creator was asked for a
 short Telegram video and a public Drive link when those services became ready.
+
+
+First live transfer passed: one selected video from the creator's folder was imported via its individual file
+link, returned unchanged as a Telegram document, and confirmed playable with good quality. Source-linked memory
+and paraphrased hybrid recall were verified, including after restart. Permanent folder rejection no longer
+blocks a creator message, and local MCP metadata now supplies immutable memory provenance. Raw Telegram input,
+rendered/revised output and private phone-outbox acceptance remain pending. See the production validation record.

@@ -2,7 +2,8 @@
 
 The existing `@moeka1738_bot` can hand wonhee work to its paired wonny instance. The host keeps one Telegram
 poller, a separate creative conversation per project, canonical SQLite memory and content-addressed media.
-The integration is implemented and independently reviewed; creator-file live acceptance is pending.
+The integration is implemented and independently reviewed. Drive binary intake and original-document delivery
+have passed creator acceptance; raw Telegram intake and rendered-reel acceptance remain pending.
 
 ## Use it
 
@@ -94,5 +95,33 @@ of the bridge. Real CPU semantic retrieval matched “understated captions” ag
 preference. These are local results; they do not stand in for Telegram/Drive live transfer acceptance.
 
 Deployment: all three services report ready; Telegram reconnected and wonny registered 26 allowed wonhee tools.
-Rollback snapshot: `data/deployments/20261024T041130Z/`. Creator test files and live phone-download verification
-remain outstanding. The complete file checker and isolated-voice audio-delay fix D23 remain separate work.
+Rollback snapshot: `data/deployments/20261024T041130Z/`. The first creator Drive file and Telegram phone playback are verified below. Private phone-outbox download
+and rendered/revised output remain outstanding. The complete file checker and isolated-voice audio-delay fix D23 remain separate work.
+
+
+### First creator file acceptance
+
+2026-10-24: the creator supplied the `lastdayclaudemax` public Drive folder, then selected “Test one video
+first”. Folder import remains outside v1. Its first individual binary file was imported using its file link:
+`2026-10-19 12-07-42.mp4`, 7,875,477 bytes, 35.05 seconds, 2880×1800 at 60 fps, H.264/AAC. CPU contact-sheet
+inspection recorded the actual desktop/terminal/monitoring imagery. The audio track measured -91 dB mean/max
+with ffmpeg volumedetect, so no speech transcript was invented or GPU speech job run.
+
+The unchanged original was sent as a Telegram document (delivery1), with actual acknowledgements1741/1742.
+The creator confirmed “Arrived and plays” and “its good quality too”. The private outbox returned HTTP206 for
+the requested first1024 bytes, matching stored bytes. Hybrid recall found the saved clip description using
+paraphrased words. The creator's playback/quality feedback is also a canonical source-linked memory.
+Only one of the eight videos was imported; this validates Drive binary intake and Telegram output, not bulk
+folder intake, Telegram raw-file input, live reel rendering or a full rendered-file check.
+
+The live run exposed and fixed permanent-error retry/forwarding and missing model-supplied memory sources.
+Permanent unsupported inputs now produce actionable errors without blocking creator text. Local opt-in MCP
+metadata binds source identity/destination outside model arguments; supported memory choices are enumerated.
+
+
+After restart, the real moeka MCP wrapper and wonhee stdio server retrieved the saved desktop clip using
+paraphrased words, with automatic active-project metadata and hybrid search. The full wonhee suite passed877
+checks at the last run, and six provenance checks cover real stdio metadata, creator scope, forged model
+routes/request keys, and forget audit history. The combined moeka MCP/bridge/peer/channel/gateway checks
+passed326 tests. Remaining live acceptance is raw Telegram input and rendered/revised output, rather than
+this unchanged-file transfer.

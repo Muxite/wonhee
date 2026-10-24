@@ -12,6 +12,7 @@ import tempfile
 from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
+from typing import Literal
 
 from wonhee import media
 from wonhee.clock import now_iso
@@ -19,6 +20,13 @@ from wonhee.db import repo
 from wonhee.db.connect import tx
 from wonhee.db.repo import creative as writes
 from wonhee.fsutil import write_atomic
+
+
+MemoryKind = Literal['preference', 'constraint', 'decision', 'feedback', 'question', 'idea', 'brief', 'transcript', 'output']
+MemoryState = Literal['confirmed', 'proposed', 'superseded', 'forgotten']
+MemoryScope = Literal['auto', 'project', 'creator', 'all']
+QueryOperation = Literal['search', 'list', 'count', 'timeline']
+IdeaState = Literal['draft', 'accepted', 'producing', 'done', 'rejected']
 
 
 _MEMORY_STATES = {'confirmed', 'proposed', 'superseded', 'forgotten'}
@@ -253,9 +261,16 @@ def _export_after_write(conn, settings):
         writes.maintenance(conn, 'export', str(exc)[:500])
 
 
-def memory_remember(conn, settings, *, content: str, project_id: int | None = None, kind: str = 'preference',
-                    source: dict | None = None, status: str = 'confirmed') -> dict:
+def memory_remember(conn, settings, *, content: str, project_id: int | None = None, kind: MemoryKind = 'preference',
+                    source: dict | None = None, status: Literal['confirmed', 'proposed'] = 'confirmed',
+                    scope: Literal['auto', 'creator', 'project'] = 'auto') -> dict:
     content = _text(content)
+    if scope not in {'auto', 'creator', 'project'}:
+        raise ValueError('invalid write scope')
+    if scope == 'creator':
+        project_id = None
+    if scope == 'project' and project_id is None:
+        raise ValueError('project scope requires project_id')
     if project_id is not None:
         project_show(conn, settings, project_id=project_id)
     if status not in {'confirmed', 'proposed'}:
@@ -282,16 +297,17 @@ def memory_correct(conn, settings, *, memory_id: int, content: str, source: dict
     return _get(conn, 'creative_memory', record_id)
 
 
-def memory_forget(conn, settings, *, memory_id: int) -> dict:
-    _get(conn, 'creative_memory', memory_id)
-    writes.update(conn, 'creative_memory', memory_id, status='forgotten', indexed=0)
+def memory_forget(conn, settings, *, memory_id: int, source: dict | None = None) -> dict:
+    old = _get(conn, 'creative_memory', memory_id)
+    provenance = {**old['source'], **({'forgotten_by': source} if source else {})}
+    writes.update(conn, 'creative_memory', memory_id, status='forgotten', indexed=0, source_json=json.dumps(provenance))
     _export_after_write(conn, settings)
     return _get(conn, 'creative_memory', memory_id)
 
 
-def memory_query(conn, settings, *, query: str = '', project_id: int | None = None, scope: str = 'auto',
-                 kind: str | None = None, status: str | None = 'confirmed', since: str | None = None,
-                 until: str | None = None, operation: str = 'search', limit: int = 10) -> dict:
+def memory_query(conn, settings, *, query: str = '', project_id: int | None = None, scope: MemoryScope = 'auto',
+                 kind: MemoryKind | None = None, status: MemoryState | Literal['all'] | None = 'confirmed', since: str | None = None,
+                 until: str | None = None, operation: QueryOperation = 'search', limit: int = 10) -> dict:
     if scope not in {'auto', 'project', 'creator', 'all'} or operation not in {'search', 'list', 'count', 'timeline'}:
         raise ValueError('invalid memory scope or operation')
     if not 1 <= limit <= 100 or len(query) > 4000:
@@ -424,13 +440,14 @@ def idea_list(conn, settings, *, project_id: int | None = None, status: str | No
                                                       + ' ORDER BY id DESC LIMIT 200', args)]}
 
 
-def idea_update(conn, settings, *, idea_id: int, status: str) -> dict:
+def idea_update(conn, settings, *, idea_id: int, status: IdeaState, source: dict | None = None) -> dict:
     if status not in _IDEA_STATES:
         raise ValueError('invalid idea state')
     idea = _get(conn, 'creative_idea', idea_id)
-    writes.update(conn, 'creative_idea', idea_id, status=status)
+    provenance = {**idea['source'], **({'status_changed_by': source} if source else {})}
+    writes.update(conn, 'creative_idea', idea_id, status=status, source_json=json.dumps(provenance))
     writes.update(conn, 'creative_memory', idea['memory_id'], status=('confirmed' if status in {'accepted','producing','done'}
-                                                                  else 'proposed'), indexed=0)
+                                                                  else 'proposed'), indexed=0, source_json=json.dumps(provenance))
     _export_after_write(conn, settings)
     return _get(conn, 'creative_idea', idea_id)
 

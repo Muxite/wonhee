@@ -294,8 +294,9 @@ can inspect footage without broad filesystem access. Probe-only intake does not 
 [production instructions](../production/telegram-creative.md). Source/tests cover scoped hybrid memory,
 source-preserving intake, per-project peer sessions, recorded execution phases and acknowledged delivery.
 Both intake and derived-index writers serialize across processes. Contact sheets and previews are real CPU
-media artifacts with node provenance. The source and service are deployed, but live Telegram/Drive and phone
-acceptance await creator files; status remains approved until that acceptance is recorded.
+media artifacts with node provenance. The first creator Drive video was imported and returned unchanged through
+Telegram, with creator-confirmed playback and quality. Raw Telegram input, rendered/revised reels and private
+phone-outbox acceptance remain pending, so the overall integration status remains approved.
 
 ### Live intake error correction
 
@@ -317,3 +318,9 @@ request metadata (`wonhee`), outside model-controlled arguments. Wonhee attaches
 route identity to memory, idea and brief writes and binds delivery actions to the original destination. The
 model can add domain citations but cannot override the transport identity. This opt-in is disabled for other
 MCP connections and restricted to local stdio. Manual CLI calls remain explicit-source operations.
+
+Within a forwarded creative conversation, `scope=auto` defaults memory writes/queries to the active project.
+Use `memory_remember(scope=creator)` explicitly for wonhee-wide preferences; this is distinct from FastMCP's
+filled `project_id=null` default. Manual CLI calls without transport context retain their existing null-project
+behavior. Forgetting and idea-status changes preserve their original source plus the acting source in a nested
+audit field. One creative creation request is keyed by its transport request id; retries cannot invent a new key.
