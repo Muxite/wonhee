@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -582,7 +583,24 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _argv(argv) -> str:
-    return " ".join(argv if argv is not None else sys.argv[1:])
+    values = list(argv if argv is not None else sys.argv[1:])
+    if 'creative' in values:
+        for i, value in enumerate(values):
+            if value == '--data' and i + 1 < len(values):
+                values[i + 1] = '[structured arguments]'
+            elif value.startswith('--data='):
+                values[i] = '--data=[structured arguments]'
+    return " ".join(values)
+
+
+def _creative_error(error) -> dict:
+    from wonhee.intake import DownloadError
+    message = str(error.args[0] if error.args else error)
+    message = re.sub(r'https?://[^\s<>"\']+', '[link]', message)
+    message = re.sub(r'(?i)(resourcekey|token|secret|password|api[_-]?key)\s*[:=]\s*[^\s,;]+',
+                     r'\1=[redacted]', message)
+    return {'error': {'code': 'transfer_failed' if isinstance(error, DownloadError) else 'invalid_request',
+                      'message': message[:300], 'retryable': bool(getattr(error, 'retryable', False))}}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -605,7 +623,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except (KeyError, ValueError) as e:
         errlog.log_traceback(settings.home if settings else None, f"wonhee {_argv(argv)} (expected)")
-        print(e.args[0] if e.args else e, file=sys.stderr)
+        if args.cmd == 'creative':
+            failure = _creative_error(e)
+            print(json.dumps(failure, ensure_ascii=False))
+            print(failure['error']['message'], file=sys.stderr)
+        else:
+            print(e.args[0] if e.args else e, file=sys.stderr)
         return 1
     except llm.LLMError as e:
         log = errlog.log_traceback(settings.home if settings else None, f"wonhee {_argv(argv)}")

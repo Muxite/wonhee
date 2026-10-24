@@ -12,7 +12,9 @@ import httpx
 
 
 class DownloadError(ValueError):
-    pass
+    def __init__(self, message: str, *, retryable: bool = True):
+        super().__init__(message)
+        self.retryable = retryable
 
 
 def drive_identity(url: str) -> tuple[str, str | None]:
@@ -52,10 +54,10 @@ def _guard(url: str) -> None:
     host = u.hostname or ''
     if u.scheme != 'https' or not (host == 'google.com' or host.endswith('.google.com')
                                   or host == 'googleusercontent.com' or host.endswith('.googleusercontent.com')):
-        raise DownloadError('Drive redirected outside the supported Google download hosts')
+        raise DownloadError('Drive redirected outside the supported Google download hosts', retryable=False)
     ok, error = validate_url_target(url)
     if not ok:
-        raise DownloadError(f'unsafe Drive download destination: {error}')
+        raise DownloadError(f'unsafe Drive download destination: {error}', retryable=False)
 
 
 def download_drive(url: str, dest: Path, *, max_bytes: int, reserve_bytes: int,
@@ -76,20 +78,22 @@ def download_drive(url: str, dest: Path, *, max_bytes: int, reserve_bytes: int,
                     target = urljoin(target, response.headers.get('location', ''))
                     continue
                 if response.status_code in (401, 403):
-                    raise DownloadError('Drive denied access or download quota was reached; enable public downloads or retry later')
+                    raise DownloadError('Drive denied access or download quota was reached; enable public downloads or retry later',
+                                        retryable=False)
                 if response.status_code >= 400:
-                    raise DownloadError(f'Drive download failed (HTTP {response.status_code}); check sharing and retry')
+                    raise DownloadError(f'Drive download failed (HTTP {response.status_code}); check sharing and retry',
+                                        retryable=response.status_code == 429 or response.status_code >= 500)
                 mime = response.headers.get('content-type', '').split(';')[0].lower()
                 length = response.headers.get('content-length')
                 if length and int(length) > max_bytes:
-                    raise DownloadError('file exceeds the configured intake size limit')
+                    raise DownloadError('file exceeds the configured intake size limit', retryable=False)
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 if mime in ('text/html', 'application/xhtml+xml'):
                     page = bytearray()
                     for chunk in response.iter_bytes():
                         page.extend(chunk)
                         if len(page) > 1_000_000:
-                            raise DownloadError('Drive returned an HTML page instead of a downloadable file')
+                            raise DownloadError('Drive returned an HTML page instead of a downloadable file', retryable=False)
                     parser = _Form()
                     parser.feed(page.decode('utf-8', errors='replace'))
                     if parser.action:
@@ -100,19 +104,19 @@ def download_drive(url: str, dest: Path, *, max_bytes: int, reserve_bytes: int,
                             fields['resourcekey'] = resource_key
                         target = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(fields, doseq=True), ''))
                         continue
-                    raise DownloadError('Drive returned a sharing/login/quota page; send a public downloadable binary file')
+                    raise DownloadError('Drive returned a sharing/login/quota page; send a public downloadable binary file', retryable=False)
                 total = 0
                 with dest.open('wb') as stream:
                     for chunk in response.iter_bytes():
                         total += len(chunk)
                         if total > max_bytes:
-                            raise DownloadError('file exceeds the configured intake size limit')
+                            raise DownloadError('file exceeds the configured intake size limit', retryable=False)
                         if time.monotonic() > deadline:
                             raise DownloadError('Drive download timed out; retry the intake')
                         if shutil.disk_usage(dest.parent).free < reserve_bytes + len(chunk):
-                            raise DownloadError('not enough free disk space for this download')
+                            raise DownloadError('not enough free disk space for this download', retryable=False)
                         if total == len(chunk) and chunk.lstrip().lower().startswith((b'<!doctype html', b'<html')):
-                            raise DownloadError('Drive returned HTML instead of a binary file')
+                            raise DownloadError('Drive returned HTML instead of a binary file', retryable=False)
                         stream.write(chunk)
                 if not total:
                     raise DownloadError('Drive returned an empty file')
@@ -120,7 +124,7 @@ def download_drive(url: str, dest: Path, *, max_bytes: int, reserve_bytes: int,
                 match = re.search(r'filename="?([^";]+)', cd)
                 filename = Path(match.group(1)).name if match else file_id
                 return {'filename': filename, 'mime': mime or 'application/octet-stream', 'bytes': total}
-        raise DownloadError('Drive exceeded the redirect/confirmation limit')
+        raise DownloadError('Drive exceeded the redirect/confirmation limit', retryable=False)
     except httpx.HTTPError as exc:
         dest.unlink(missing_ok=True)
         raise DownloadError(f'Drive transfer interrupted ({type(exc).__name__}); retry the intake') from None

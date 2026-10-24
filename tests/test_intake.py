@@ -119,3 +119,27 @@ def test_drive_retains_disk_reserve(tmp_path, monkeypatch):
     with pytest.raises(intake.DownloadError, match="free disk"):
         _download(tmp_path, lambda request: httpx.Response(200, content=b"binary"), reserve_bytes=5)
     assert not (tmp_path / "download.bin").exists()
+
+
+def test_cli_reports_permanent_intake_failure_as_safe_json(settings, capsys):
+    """design: live intake error correction, unsupported sources must not become opaque retryable errors."""
+    import json
+    from wonhee.cli import main
+    source = 'https://drive.google.com/drive/folders/example?resourcekey=private-resource-key'
+    result = main(['creative', 'inbox_add', '--data', json.dumps({'source': source})])
+    out = capsys.readouterr()
+    assert result == 1
+    error = json.loads(out.out)['error']
+    assert error['code'] == 'invalid_request'
+    assert error['retryable'] is False
+    assert 'folder' in error['message']
+    log = (settings.home / 'logs' / 'wonhee.log').read_text()
+    assert 'private-resource-key' not in log
+
+
+@pytest.mark.parametrize('status,retryable', [(403, False), (429, True), (500, True)])
+def test_download_error_distinguishes_permanent_and_transient_failures(tmp_path, status, retryable):
+    """design: live intake error correction, sharing errors and transient server failures need different recovery."""
+    with pytest.raises(intake.DownloadError) as error:
+        _download(tmp_path, lambda request: httpx.Response(status))
+    assert error.value.retryable is retryable
