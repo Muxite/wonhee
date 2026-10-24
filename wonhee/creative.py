@@ -649,8 +649,13 @@ def health(conn, settings) -> dict:
             'download_url': _download_endpoint(settings) or None}
 
 
+from wonhee.stagecraft import (stagecraft_schema, stagecraft_submit, stagecraft_show, stagecraft_retry,
+                              stagecraft_complete)
+
+
 ACTIONS = {name: globals()[name] for name in (
     'project_create', 'project_select', 'project_show', 'inbox_add', 'inbox_list', 'media_info',
     'idea_save', 'idea_list', 'idea_update', 'memory_remember', 'memory_query', 'memory_correct', 'memory_forget',
     'memory_export', 'memory_reindex', 'make_submit', 'make_show', 'outbox_add', 'outbox_list',
-    'delivery_show', 'delivery_retry', 'health')}
+    'delivery_show', 'delivery_retry', 'health', 'stagecraft_schema', 'stagecraft_submit', 'stagecraft_show',
+    'stagecraft_retry', 'stagecraft_complete')}

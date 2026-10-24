@@ -34,3 +34,18 @@ Deployment snapshots wonny configuration/instructions, extends the existing tool
 allowlist, and restarts only wonny to register tools. The existing restriction and
 Bubblewrap settings remain. Test against temporary WONHEE_HOME before live migration.
 Separate-agent alignment review is required by PROCESS.md before marking built.
+
+## Implementation evidence
+
+Built (aligned 2026-10-24). CLI/MCP twins delegate to the sibling Stagecraft queue;
+completion is host-only and uses a transactional receipt. Source context overrides
+model-supplied project/request/route. The full Wonhee suite passes (903 tests, 4
+deselected). New schema/tool tests cover route binding, scope, private completion,
+STRICT upgrade and delivery deduplication. The independent alignment review is clean.
+
+Real isolated acceptance exercised MCP submission, offline container capture, media
+intake and original-route outbox staging. The installed Stagecraft user worker also
+consumed and completed a real queued test job. Wonny registered the four new allowed
+tools without changing its filesystem restriction or Bubblewrap configuration.
+Detailed artifacts and capture checks: sibling Stagecraft docs/VALIDATION.md.
+No Telegram test was sent; creator phone playback is the first-request acceptance.

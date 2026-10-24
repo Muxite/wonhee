@@ -2,6 +2,12 @@
 
 # wonhee
 
+Stagecraft now builds and records small technical demos in shared offline containers,
+then returns their MP4s through the existing creative outbox. Ask the Wonhee creative
+conversation for a Stagecraft browser app, graph, terminal skit or mixed scene.
+Agent tools: `stagecraft_schema`, `stagecraft_submit`, `stagecraft_show`, `stagecraft_retry`.
+The [integration contract](docs/specs/2026-10-24-stagecraft-design.md) records the tested boundaries.
+
 **An AI production studio for one creator.**
 
 From “what should I post?” to something worth sharing.

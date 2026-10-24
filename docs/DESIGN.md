@@ -80,7 +80,7 @@ These hold everywhere; breaking one is a defect.
 
 ### Stage 3: capture
 
-Stagecraft technical-demo capture and delivery: [contract](specs/2026-10-24-stagecraft-design.md), approved by owner request; implementation pending.
+Stagecraft technical-demo capture and delivery: [contract](specs/2026-10-24-stagecraft-design.md), built (aligned 2026-10-24); creator phone playback acceptance pending.
 
 | Area | Contract | Detail | Status |
 |---|---|---|---|

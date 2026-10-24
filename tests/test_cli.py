@@ -256,6 +256,9 @@ def test_mcp_server_tools_and_call(settings):
         "make_show": {"submission_id", "request_key"},
         "outbox_add": {"ref", "filename", "route", "content", "project_id", "submission_id", "as_document"},
         "outbox_list": {"project_id"}, "delivery_show": {"delivery_id"}, "delivery_retry": {"delivery_id"},
+        "stagecraft_schema": set(),
+        "stagecraft_submit": {"spec", "project_id", "request_key", "route"},
+        "stagecraft_show": {"job_id", "project_id"}, "stagecraft_retry": {"job_id", "project_id"},
     })
     assert props == expected
     res = asyncio.run(mcp.call_tool("scout_show_run", {"run_id": 99}))

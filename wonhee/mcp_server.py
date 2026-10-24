@@ -536,9 +536,11 @@ def _creative_arguments(action: str, kwargs: dict, ctx: Context | None) -> dict:
             kwargs['project_id'] = None
         elif kwargs.get('project_id') is None:
             kwargs['project_id'] = origin.project_id
-    if action in {'make_submit', 'outbox_add'}:
+    if action in {'stagecraft_submit', 'stagecraft_show', 'stagecraft_retry'}:
+        kwargs['project_id'] = origin.project_id
+    if action in {'make_submit', 'outbox_add', 'stagecraft_submit'}:
         kwargs['route'] = route
-    if action == 'make_submit':
+    if action in {'make_submit', 'stagecraft_submit'}:
         kwargs['request_key'] = origin.request_id
     if action == 'project_select':
         kwargs['route_key'] = route['route_key']
@@ -564,7 +566,7 @@ def _register_creative_tools() -> None:
                      'Use the transport source_key on retries. Does not render or start GPU analysis.',
     }
     # Delivery acknowledgements are host-only: agents can inspect/retry but cannot claim a file was sent.
-    excluded = {'delivery_show', 'media_info'}
+    excluded = {'delivery_show', 'media_info', 'stagecraft_complete'}
     for action, fn in ACTIONS.items():
         if action in excluded:
             continue
