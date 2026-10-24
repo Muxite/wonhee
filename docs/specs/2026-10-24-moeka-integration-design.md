@@ -105,10 +105,36 @@ bypasses the hosted bot download limit.
 
 ### Public Google Drive links
 
-First release: one publicly downloadable binary file per link. Drive is input only; outputs use Telegram
-and a private Tailscale download page. Accept canonical file links and `open?id=...`,
-preserving `resourcekey`. Public folders, shortcuts, native Docs/Sheets/Slides, Google Vids and private Drive
-OAuth are separate extensions, with explicit unsupported responses in this release.
+Drive is input only; outputs use Telegram and a private Tailscale download page. Accept canonical binary-file
+links and `open?id=...`, preserving `resourcekey`.
+
+Folder extension (built, independently aligned 2026-10-24; owner request): accept public `/drive/folders/ID` and
+`/drive/u/0/folders/ID` links. Enumerate the anonymous embedded folder view recursively, preserving resource
+keys on child links. Reject permission/login pages, native Workspace documents, shortcuts, unsafe names,
+duplicate sibling names and cycles rather than silently omitting files. Bound traversal to 1000 entries,
+32 folder levels and 8 MiB per listing. If Google exposes pagination, fail rather than claim completeness.
+No OAuth, API key, browser cookies or new dependency is required.
+
+`drive_download` is a CPU, non-cacheable node: no input ports; params `url`, `dest`; output `manifest:file`
+(JSON containing destination and ordered files with relative path, local path, Drive id, bytes, MIME and stored
+ref). `wonhee download URL DEST` and MCP `drive_download(url, dest)` call the same service. DEST is a folder;
+create it when missing, retain the folder's child hierarchy, and refuse existing file collisions. Validate the
+entire listing and all output paths before transferring bytes. Stream each file through the existing bounded
+binary adapter into a temporary file, then publish without overwriting; failed partial files are removed,
+completed files remain available and a failure is reported. Apply the configured intake byte limit to the
+whole transfer and keep the disk reserve. An individual file link also downloads into DEST using its filename.
+MCP destinations remain confined to the existing output roots, including node_run/chain_run params.
+
+`inbox_add` also accepts folder links and optional `dest` (default `<home>/drive/<folder-id>`); it downloads
+and registers each child as a separate asset in the selected project, returning `assets` and `destination`.
+A parent receipt in `creative_intake` shares the source-key uniqueness domain with file intake and checkpoints
+the downloaded manifest before registering children. Stable child receipt keys derived from the request,
+Drive id and relative path make successful replays idempotent. `inbox_list` accepts `limit` (default 200,
+1–1000) and `offset` (default 0) so large imports remain discoverable. The Telegram bridge forwards at most
+32 assets in a peer context and tells the assistant to page through inbox_list for larger imports. Files
+retain folder-relative names in metadata. No analysis or GPU work starts on import. Single-file return shape
+is unchanged. Folders with no binary files return an empty assets list. Shortcuts, native Docs/Sheets/Slides,
+Google Vids and private Drive OAuth remain unsupported.
 
 Use a deterministic Drive adapter in wonhee, behind the same intake service used for local files. Resolve the
 file identity and download response, stream bounded bytes, validate every redirect and resolved destination,

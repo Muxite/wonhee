@@ -350,6 +350,12 @@ def _cmd_shots(a, settings) -> int:
     return 0
 
 
+def _cmd_download(a, settings) -> int:
+    result = service.drive_download(_open(settings), settings, build_deps(settings), a.url, Path(a.dest))
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def _cmd_export(a, settings) -> int:
     for p in service.export(_open(settings), settings, a.ref, Path(a.dest)):
         print(p)
@@ -401,6 +407,8 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--host", help="private download bind host; default Tailscale IPv4")
     s.add_argument("--once", action="store_true", help="process one queued submission then exit")
     s.set_defaults(fn=_cmd_creative)
+    s = sub.add_parser("download", help="download a public Google Drive file or folder into a local folder")
+    s.add_argument("url"); s.add_argument("dest"); s.set_defaults(fn=_cmd_download)
     sub.add_parser("doctor", help="check the environment").set_defaults(fn=_cmd_doctor)
     s = sub.add_parser("scout", help="interactive: ask, confirm, run"); s.add_argument("text"); s.set_defaults(fn=_cmd_scout)
     s = sub.add_parser("ask", help="one non-interactive compile turn"); s.add_argument("text")
@@ -590,6 +598,10 @@ def _argv(argv) -> str:
                 values[i + 1] = '[structured arguments]'
             elif value.startswith('--data='):
                 values[i] = '--data=[structured arguments]'
+    if 'download' in values:
+        index = values.index('download')
+        if index + 1 < len(values):
+            values[index + 1] = '[Drive link]'
     return " ".join(values)
 
 

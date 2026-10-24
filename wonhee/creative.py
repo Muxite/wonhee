@@ -101,7 +101,7 @@ def _serialized_intake(fn):
 
 @_serialized_intake
 def inbox_add(conn, settings, *, source: str, project_id: int | None = None, source_key: str | None = None,
-              role: str = 'raw', metadata: dict | None = None) -> dict:
+              role: str = 'raw', metadata: dict | None = None, dest: str | None = None) -> dict:
     from wonhee.intake import download_drive, drive_identity
     if project_id is not None:
         project_show(conn, settings, project_id=project_id)
@@ -109,6 +109,13 @@ def inbox_add(conn, settings, *, source: str, project_id: int | None = None, sou
         raise ValueError('asset role must be raw, reference, audio or output')
     source = _text(source, 'source', 8000)
     remote = source.startswith(('http:', 'https:'))
+    from wonhee.drive import folder_identity
+    folder = folder_identity(source) if remote else None
+    if folder:
+        return _inbox_folder(conn, settings, source=source, project_id=project_id, source_key=source_key,
+                             role=role, metadata=metadata, dest=dest)
+    if dest is not None:
+        raise ValueError('dest is supported for folder intake; use download for a single file destination')
     if remote:
         drive_identity(source)  # Reject unsupported links before creating a receipt or doing network I/O.
     key = source_key or uuid4().hex
@@ -160,9 +167,51 @@ def inbox_add(conn, settings, *, source: str, project_id: int | None = None, sou
         raise
 
 
-def inbox_list(conn, settings, *, project_id: int | None = None) -> dict:
+
+def _inbox_folder(conn, settings, *, source, project_id, source_key, role, metadata, dest):
+    from wonhee import service
+    from wonhee.drive import folder_identity
+    from wonhee.pipeline.deps import Deps
+    destination = Path(dest).expanduser().resolve() if dest else settings.home / 'drive' / folder_identity(source)[0]
+    old = conn.execute('SELECT * FROM creative_intake WHERE source_key=?', (source_key,)).fetchone()
+    if old and (old['source'] != source or old['project_id'] != project_id):
+        raise ValueError('source_key already belongs to another source/project')
+    state = json.loads(old['metadata_json']) if old else {
+        **{k: v for k, v in (metadata or {}).items() if k not in {'folder_result', 'folder_destination'}},
+        'folder_destination': str(destination)}
+    if state.get('folder_destination') != str(destination):
+        raise ValueError('source_key already belongs to another destination')
+    parent = old['id'] if old else writes.insert(conn, 'creative_intake', source_key=source_key, source=source,
+        project_id=project_id, role=role, status='received', metadata_json=json.dumps(state))
+    result = state.get('folder_result')
+    if result is None:
+        writes.update(conn, 'creative_intake', parent, status='downloading', error=None)
+        try:
+            result = service.drive_download(conn, settings, Deps.live(settings), source, destination)
+        except Exception as exc:
+            writes.update(conn, 'creative_intake', parent, status='failed', error=str(exc)[:500])
+            raise
+        state['folder_result'] = result
+        writes.update(conn, 'creative_intake', parent, metadata_json=json.dumps(state))
+    assets = []
+    for file in result['files']:
+        key = hashlib.sha256((source_key + ':' + file['id'] + ':' + file['relative_path']).encode()).hexdigest()
+        asset = inbox_add(conn, settings, source=file['path'], project_id=project_id, source_key='drive:' + key,
+                          role=role, metadata={**(metadata or {}), 'original_name': Path(file['relative_path']).name,
+                                               'relative_path': file['relative_path'], 'drive_id': file['id'],
+                                               'drive_folder_id': folder_identity(source)[0]})
+        assets.append(asset)
+    writes.update(conn, 'creative_intake', parent, status='stored', ref=result['manifest_ref'],
+                  filename='drive-folder.json', mime='application/json', error=None)
+    return {'assets': assets, 'destination': str(destination), 'run_id': result['run_id']}
+
+
+def inbox_list(conn, settings, *, project_id: int | None = None, limit: int = 200, offset: int = 0) -> dict:
+    if not 1 <= limit <= 1000 or offset < 0:
+        raise ValueError('limit must be 1..1000 and offset must be nonnegative')
     rows = conn.execute('SELECT * FROM creative_intake' + (' WHERE project_id=?' if project_id is not None else '')
-                        + ' ORDER BY id DESC LIMIT 200', (project_id,) if project_id is not None else ())
+                        + ' ORDER BY id DESC LIMIT ? OFFSET ?',
+                        ((project_id,) if project_id is not None else ()) + (limit, offset))
     return {'assets': [_record(r) for r in rows]}
 
 

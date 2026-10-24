@@ -125,7 +125,7 @@ def test_cli_reports_permanent_intake_failure_as_safe_json(settings, capsys):
     """design: live intake error correction, unsupported sources must not become opaque retryable errors."""
     import json
     from wonhee.cli import main
-    source = 'https://drive.google.com/drive/folders/example?resourcekey=private-resource-key'
+    source = 'https://drive.google.com/drive/unsupported/example?resourcekey=private-resource-key'
     result = main(['creative', 'inbox_add', '--data', json.dumps({'source': source})])
     out = capsys.readouterr()
     assert result == 1

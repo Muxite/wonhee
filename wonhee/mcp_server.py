@@ -168,6 +168,8 @@ def node_run(node: str, inputs: dict, params: dict | None = None, wait: bool = T
     """Run one node. inputs: port -> content:<id> | blob sha | local file path. wait=False returns a run id at once
     (check with chain_show). no_cache=True re-runs instead of reusing a cached result."""
     inputs = {k: _ref(v) for k, v in inputs.items()}
+    if node == 'drive_download' and params and 'dest' in params:
+        params = {**params, 'dest': str(_out_path(params['dest']))}
     conn, settings = _open()
     try:
         return service.node_run(conn, settings, _deps(settings), node, inputs, params or {}, wait,
@@ -183,6 +185,8 @@ def chain_run(chain: list | dict, wait: bool = True, no_cache: bool = False) -> 
     {nodes: [...], cost_cap_usd, no_cache}. no_cache=True skips the cache for every node. The whole chain is validated first and nothing runs if it is invalid.
     wait=False returns a run id at once (check with chain_show)."""
     for n in chain if isinstance(chain, list) else (chain.get("nodes") or []) if isinstance(chain, dict) else []:
+        if isinstance(n, dict) and n.get('node') == 'drive_download' and 'dest' in (n.get('params') or {}):
+            n['params'] = {**n['params'], 'dest': str(_out_path(n['params']['dest']))}
         if isinstance(n, dict) and isinstance(n.get("in"), dict):
             n["in"] = {k: _ref(v) for k, v in n["in"].items()}
     conn, settings = _open()
@@ -461,6 +465,18 @@ def workers() -> str:
 
 @mcp.tool()
 @_guard
+def drive_download(url: str, dest: str) -> dict:
+    """Download a public Google Drive file or folder into dest, preserving subfolders. Never overwrites files."""
+    destination = _out_path(dest)
+    conn, settings = _open()
+    try:
+        return service.drive_download(conn, settings, _deps(settings), url, destination)
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
 def export(ref: str, dest: str) -> str:
     """Copy a stored result into a local folder for posting: a video or image (one file), an images manifest or
     content:<id> photo post (01.jpg, 02.jpg, ...). Returns the written paths."""
@@ -544,7 +560,7 @@ def _register_creative_tools() -> None:
         'make_submit': 'Create one durable background reel from a stored video asset. request_key must identify the '
                        'source user request; reuse it after timeouts. Use make_show for status; never poll in a loop. '
                        'Supply the trusted route from the peer context for delivery.',
-        'inbox_add': 'Save a local file or public Google Drive binary-file link into the project. '
+        'inbox_add': 'Save a local file or public Google Drive file/folder into the project. Folders return assets; dest is optional. '
                      'Use the transport source_key on retries. Does not render or start GPU analysis.',
     }
     # Delivery acknowledgements are host-only: agents can inspect/retry but cannot claim a file was sent.
@@ -560,6 +576,12 @@ def _register_creative_tools() -> None:
                 kwargs = _creative_arguments(action, kwargs, ctx)
                 if action == 'inbox_add' and not str(kwargs.get('source','')).startswith(('http:', 'https:')):
                     kwargs['source'] = str(_in_path(kwargs['source']))
+                if action == 'inbox_add':
+                    from wonhee.drive import folder_identity
+                    folder = folder_identity(str(kwargs.get('source', '')))
+                    if kwargs.get('dest') is not None or folder:
+                        default = get_settings().home / 'drive' / folder[0] if folder else None
+                        kwargs['dest'] = str(_out_path(kwargs.get('dest') or str(default)))
                 conn, settings = _open()
                 try:
                     return target(conn, settings, **kwargs)

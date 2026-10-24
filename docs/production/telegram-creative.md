@@ -8,9 +8,9 @@ have passed creator acceptance; raw Telegram intake and rendered-reel acceptance
 ## Use it
 
 1. Say you want to work on wonhee, or send `/wonhee project <name>` to select a project explicitly.
-2. Send an idea, photo/video/document, album, or public Google Drive file link. Uploads are saved before analysis;
-   a bare upload does not authorize rendering. Drive folders, private Drive access and native Docs/Sheets are
-   outside v1. Hosted Telegram cannot download raw takes over 20 MB; use a public Drive file link for those.
+2. Send an idea, photo/video/document, album, or public Google Drive file/folder link. Uploads are saved before analysis;
+   a bare upload does not authorize rendering. Public folders import recursively and register each file in the project. Private Drive access and native
+   Docs/Sheets remain unsupported. Hosted Telegram cannot download raw takes over 20 MB; use a public Drive file link for those.
 3. Ask for an edit, for example “make this into a legend reel with the title campus startup”. The host queues
    and records its speech/render phases, then delivers the finished video. A follow-up request creates a revision.
 4. Ask for the original as a document if wanted. Oversized originals have a private download link on the outbox:
@@ -125,3 +125,17 @@ checks at the last run, and six provenance checks cover real stdio metadata, cre
 routes/request keys, and forget audit history. The combined moeka MCP/bridge/peer/channel/gateway checks
 passed326 tests. Remaining live acceptance is raw Telegram input and rendered/revised output, rather than
 this unchanged-file transfer.
+
+
+2026-10-24 folder extension: `inbox_add` now accepts public folders and optional destination folders.
+The moeka bridge consumes the returned asset list, including empty folders, rather than assuming one asset.
+`wonhee download URL DEST` and MCP `drive_download` also support direct downloads. Offline fixtures cover
+recursive paths, resource keys, collisions, aggregate size limits, retryability and project replay. A live
+public embedded folder listing confirmed the adapter format; bulk creator-folder transfer is not yet a
+recorded live acceptance.
+
+Folder extension verification: 900 wonhee tests passed (4 live/GPU checks deselected); all 26 moeka creative
+bridge tests and focused ruff checks passed. Independent design alignment found no remaining mismatches.
+The running moeka and wonny services were refreshed; wonny reconnected to wonhee MCP with its 26 allowed
+capabilities, including the updated folder-aware inbox action. No creator media was bulk-downloaded during
+this change. Rollback snapshot: `data/deployments/20261024T173234Z-drive-folders/`.

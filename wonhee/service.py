@@ -1509,3 +1509,25 @@ from wonhee.creative import (  # noqa: E402,F401
     memory_forget, memory_export, memory_reindex, make_submit, make_show, outbox_add, outbox_list,
     delivery_show, delivery_retry, health as creative_health,
 )
+
+
+def drive_download(conn, settings, deps, url: str, dest: Path) -> dict:
+    """Download a public Drive file or folder and return its stored manifest."""
+    import json
+    from wonhee import media
+    run_id, text = node_run(conn, settings, deps, 'drive_download', {}, {'url': url, 'dest': str(dest)})
+    outputs = _step_out(conn, run_id, 'drive_download')
+    if not outputs:
+        from wonhee.intake import DownloadError
+        step = queries.current_step(conn, run_id, 'drive_download')
+        for artifact in queries.step_artifacts(conn, step['id']) if step else []:
+            if artifact['role'] == 'error':
+                try:
+                    error = json.loads(media.path_for(settings.media_dir, artifact['blob_sha256']).read_text())
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(error, dict) and error.get('kind') == 'drive_error':
+                    raise DownloadError(error['message'], retryable=error['retryable'])
+        raise ValueError(text)
+    result = json.loads(media.path_for(settings.media_dir, outputs['manifest']).read_text())
+    return {**result, 'run_id': run_id, 'manifest_ref': outputs['manifest']}

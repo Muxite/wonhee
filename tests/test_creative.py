@@ -165,7 +165,6 @@ def test_intake_replayed_source_is_idempotent_but_distinct_sources_are_preserved
 
 
 @pytest.mark.parametrize("url", [
-    "https://drive.google.com/drive/folders/example",
     "https://docs.google.com/document/d/example/edit",
     "https://example.com/not-a-drive-file.mp4",
 ])

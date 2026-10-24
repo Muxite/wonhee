@@ -219,3 +219,17 @@ project-scoped decisions, corrections, ideas and feedback, with readable exports
 See [Telegram creative workspace](docs/production/telegram-creative.md) for setup, recovery and current
 validation. Implementation is deployed; one Drive video has passed original-file Telegram delivery and phone playback.
 Raw Telegram intake, live reel rendering and full file checking remain separate acceptance steps. [Integration design](docs/specs/2026-10-24-moeka-integration-design.md).
+
+### Download from Google Drive
+
+Use a public file or folder shared with “Anyone with the link”:
+
+```bash
+uv run wonhee download 'https://drive.google.com/drive/folders/FOLDER_ID' data/takes
+uv run wonhee creative inbox_add --data '{"source":"https://drive.google.com/drive/folders/FOLDER_ID","project_id":1}'
+```
+
+Downloads preserve subfolders and refuse to overwrite existing files. The first command also accepts an
+individual file link. MCP exposes `drive_download(url, dest)` and `inbox_add(source, project_id, dest)`; MCP
+output folders must be under wonhee's data directory. Folder intake registers each file as an asset without
+starting analysis. Private links and native Google Docs/Sheets/Slides are unsupported.
