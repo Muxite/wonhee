@@ -80,6 +80,8 @@ These hold everywhere; breaking one is a defect.
 
 ### Stage 3: capture
 
+Stagecraft technical-demo capture and delivery: [contract](specs/2026-10-24-stagecraft-design.md), approved by owner request; implementation pending.
+
 | Area | Contract | Detail | Status |
 |---|---|---|---|
 | Drive intake | Public binary files and recursive public folders to a local directory; `drive_download` node, CLI/MCP twins, and project folder intake | [integration spec › Public Google Drive links](specs/2026-10-24-moeka-integration-design.md#public-google-drive-links) | built (aligned 2026-10-24) |
