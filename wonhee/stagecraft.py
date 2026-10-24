@@ -36,7 +36,9 @@ def stagecraft_schema(conn, settings) -> dict:
 def stagecraft_submit(conn, settings, *, spec: dict, project_id: int, request_key: str,
                       route: dict | None = None) -> dict:
     """Create one durable containerized demo job. Author title/premise, initial state and timed actions;
-    optional component/css implements a custom React scene. Capture returns through the existing outbox.
+    optional component/css implements a custom React scene. Set spec.coding={task, primitive:'stdio_mesh'}
+    to dispatch Codex to author a real stdio program and dashboard; independent Docker checks gate capture.
+    Capture returns through the existing outbox.
     Reuse request_key on timeout; a changed idea is a new request. Queued does not mean delivered."""
     from wonhee import creative
     creative.project_show(conn, settings, project_id=project_id)

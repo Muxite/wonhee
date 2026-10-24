@@ -59,4 +59,8 @@ offline container, binds the observed trace to a cinematic dashboard, captures a
 stages via the same trusted route. No new Wonhee tools or provider credentials.
 The schema/instructions expose this capability and coding/verifying status. Failed
 verification cannot be delivered as successful real primitive work. See sibling
-Stagecraft docs/CODING_DESIGN.md. Implementation pending.
+Stagecraft docs/CODING_DESIGN.md. Built (aligned 2026-10-24): actual systemd dispatch
+used one Codex attempt, passed observed worker-pipe traffic and recorded/staged an
+isolated smoke video. Stagecraft has 35 passing tests, including local-echo bypass
+and unmatched-worker negative cases plus authored-bundle restart recovery. Wonhee's
+full 903-test suite passes. The final themed creator request remains unsubmitted.
