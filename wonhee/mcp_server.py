@@ -480,6 +480,82 @@ def chain_show(run_id: int) -> str:
         conn.close()
 
 
+
+def _register_creative_tools() -> None:
+    """Project services keep their real signatures while connections stay behind the MCP boundary."""
+    import inspect
+    from wonhee.creative import ACTIONS
+    descriptions = {
+        'memory_query': 'Search wonhee memory with ordinary words and optional project, kind, status, since/until filters. '
+                        'scope auto includes creator preferences and the project; all explicitly searches all wonhee projects. '
+                        'Use operation count/list/timeline for structured questions. Sources accompany every record.',
+        'memory_remember': 'Persist a stated user preference, decision or feedback before acknowledging it. '
+                           'Use project_id for project-specific facts, null for wonhee-wide preferences. '
+                           'Save model suggestions as proposed, never confirmed.',
+        'make_submit': 'Create one durable background reel from a stored video asset. request_key must identify the '
+                       'source user request; reuse it after timeouts. Use make_show for status; never poll in a loop. '
+                       'Supply the trusted route from the peer context for delivery.',
+        'inbox_add': 'Save a local file or public Google Drive binary-file link into the project. '
+                     'Use the transport source_key on retries. Does not render or start GPU analysis.',
+    }
+    # Delivery acknowledgements are host-only: agents can inspect/retry but cannot claim a file was sent.
+    excluded = {'delivery_show', 'media_info'}
+    for action, fn in ACTIONS.items():
+        if action in excluded:
+            continue
+        name = 'creative_' + action if action.startswith('project_') or action == 'health' else action
+        target = getattr(service, name)
+        def build(target=target, action=action):
+            @functools.wraps(target)
+            def call(**kwargs):
+                if action == 'inbox_add' and not str(kwargs.get('source','')).startswith(('http:', 'https:')):
+                    kwargs['source'] = str(_in_path(kwargs['source']))
+                conn, settings = _open()
+                try:
+                    return target(conn, settings, **kwargs)
+                finally:
+                    conn.close()
+            signature = inspect.signature(target)
+            call.__signature__ = signature.replace(parameters=[p for k,p in signature.parameters.items()
+                                                               if k not in ('conn','settings')])
+            call.__doc__ = descriptions.get(action, target.__doc__ or f'Wonhee creative action: {action}. Returns structured records.')
+            return call
+        mcp.tool(name=name)(_guard(build()))
+
+
+@mcp.tool()
+@_guard
+def delivery_show(delivery_id: int | None = None) -> dict:
+    """Read delivery status. Transport acknowledgements can only be written by the trusted host adapter."""
+    conn, settings = _open()
+    try:
+        return service.delivery_show(conn, settings, delivery_id=delivery_id)
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+@_guard
+def media_info(asset_id: int, analyze: bool = False):
+    """Probe a stored asset and read saved transcripts. analyze=true explicitly makes a CPU contact sheet
+    and returns its real image for visual inspection. Never infer video content from filenames alone."""
+    import base64
+    import json
+    from mcp.types import CallToolResult, ImageContent, TextContent
+    conn, settings = _open()
+    try:
+        result = service.media_info(conn, settings, asset_id=asset_id, analyze=analyze)
+        content = [TextContent(type='text', text=json.dumps(result, ensure_ascii=False))]
+        if result.get('contact_sheet'):
+            data = Path(result['contact_sheet']['path']).read_bytes()
+            content.append(ImageContent(type='image', data=base64.b64encode(data).decode(), mimeType='image/jpeg'))
+        return CallToolResult(content=content, structuredContent=result)
+    finally:
+        conn.close()
+
+
+_register_creative_tools()
+
 def main() -> None:
     envfile.load_entry_env()
     mcp.run()

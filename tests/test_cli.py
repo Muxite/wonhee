@@ -222,7 +222,7 @@ def test_mcp_server_tools_and_call(settings):
     from wonhee.mcp_server import mcp
     tools = {t.name: t for t in asyncio.run(mcp.list_tools())}
     props = {n: set((getattr(t, "input_schema", None) or t.inputSchema)["properties"]) for n, t in tools.items()}
-    assert props == {"scout_ask": {"text", "intent_id"}, "scout_go": {"intent_id"},
+    expected = {"scout_ask": {"text", "intent_id"}, "scout_go": {"intent_id"},
                      "scout_resume": {"run_id", "from_stage", "overrides"}, "scout_show_run": {"run_id"},
                      "library_grab": {"urls", "relation"},
                      "nodes_list": {"name"}, "node_run": {"node", "inputs", "params", "wait", "no_cache"},
@@ -239,6 +239,24 @@ def test_mcp_server_tools_and_call(settings):
                      "larp": {"task", "image", "video", "pick", "engine", "register"},
                      "reel": {"video", "style", "title", "cta", "items", "insets", "set"}, "reel_styles": set(),
                      "slop_next": {"n", "engine"}, "slop_pick": {"repo"}, "slop_render": {"dossier", "script"}}
+    expected.update({
+        "creative_project_create": {"name"},
+        "creative_project_select": {"project_id", "route_key"},
+        "creative_project_show": {"project_id", "route_key"},
+        "inbox_add": {"source", "project_id", "source_key", "role", "metadata"},
+        "inbox_list": {"project_id"}, "media_info": {"asset_id", "analyze"},
+        "idea_save": {"content", "project_id", "source"}, "idea_list": {"project_id", "status"},
+        "idea_update": {"idea_id", "status"},
+        "memory_remember": {"content", "project_id", "kind", "source", "status"},
+        "memory_query": {"query", "project_id", "scope", "kind", "status", "since", "until", "operation", "limit"},
+        "memory_correct": {"memory_id", "content", "source"}, "memory_forget": {"memory_id"},
+        "memory_export": set(), "memory_reindex": set(), "creative_health": set(),
+        "make_submit": {"project_id", "asset_id", "request_key", "style", "params", "route", "brief"},
+        "make_show": {"submission_id", "request_key"},
+        "outbox_add": {"ref", "filename", "route", "content", "project_id", "submission_id", "as_document"},
+        "outbox_list": {"project_id"}, "delivery_show": {"delivery_id"}, "delivery_retry": {"delivery_id"},
+    })
+    assert props == expected
     res = asyncio.run(mcp.call_tool("scout_show_run", {"run_id": 99}))
     assert "no run 99" in str(res)
 

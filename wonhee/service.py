@@ -1500,3 +1500,12 @@ def reel(conn, settings, deps, video: str | Path, style: str, *, title: str | No
     write_atomic(out_dir / "report.md", "\n".join(report) + "\n")
     return "\n".join([f"{mp4}", f"style {style}, {info.duration_ms / 1000:.1f} s in, {trimmed:.1f} s of pauses trimmed",
                       *[f"note: {n}" for n in notes], *[f"flag {c}: {d}" for c, d in flags], f"report: {out_dir / 'report.md'}"])
+
+# Creative actions return typed receipts shared by CLI, MCP and the trusted transport adapter.
+from wonhee.creative import (  # noqa: E402,F401
+    project_create as creative_project_create, project_select as creative_project_select,
+    project_show as creative_project_show, inbox_add, inbox_list, media_info,
+    idea_save, idea_list, idea_update, memory_remember, memory_query, memory_correct,
+    memory_forget, memory_export, memory_reindex, make_submit, make_show, outbox_add, outbox_list,
+    delivery_show, delivery_retry, health as creative_health,
+)

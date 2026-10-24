@@ -1,0 +1,18 @@
+[Unit]
+Description=Wonhee creative submissions and private outbox
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/wonhee
+Environment=WONHEE_HOME=%h/projects/wonhee/data
+# This host's tailnet address; replace when installing on another machine.
+Environment=WONHEE_CREATIVE_DOWNLOAD_URL=http://100.66.112.22:17420
+ExecStart=%h/projects/wonhee/.venv/bin/python -m wonhee.cli creative serve
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=3600
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

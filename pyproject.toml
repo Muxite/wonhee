@@ -29,6 +29,11 @@ dev = ["pytest>=8.0"]
 viz = [
     "playwright>=1.40",
 ]
+# Creative-memory hybrid search reuses moeka's DocStore with CPU embeddings; FTS remains usable without this extra.
+memory = [
+    "sentence-transformers>=5.0,<6.0",
+    "sqlite-vec>=0.1.9,<1.0",
+]
 
 [project.scripts]
 wonhee = "wonhee.cli:main"

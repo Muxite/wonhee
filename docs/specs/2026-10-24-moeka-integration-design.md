@@ -9,7 +9,7 @@ receive an edit, and ask for changes days later. Reuse the existing Telegram moe
 instance. Give wonny responsibility for wonhee work, with durable project records in wonhee and separate
 conversation memory in wonny. Keep one Telegram poller and use wonhee's existing service and MCP boundaries.
 
-## Current system
+## Baseline before implementation
 
 Inspection on 2026-10-24: wonhee checkout `ca9652a`; moeka checkout `671421aa` before the peer fix below.
 
@@ -275,3 +275,24 @@ wonny translates the question into those typed arguments without another interna
 Creator-wide and project scope are explicit. Confirmed user statements are saved automatically; inferred
 preferences remain unconfirmed. SQLite records are canonical, Markdown/JSON exports and semantic indexes are
 rebuildable views; failed exports/indexing remain visible and retryable.
+
+### Delivery preview node
+
+`delivery_preview` v1 is a CPU node with `video → video`. Its forbidden-extra params are `max_seconds=60`,
+`width=720`, and `max_bytes=45000000`. It creates a clearly labelled, bounded preview of an oversized original,
+using x264/AAC and faststart. The original remains the authoritative output. If the bounded preview cannot be
+produced, retain the original's private link and report preview failure without marking the render failed.
+
+`contact_sheet` v1 is a CPU node (`video → image`) with params `frames=6` (1–12). It samples evenly spaced
+real frames into a timestamped sheet; no model or GPU is used. `media_info(asset_id, analyze=true)` runs it
+explicitly and returns its image/ref and run id. MCP additionally returns the image content so the assistant
+can inspect footage without broad filesystem access. Probe-only intake does not start this analysis.
+
+## Implementation evidence
+
+2026-10-24: implementation and independent alignment are recorded in
+[production instructions](../production/telegram-creative.md). Source/tests cover scoped hybrid memory,
+source-preserving intake, per-project peer sessions, recorded execution phases and acknowledged delivery.
+Both intake and derived-index writers serialize across processes. Contact sheets and previews are real CPU
+media artifacts with node provenance. The source and service are deployed, but live Telegram/Drive and phone
+acceptance await creator files; status remains approved until that acceptance is recorded.

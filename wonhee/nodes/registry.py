@@ -9,7 +9,7 @@ NODES: dict[str, Node] = {}
 MODULES: list[str] = ["wonhee.nodes.subs", "wonhee.nodes.grab", "wonhee.nodes.translate", "wonhee.nodes.screen", "wonhee.nodes.burn",
            "wonhee.nodes.look", "wonhee.nodes.text", "wonhee.nodes.carousel",
            "wonhee.nodes.teardown", "wonhee.nodes.larp", "wonhee.nodes.ideate", "wonhee.nodes.vibe", "wonhee.nodes.filter", "wonhee.nodes.filter_probe", "wonhee.nodes.poster",
-           "wonhee.nodes.audio", "wonhee.nodes.shots", "wonhee.nodes.viz", "wonhee.nodes.publish", "wonhee.nodes.slop", "wonhee.nodes.compose"]
+           "wonhee.nodes.audio", "wonhee.nodes.shots", "wonhee.nodes.viz", "wonhee.nodes.publish", "wonhee.nodes.slop", "wonhee.nodes.compose", "wonhee.nodes.delivery", "wonhee.nodes.inspect"]
 _loaded = False
 
 

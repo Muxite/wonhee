@@ -211,14 +211,11 @@ Detached chains with a `cuda` node go to a live worker. Without one they start a
 
 ## Telegram creative workspace
 
-The approved moeka integration is being built to
-[`docs/specs/2026-10-24-moeka-integration-design.md`](docs/specs/2026-10-24-moeka-integration-design.md).
-The existing Telegram moeka hands creative conversations to its paired wonny instance. Public Drive links
-are imports; outputs return through Telegram or a private Tailscale download page. Publishing remains separate.
+The existing Telegram moeka now hands creative work to its paired wonny instance. Select a project with
+`/wonhee project <name>`, send a take or public Drive file link, and ask for an edit. Videos return in Telegram;
+oversized originals use a private Tailscale download page. Wonhee memory supports ordinary-word hybrid search,
+project-scoped decisions, corrections, ideas and feedback, with readable exports.
 
-New structured actions have matching MCP tools and CLI calls:
-`wonhee creative <action> --data '<JSON object>'`. Start with `project_create`, `inbox_add`,
-`memory_remember`, `memory_query`, and `make_submit`; inspect saved work with `project_show`, `inbox_list`,
-`make_show`, and `outbox_list`. The CLI returns JSON receipts rather than requiring an agent to parse prose.
-`wonhee creative serve` will run background submissions and the private download page.
-Deployment and live acceptance remain pending until the integration design records their evidence.
+See [Telegram creative workspace](docs/production/telegram-creative.md) for setup, recovery and current
+validation. Implementation is deployed; live acceptance with creator files is pending. Full file checking
+remains separate. [Integration design](docs/specs/2026-10-24-moeka-integration-design.md).

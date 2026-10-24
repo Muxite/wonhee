@@ -373,12 +373,33 @@ def _cmd_sql(a, settings) -> int:
     return 0
 
 
+def _cmd_creative(a, settings) -> int:
+    from wonhee import creative
+    if a.action == "serve":
+        from wonhee.creative_worker import serve
+        serve(settings, host=a.host, once=a.once)
+        return 0
+    data = json.loads(a.data)
+    if not isinstance(data, dict):
+        raise ValueError("--data must be a JSON object")
+    name = 'creative_' + a.action if a.action.startswith('project_') or a.action == 'health' else a.action
+    print(json.dumps(getattr(service, name)(_open(settings), settings, **data), ensure_ascii=False))
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="wonhee", description="Trend scout: request -> confirmed scout -> shot list.")
     p.add_argument("--env-file", metavar="PATH",
                    help="KEY=VALUE file with API keys (default: $WONHEE_ENV_FILE, else .env in the repo); "
                         "variables already in the environment win")
     sub = p.add_subparsers(dest="cmd", required=True)
+    from wonhee.creative import ACTIONS
+    s = sub.add_parser("creative", help="creative projects, intake, memory, submissions and private outbox")
+    s.add_argument("action", choices=[*ACTIONS, "serve"])
+    s.add_argument("--data", default="{}", help="JSON arguments for the action")
+    s.add_argument("--host", help="private download bind host; default Tailscale IPv4")
+    s.add_argument("--once", action="store_true", help="process one queued submission then exit")
+    s.set_defaults(fn=_cmd_creative)
     sub.add_parser("doctor", help="check the environment").set_defaults(fn=_cmd_doctor)
     s = sub.add_parser("scout", help="interactive: ask, confirm, run"); s.add_argument("text"); s.set_defaults(fn=_cmd_scout)
     s = sub.add_parser("ask", help="one non-interactive compile turn"); s.add_argument("text")

@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     wavesim_image: str = "wonhee-wavesim:dev"
 
     cost_cap_usd: float = 1.0
+    intake_max_bytes: int = 10 * 1024 ** 3
+    intake_reserve_bytes: int = 1024 ** 3
+    memory_semantic: bool = True
+    memory_embedding_model: str = "all-MiniLM-L6-v2"
+    creative_download_url: str = ""
+    creative_port: int = 17420
     reels_per_trend: int = 5
     hashtag_results: int = 30
 

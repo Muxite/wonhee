@@ -105,3 +105,14 @@ Wonhee's real MCP stdio handshake and discovery calls passed in a temporary data
 disabled and no model calls. The server listed 28 tools at inspection time. This validates transport and
 discovery only. No real Telegram upload, Drive import, render, memory-isolation acceptance or artifact
 delivery was performed. No runtime MCP registration or creative-memory migration was applied.
+
+
+## Implementation status
+
+Implemented and independently aligned on 2026-10-24. The production guide is
+[Telegram creative workspace](../production/telegram-creative.md). All five waves have their implementation
+boundaries in place; end-to-end creator-file acceptance and phone verification remain pending. Source status
+must not imply that the live acceptance has passed. Full wonhee suite: 868 passed at the last full run, with
+additional focused failure-reporting coverage; focused moeka bridge/peer/channel/gateway checks: 185 passed.
+The existing Telegram bot, paired wonny and private creative worker are running. The creator was asked for a
+short Telegram video and a public Drive link when those services became ready.
