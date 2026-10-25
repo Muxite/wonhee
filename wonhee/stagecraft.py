@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
+from typing import Literal
 
 from wonhee.clock import now_iso
 from wonhee.db.connect import tx
@@ -33,6 +34,46 @@ def stagecraft_schema(conn, settings) -> dict:
     return _call('schema')
 
 
+def stagecraft_build(conn, settings, *, brief: str, title: str,
+                     duration_seconds: int = 20, surface: Literal['browser','terminal','hybrid'] = 'browser',
+                     orientation: Literal['landscape','portrait'] = 'landscape',
+                     primitive: Literal['stdio_mesh','scene'] = 'stdio_mesh',
+                     reference_asset_ids: list[int] | None = None, project_id: int | None = None,
+                     request_key: str = '', route: dict | None = None) -> dict:
+    """Build and film the creator's idea. Supply an ordinary detailed brief and title; no JSON spec is needed.
+    stdio_mesh dispatches Codex to build real stdio workers and the dashboard. Use reference asset IDs for
+    visual direction. Host binds project/request/destination. Returns a durable job ID; queued is not sent."""
+    from wonhee import creative
+    brief=creative._text(brief,'brief',10000)
+    title=creative._text(title,'title',120)
+    if project_id is None or not request_key or isinstance(duration_seconds,bool) or not 1<=duration_seconds<=45:
+        raise ValueError('select a project and supply a source request key and 1..45 second duration')
+    if surface not in {'browser','terminal','hybrid'} or orientation not in {'landscape','portrait'} or primitive not in {'stdio_mesh','scene'}:
+        raise ValueError('unsupported capture or primitive selection')
+    if surface == 'hybrid' and orientation == 'portrait':
+        raise ValueError('hybrid capture needs landscape; use browser or terminal for portrait')
+    references=[]
+    ids=list(dict.fromkeys(reference_asset_ids or []))
+    if len(ids)>8:
+        raise ValueError('at most eight reference images are supported')
+    for asset_id in ids:
+        asset=creative.media_info(conn,settings,asset_id=asset_id)
+        if asset['project_id']!=project_id:
+            raise ValueError('reference image belongs to another creative project')
+        if asset['mime'] not in {'image/jpeg','image/png','image/webp'} or Path(asset['path']).stat().st_size>8*1024*1024:
+            raise ValueError('references must be JPEG/PNG/WebP images of at most 8 MiB')
+        references.append({'asset_id':asset_id,'path':asset['path'],'sha256':asset['ref'],'mime':asset['mime']})
+    creative.project_brief_save(conn,settings,project_id=project_id,content=brief,
+                                source={**(route or {}),'request_key':request_key})
+    width,height=(1080,1920) if orientation=='portrait' else (1280,720)
+    spec={'premise':brief,'title':title,'duration_ms':duration_seconds*1000,'surface':surface,
+          'width':width,'height':height}
+    if primitive=='stdio_mesh':
+        spec['coding']={'task':brief,'primitive':'stdio_mesh'}
+    return _call('submit',{'spec':spec,'project_id':project_id,'request_key':request_key,
+                          'route':route or {},'wonhee_home':str(settings.home.resolve()),'references':references})
+
+
 def stagecraft_submit(conn, settings, *, spec: dict, project_id: int, request_key: str,
                       route: dict | None = None) -> dict:
     """Create one durable containerized demo job. Author title/premise, initial state and timed actions;
@@ -51,6 +92,10 @@ def stagecraft_show(conn, settings, *, job_id: str, project_id: int | None = Non
     result = _call('show', job_id=job_id)
     if project_id is not None and result['project_id'] != project_id:
         raise ValueError('Stagecraft job belongs to another creative project')
+    linked=conn.execute('SELECT delivery_id FROM stagecraft_delivery WHERE job_id=?',(job_id,)).fetchone()
+    if linked:
+        from wonhee import creative
+        result['delivery']=creative.delivery_show(conn,settings,delivery_id=linked['delivery_id'])
     return result
 
 

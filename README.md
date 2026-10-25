@@ -3,9 +3,11 @@
 # wonhee
 
 Stagecraft now builds and records small technical demos in shared offline containers,
-then returns their MP4s through the existing creative outbox. Ask the Wonhee creative
-conversation for a Stagecraft browser app, graph, terminal skit or mixed scene.
-Agent tools: `stagecraft_schema`, `stagecraft_submit`, `stagecraft_show`, `stagecraft_retry`.
+then returns their MP4s through the existing creative outbox. Ask main Moeka for a
+Stagecraft browser app, graph, terminal skit or mixed scene. Moeka uses Wonhee directly.
+Agent tools: `stagecraft_build`, `stagecraft_show`, `stagecraft_retry`; the host binds
+project, request and recipient, and image references reach Codex as pixels.
+See the [direct workflow](docs/specs/2026-10-25-direct-moeka-design.md).
 The [integration contract](docs/specs/2026-10-24-stagecraft-design.md) records the tested boundaries.
 
 **An AI production studio for one creator.**

@@ -68,6 +68,16 @@ def project_select(conn, settings, *, project_id: int | None, route_key: str) ->
     return project_show(conn, settings, route_key=route_key)
 
 
+def project_brief_save(conn, settings, *, project_id: int, content: str, source: dict | None = None) -> dict:
+    """Save the creator's stated brief for the selected project, with source provenance."""
+    content=_text(content,'brief',16000)
+    project_show(conn,settings,project_id=project_id)
+    previous=conn.execute('SELECT content,source_json FROM creative_brief WHERE project_id=? ORDER BY revision DESC LIMIT 1',(project_id,)).fetchone()
+    if previous is None or previous['content']!=content or json.loads(previous['source_json'])!=(source or {}):
+        writes.brief(conn,project_id,content,source or {})
+    return project_show(conn,settings,project_id=project_id)
+
+
 def project_show(conn, settings, *, project_id: int | None = None, route_key: str | None = None) -> dict:
     if route_key:
         row = conn.execute('SELECT project_id FROM creative_route WHERE route_key=?', (route_key,)).fetchone()
@@ -80,6 +90,8 @@ def project_show(conn, settings, *, project_id: int | None = None, route_key: st
     brief = conn.execute('SELECT * FROM creative_brief WHERE project_id=? ORDER BY revision DESC LIMIT 1',
                          (project_id,)).fetchone()
     row['brief'] = _record(brief) if brief else None
+    saved=conn.execute("SELECT content,source_json FROM creative_memory WHERE project_id=? AND kind='brief' AND status='confirmed' ORDER BY id DESC LIMIT 1",(project_id,)).fetchone()
+    row['saved_brief']={'content':saved['content'],'source':json.loads(saved['source_json'])} if saved else None
     from wonhee.intent.creator import load_creator
     row['creator'] = load_creator(settings.creator_path).model_dump(mode='json')
     return row
@@ -649,13 +661,13 @@ def health(conn, settings) -> dict:
             'download_url': _download_endpoint(settings) or None}
 
 
-from wonhee.stagecraft import (stagecraft_schema, stagecraft_submit, stagecraft_show, stagecraft_retry,
+from wonhee.stagecraft import (stagecraft_schema, stagecraft_build, stagecraft_submit, stagecraft_show, stagecraft_retry,
                               stagecraft_complete)
 
 
 ACTIONS = {name: globals()[name] for name in (
-    'project_create', 'project_select', 'project_show', 'inbox_add', 'inbox_list', 'media_info',
+    'project_create', 'project_select', 'project_show', 'project_brief_save', 'inbox_add', 'inbox_list', 'media_info',
     'idea_save', 'idea_list', 'idea_update', 'memory_remember', 'memory_query', 'memory_correct', 'memory_forget',
     'memory_export', 'memory_reindex', 'make_submit', 'make_show', 'outbox_add', 'outbox_list',
     'delivery_show', 'delivery_retry', 'health', 'stagecraft_schema', 'stagecraft_submit', 'stagecraft_show',
-    'stagecraft_retry', 'stagecraft_complete')}
+    'stagecraft_retry', 'stagecraft_build', 'stagecraft_complete')}

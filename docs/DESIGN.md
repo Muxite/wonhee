@@ -81,6 +81,7 @@ These hold everywhere; breaking one is a defect.
 ### Stage 3: capture
 
 Stagecraft technical-demo capture and delivery: [contract](specs/2026-10-24-stagecraft-design.md), built (aligned 2026-10-24); creator phone playback acceptance pending.
+Direct Moeka routing, typed build, bounded image references and permanent-error stopping: [contract](specs/2026-10-25-direct-moeka-design.md), built and independently aligned 2026-10-25; live isolated coding/capture/outbox passed.
 
 | Area | Contract | Detail | Status |
 |---|---|---|---|

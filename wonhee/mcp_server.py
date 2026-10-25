@@ -63,6 +63,12 @@ def _guard(fn):
             return fn(*a, **k)
         except (KeyError, ValueError) as e:
             _safe_log(f"mcp {fn.__name__} (expected)")
+            import inspect
+            if inspect.signature(fn).return_annotation not in (str, 'str'):
+                from mcp.types import CallToolResult,TextContent
+                payload={'error':{'code':'invalid_request','message':str(e.args[0] if e.args else e)[:1500],'retryable':False}}
+                return CallToolResult(isError=True,structuredContent=payload,
+                                      content=[TextContent(type='text',text=json.dumps(payload))])
             return f"error: {e.args[0] if e.args else e}"
         except llm.LLMError as e:
             log = _safe_log(f"mcp {fn.__name__}")
@@ -527,7 +533,7 @@ def _creative_arguments(action: str, kwargs: dict, ctx: Context | None) -> dict:
     origin = _CreativeOrigin.model_validate(meta['wonhee'])
     route = origin.route.model_dump(mode='json')
     kwargs = dict(kwargs)
-    if action in {'memory_remember', 'memory_correct', 'memory_forget', 'idea_save', 'idea_update'}:
+    if action in {'memory_remember', 'memory_correct', 'memory_forget', 'idea_save', 'idea_update','project_brief_save'}:
         source = dict(kwargs.get('source') or {})
         source.update({**route, 'request_id': origin.request_id, 'origin_project_id': origin.project_id})
         kwargs['source'] = source
@@ -536,11 +542,11 @@ def _creative_arguments(action: str, kwargs: dict, ctx: Context | None) -> dict:
             kwargs['project_id'] = None
         elif kwargs.get('project_id') is None:
             kwargs['project_id'] = origin.project_id
-    if action in {'stagecraft_submit', 'stagecraft_show', 'stagecraft_retry'}:
+    if action in {'stagecraft_build','stagecraft_submit', 'stagecraft_show', 'stagecraft_retry','project_brief_save'}:
         kwargs['project_id'] = origin.project_id
-    if action in {'make_submit', 'outbox_add', 'stagecraft_submit'}:
+    if action in {'make_submit', 'outbox_add', 'stagecraft_submit','stagecraft_build'}:
         kwargs['route'] = route
-    if action in {'make_submit', 'stagecraft_submit'}:
+    if action in {'make_submit', 'stagecraft_submit','stagecraft_build'}:
         kwargs['request_key'] = origin.request_id
     if action == 'project_select':
         kwargs['route_key'] = route['route_key']
@@ -591,10 +597,11 @@ def _register_creative_tools() -> None:
                     conn.close()
             signature = inspect.signature(target)
             hints = get_type_hints(target)
+            hidden={'conn','settings'} | ({'project_id','request_key','route'} if action=='stagecraft_build' else set())
             parameters = [p.replace(annotation=hints.get(k, p.annotation)) for k, p in signature.parameters.items()
-                          if k not in ('conn', 'settings')]
+                          if k not in hidden]
             parameters.append(inspect.Parameter('ctx', inspect.Parameter.KEYWORD_ONLY, default=None, annotation=Context))
-            call.__annotations__ = {k:v for k,v in hints.items() if k not in ('conn', 'settings')}
+            call.__annotations__ = {k:v for k,v in hints.items() if k not in hidden}
             call.__annotations__['ctx'] = Context
             call.__signature__ = signature.replace(parameters=parameters, return_annotation=hints.get('return', dict))
             call.__doc__ = descriptions.get(action, target.__doc__ or f'Wonhee creative action: {action}. Returns structured records.')
@@ -628,6 +635,16 @@ def media_info(asset_id: int, analyze: bool = False):
         if result.get('contact_sheet'):
             data = Path(result['contact_sheet']['path']).read_bytes()
             content.append(ImageContent(type='image', data=base64.b64encode(data).decode(), mimeType='image/jpeg'))
+        elif result.get('mime') in {'image/jpeg','image/png','image/webp'} and analyze:
+            from PIL import Image
+            import io
+            with Image.open(result['path']) as original:
+                if original.width*original.height>32_000_000:
+                    raise ValueError('reference image exceeds 32 megapixels')
+                original.thumbnail((1600,1600))
+                buffer=io.BytesIO()
+                original.convert('RGB').save(buffer,format='JPEG',quality=85)
+            content.append(ImageContent(type='image',data=base64.b64encode(buffer.getvalue()).decode(),mimeType='image/jpeg'))
         return CallToolResult(content=content, structuredContent=result)
     finally:
         conn.close()

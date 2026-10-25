@@ -158,7 +158,10 @@ def test_folder_node_manifest_and_intake_replay(conn, settings, tiny_video, monk
 def test_mcp_download_paths_are_guarded(settings):
     from wonhee import mcp_server
     outside = '/tmp/wonhee-drive-outside'
-    assert 'output paths' in mcp_server.drive_download(ROOT, outside)
+    result = mcp_server.drive_download(ROOT, outside)
+    assert result.isError
+    assert 'output paths' in result.structuredContent['error']['message']
+    assert result.structuredContent['error']['retryable'] is False
     assert 'output paths' in mcp_server.node_run('drive_download', {}, {'url': ROOT, 'dest': outside})
     assert 'output paths' in mcp_server.chain_run([
         {'id': 'd', 'node': 'drive_download', 'params': {'url': ROOT, 'dest': outside}}])

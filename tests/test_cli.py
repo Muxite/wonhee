@@ -241,6 +241,7 @@ def test_mcp_server_tools_and_call(settings):
                      "slop_next": {"n", "engine"}, "slop_pick": {"repo"}, "slop_render": {"dossier", "script"}}
     expected.update({
         "creative_project_create": {"name"},
+        "creative_project_brief_save": {"content", "project_id", "source"},
         "creative_project_select": {"project_id", "route_key"},
         "creative_project_show": {"project_id", "route_key"},
         "drive_download": {"url", "dest"},
@@ -257,6 +258,7 @@ def test_mcp_server_tools_and_call(settings):
         "outbox_add": {"ref", "filename", "route", "content", "project_id", "submission_id", "as_document"},
         "outbox_list": {"project_id"}, "delivery_show": {"delivery_id"}, "delivery_retry": {"delivery_id"},
         "stagecraft_schema": set(),
+        "stagecraft_build": {"brief", "title", "duration_seconds", "surface", "orientation", "primitive", "reference_asset_ids"},
         "stagecraft_submit": {"spec", "project_id", "request_key", "route"},
         "stagecraft_show": {"job_id", "project_id"}, "stagecraft_retry": {"job_id", "project_id"},
     })
@@ -347,7 +349,9 @@ def test_mcp_guard_llm_error_and_expected_logged(settings):
         raise KeyError("no run 5")
     out = bad_llm()
     assert out.startswith("model call failed: backend down second line") and "wonhee.log" in out
-    assert bad_key() == "error: no run 5"
+    result = bad_key()
+    assert result.isError
+    assert result.structuredContent["error"]["message"] == "no run 5"
     log = (settings.home / "logs" / "wonhee.log").read_text()
     assert "LLMError" in log and "KeyError" in log
 

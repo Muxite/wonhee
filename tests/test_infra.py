@@ -201,7 +201,9 @@ def test_guard_survives_a_broken_error_log(settings, monkeypatch):
     @mcp_server._guard
     def f():
         raise ValueError("bad")
-    assert f() == "error: bad"
+    result = f()
+    assert result.isError
+    assert result.structuredContent["error"]["message"] == "bad"
 
 
 def test_export_to_a_file_path_and_missing_source(conn, settings, tmp_path):
