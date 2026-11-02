@@ -13,7 +13,7 @@ from wonhee import llm
 from wonhee.clock import now_iso
 from wonhee.db import queries, repo
 from wonhee.db.connect import tx
-from wonhee.media import path_for
+from wonhee.media import UnsafeMedia, path_for, require_kind
 from wonhee.pipeline.context import Ctx, StageFailed
 from wonhee.scout import prompts
 from wonhee.scout.stages.analyze import ANALYZER_VERSION, analyze_video
@@ -73,11 +73,12 @@ def grab_urls(ctx: Ctx, urls: list[str], relation: str, refetch: bool) -> GrabRe
             got += 1
             continue
         with tempfile.TemporaryDirectory() as tmp:
-            dest = Path(tmp) / f"{r.external_id}.mp4"
+            dest = Path(tmp) / "video.mp4"  # never the scraper's id: it is untrusted text
             try:
                 ctx.deps.downloader.download(r.video_url, r.url, dest)
+                require_kind(dest, "video")
                 sha = repo.save_file(ctx.conn, ctx.settings.media_dir, dest, "video", "video/mp4")
-            except (DownloadError, RuntimeError) as e:
+            except (DownloadError, UnsafeMedia, RuntimeError) as e:
                 ctx.flag("DOWNLOAD_FAILED", f"{r.url}: {e}"[:300])
                 continue
         repo.set_content_media(ctx.conn, cid, sha)
@@ -98,15 +99,16 @@ def _download_photo_post(ctx: Ctx, cid: int, r, refetch: bool) -> int:
     files: list[tuple[str, str]] = []
     with tempfile.TemporaryDirectory() as tmp:
         for i, (kind, url) in enumerate(r.children):
-            dest = Path(tmp) / f"{r.external_id}_{i:02d}.{'mp4' if kind == 'video' else 'jpg'}"
+            dest = Path(tmp) / f"slide_{i:02d}.{'mp4' if kind == 'video' else 'jpg'}"
             try:
                 if kind == "video":
                     ctx.deps.downloader.download(url, r.url, dest)
                 else:
                     ctx.deps.downloader.fetch(url, dest)
+                require_kind(dest, "video" if kind == "video" else "image")
                 sha = repo.save_file(ctx.conn, ctx.settings.media_dir, dest, kind,
                                      "video/mp4" if kind == "video" else "image/jpeg")
-            except (DownloadError, RuntimeError) as e:
+            except (DownloadError, UnsafeMedia, RuntimeError) as e:
                 ctx.flag("IMAGE_FAILED", f"{r.url} slide {i + 1}: {e}"[:300])
                 continue
             files.append((sha, kind))

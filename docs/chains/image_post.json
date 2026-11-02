@@ -1,0 +1,7 @@
+[
+  {"id": "style", "node": "text_style", "in": {"image": "reference.jpg"}},
+  {"id": "fit", "node": "photo_fit", "in": {"image": "photo_1.jpg"}, "params": {"text": "your line here"}},
+  {"id": "place", "node": "text_place", "in": {"image": "photo_1.jpg"}, "params": {"text": "your line here"}},
+  {"id": "card", "node": "text_image", "in": {"image": "photo_1.jpg"},
+   "params": {"text": "your line here", "preset": "outline", "position": "lower"}}
+]

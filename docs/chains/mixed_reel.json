@@ -1,0 +1,10 @@
+[
+  {"id": "subs", "node": "speech_subs", "in": {"video": "talking_head.mp4"}},
+  {"id": "plan", "node": "take_pick", "in": {"subtitles": "subs.subtitles"}, "params": {"top_n": 3}},
+  {"id": "clean", "node": "audio_clean", "in": {"video": "talking_head.mp4"}, "params": {"preset": "voice"}},
+  {"id": "grade", "node": "look", "in": {"video": "screen_record.mp4"}, "params": {"preset": "digicam"}},
+  {"id": "broll", "node": "montage", "in": {"images": "broll_stills"},
+   "params": {"style": "slop", "length_s": 6, "seed": 1}},
+  {"id": "bottom", "node": "join_videos", "in": {"video": "grade.video", "video_b": "broll.video"},
+   "params": {"transition": "glitch_slice", "duration_s": 0.4, "seed": 1}}
+]

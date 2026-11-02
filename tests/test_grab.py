@@ -125,3 +125,11 @@ def test_grab_photo_slide_failure_flags_but_keeps_the_rest(conn, settings, fake_
     assert conn.execute("SELECT count(*) FROM content_media").fetchone()[0] == 2
     codes = [r[0] for r in conn.execute("SELECT code FROM step_flag")]
     assert "IMAGE_FAILED" in codes
+
+
+def test_grab_refuses_a_download_that_is_not_a_video(conn, settings, tmp_path):
+    playlist = tmp_path / "evil.mp4"
+    playlist.write_text("#EXTM3U\n#EXTINF:1,\nfile:///etc/passwd\n")
+    run_id, _ = service.grab(conn, settings, _deps(playlist)[1], [URL], "external")
+    assert queries.run_row(conn, run_id)["status"] == "failed"
+    assert conn.execute("SELECT count(*) FROM media WHERE kind='video'").fetchone()[0] == 0

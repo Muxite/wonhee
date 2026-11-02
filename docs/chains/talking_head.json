@@ -1,0 +1,5 @@
+[
+  {"id": "subs", "node": "speech_subs", "in": {"video": "talking_head.mp4"}},
+  {"id": "plan", "node": "take_pick", "in": {"subtitles": "subs.subtitles"}, "params": {"top_n": 3}},
+  {"id": "clean", "node": "audio_clean", "in": {"video": "talking_head.mp4"}, "params": {"preset": "voice"}}
+]

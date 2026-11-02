@@ -76,21 +76,21 @@ def _fake_ytdlp(tmp_path, src):
 
 def test_download_direct(tmp_path, tiny_video):
     d = fetch.LiveDownloader(client=_client_serving(tiny_video.read_bytes()), ytdlp="false")
-    assert d.download("https://cdn/x.mp4", "https://ig/reel/X", tmp_path / "x.mp4") == "direct"
+    assert d.download("https://scontent.cdninstagram.com/x.mp4", "https://ig/reel/X", tmp_path / "x.mp4") == "direct"
     assert (tmp_path / "x.mp4").read_bytes() == tiny_video.read_bytes()
 
 
 def test_video_only_direct_falls_back_to_merged_ytdlp(tmp_path, tiny_video, video_only):
     from wonhee.media import has_audio
     d = fetch.LiveDownloader(client=_client_serving(video_only.read_bytes()), ytdlp=_fake_ytdlp(tmp_path, tiny_video))
-    assert d.download("https://cdn/x.mp4", "https://ig/reel/X", tmp_path / "x.mp4") == "yt-dlp"
+    assert d.download("https://scontent.cdninstagram.com/x.mp4", "https://ig/reel/X", tmp_path / "x.mp4") == "yt-dlp"
     assert has_audio(tmp_path / "x.mp4")
     assert sorted(p.name for p in tmp_path.iterdir()) == ["fake-ytdlp", "x.mp4"]
 
 
 def test_truly_muted_reel_keeps_direct_file(tmp_path, video_only):
     d = fetch.LiveDownloader(client=_client_serving(video_only.read_bytes()), ytdlp=_fake_ytdlp(tmp_path, video_only))
-    assert d.download("https://cdn/x.mp4", "https://ig/reel/X", tmp_path / "x.mp4") == "direct (no audio)"
+    assert d.download("https://scontent.cdninstagram.com/x.mp4", "https://ig/reel/X", tmp_path / "x.mp4") == "direct (no audio)"
     assert (tmp_path / "x.mp4").read_bytes() == video_only.read_bytes()
 
 
@@ -98,14 +98,14 @@ def test_download_falls_back_then_errors(tmp_path, monkeypatch):
     client = httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(403)))
     d = fetch.LiveDownloader(client=client, ytdlp="false")  # `false` exits 1
     with pytest.raises(fetch.DownloadError, match="direct: 403"):
-        d.download("https://cdn/x.mp4", "https://ig/reel/X", tmp_path / "x.mp4")
+        d.download("https://scontent.cdninstagram.com/x.mp4", "https://ig/reel/X", tmp_path / "x.mp4")
 
 
 def test_download_missing_ytdlp_is_download_error(tmp_path):
     client = httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(403)))
     d = fetch.LiveDownloader(client=client, ytdlp="/nonexistent/yt-dlp")
     with pytest.raises(fetch.DownloadError) as ei:
-        d.download("https://cdn/x.mp4", "https://ig/reel/X", tmp_path / "x.mp4")
+        d.download("https://scontent.cdninstagram.com/x.mp4", "https://ig/reel/X", tmp_path / "x.mp4")
     assert "direct" in str(ei.value) and "yt-dlp" in str(ei.value)
 
 
@@ -118,7 +118,7 @@ def test_download_midstream_failure_leaves_no_part(tmp_path):
     client = httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, stream=Boom())))
     d = fetch.LiveDownloader(client=client, ytdlp="false")
     with pytest.raises(fetch.DownloadError, match="direct"):
-        d.download("https://cdn/x.mp4", "https://ig/reel/X", tmp_path / "x.mp4")
+        d.download("https://scontent.cdninstagram.com/x.mp4", "https://ig/reel/X", tmp_path / "x.mp4")
     assert list(tmp_path.iterdir()) == []
 
 
@@ -207,3 +207,51 @@ def test_parse_photo_posts():
     item = make_photo_item("NOURL", "x", "2026-10-01", 5)
     del item["url"]
     assert parse_item(item).url == "https://www.instagram.com/p/NOURL/"
+
+
+CDN = "https://scontent.cdninstagram.com/v/x.mp4"
+
+
+@pytest.mark.parametrize("url", ["http://scontent.cdninstagram.com/x.mp4", "https://evil.example/x.mp4",
+                                 "https://cdninstagram.com.evil.example/x.mp4", "https://127.0.0.1/x.mp4",
+                                 "https://user:pw@scontent.cdninstagram.com/x.mp4", "file:///etc/passwd"])
+def test_download_refuses_non_cdn_urls(tmp_path, url):
+    hits = []
+    client = httpx.Client(transport=httpx.MockTransport(lambda req: hits.append(req) or httpx.Response(200, content=b"x")))
+    with pytest.raises(fetch.DownloadError, match="refused"):
+        fetch.LiveDownloader(client=client, ytdlp="false").fetch(url, tmp_path / "x.jpg")
+    assert hits == [] and list(tmp_path.iterdir()) == []
+
+
+def test_download_rechecks_redirect_hops(tmp_path):
+    client = httpx.Client(transport=httpx.MockTransport(
+        lambda req: httpx.Response(302, headers={"location": "https://169.254.169.254/latest"})))
+    with pytest.raises(fetch.DownloadError, match="IP-literal"):
+        fetch.LiveDownloader(client=client, ytdlp="false").fetch(CDN, tmp_path / "x.jpg")
+
+
+def test_download_enforces_size_cap(tmp_path, monkeypatch):
+    monkeypatch.setattr(fetch, "MAX_IMAGE_BYTES", 10)
+    client = httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, content=b"x" * 11)))
+    with pytest.raises(fetch.DownloadError, match="larger than"):
+        fetch.LiveDownloader(client=client, ytdlp="false").fetch(CDN, tmp_path / "x.jpg")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_ytdlp_runs_without_user_config_and_url_after_double_dash(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(fetch.subprocess, "run", lambda argv, **kw: seen.append(argv) or type('P', (), {'returncode': 1, 'stderr': ''})())
+    fetch.LiveDownloader(ytdlp="yt-dlp")._ytdlp("https://www.instagram.com/reel/X/", tmp_path / "x.mp4", [])
+    argv = seen[0]
+    assert "--ignore-config" in argv and argv[-2:] == ["--", "https://www.instagram.com/reel/X/"]
+
+
+def test_sniff_rejects_playlists_and_scripts(tmp_path, tiny_video):
+    from wonhee.media import UnsafeMedia, require_kind, sniff
+    assert sniff(tiny_video) == "video"
+    playlist = tmp_path / "a.mp4"
+    playlist.write_text("#EXTM3U\n#EXTINF:1,\nfile:///etc/passwd\n")
+    with pytest.raises(UnsafeMedia, match="not a video"):
+        require_kind(playlist, "video")
+    with pytest.raises(UnsafeMedia):
+        require_kind(tiny_video, "image")
