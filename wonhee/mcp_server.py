@@ -542,11 +542,13 @@ def _creative_arguments(action: str, kwargs: dict, ctx: Context | None) -> dict:
             kwargs['project_id'] = None
         elif kwargs.get('project_id') is None:
             kwargs['project_id'] = origin.project_id
-    if action in {'stagecraft_build','stagecraft_submit', 'stagecraft_show', 'stagecraft_retry','project_brief_save'}:
+    if action=='project_show' and kwargs.get('project_id') is None and kwargs.get('route_key') is None:
+        kwargs['project_id']=origin.project_id
+    if action in {'stagecraft_build','stagecraft_submit', 'stagecraft_show', 'stagecraft_review', 'stagecraft_retry','stagecraft_list','stagecraft_benchmarks','stagecraft_dataset','project_brief_save'}:
         kwargs['project_id'] = origin.project_id
-    if action in {'make_submit', 'outbox_add', 'stagecraft_submit','stagecraft_build'}:
+    if action in {'make_submit', 'outbox_add', 'stagecraft_submit','stagecraft_build','stagecraft_dataset'}:
         kwargs['route'] = route
-    if action in {'make_submit', 'stagecraft_submit','stagecraft_build'}:
+    if action in {'make_submit', 'stagecraft_submit','stagecraft_build','stagecraft_dataset'}:
         kwargs['request_key'] = origin.request_id
     if action == 'project_select':
         kwargs['route_key'] = route['route_key']
@@ -567,12 +569,19 @@ def _register_creative_tools() -> None:
                            'Save model suggestions as proposed, never confirmed.',
         'make_submit': 'Create one durable background reel from a stored video asset. request_key must identify the '
                        'source user request; reuse it after timeouts. Use make_show for status; never poll in a loop. '
-                       'Supply the trusted route from the peer context for delivery.',
+                       'Supply the trusted route from the peer context for delivery. For desktop_caption provide caption '
+                       'or caption_lines=[hook, metric, proof, caveat]; brief is saved context, NEVER rendered text. '
+                       'Empty copy is rejected. Lines use persistent varied fonts/sizes above the complete desktop. '
+                       'A prior finished asset resolves to its original desktop automatically. For 9:16 use style=desktop_reel. '
+                       'For progressive reveals pass caption_cues with start_seconds,end_seconds,text; '
+                       'cues must cover the source exactly, without gaps or overlaps. Never mix cues with other copy. '
+                       'For multiple cuts in one request give each a stable variant label, e.g. viral-discovery and slow-unravel. '
+                       'Retry with the same label to reuse its job.',
         'inbox_add': 'Save a local file or public Google Drive file/folder into the project. Folders return assets; dest is optional. '
                      'Use the transport source_key on retries. Does not render or start GPU analysis.',
     }
     # Delivery acknowledgements are host-only: agents can inspect/retry but cannot claim a file was sent.
-    excluded = {'delivery_show', 'media_info', 'stagecraft_complete'}
+    excluded = {'delivery_show', 'media_info', 'stagecraft_complete','stagecraft_dataset_complete'}
     for action, fn in ACTIONS.items():
         if action in excluded:
             continue
@@ -597,7 +606,7 @@ def _register_creative_tools() -> None:
                     conn.close()
             signature = inspect.signature(target)
             hints = get_type_hints(target)
-            hidden={'conn','settings'} | ({'project_id','request_key','route'} if action=='stagecraft_build' else set())
+            hidden={'conn','settings'} | ({'project_id','request_key','route'} if action in {'stagecraft_build','stagecraft_list','stagecraft_benchmarks','stagecraft_review','stagecraft_dataset'} else set())
             parameters = [p.replace(annotation=hints.get(k, p.annotation)) for k, p in signature.parameters.items()
                           if k not in hidden]
             parameters.append(inspect.Parameter('ctx', inspect.Parameter.KEYWORD_ONLY, default=None, annotation=Context))

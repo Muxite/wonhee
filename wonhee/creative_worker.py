@@ -16,6 +16,7 @@ from urllib.parse import quote, urlsplit
 from pydantic import BaseModel, ConfigDict, Field
 
 from wonhee import creative, media
+from wonhee.caption_plan import CaptionCue
 from wonhee.db import queries, repo
 from wonhee.db.connect import open_db, tx
 from wonhee.db.repo import creative as writes
@@ -27,6 +28,7 @@ class MakeOptions(BaseModel):
     cta: str | None = None
     items: list[str] = Field(default_factory=list)
     slots: dict = Field(default_factory=dict)
+    caption_cues: list[CaptionCue] = Field(default_factory=list, max_length=12)
     tighten: bool | dict = False
     look: str | None = None
     quality: int = Field(default=20, ge=10, le=35)
@@ -71,16 +73,21 @@ def execute(conn, settings, deps, submission: dict) -> dict:
     from wonhee.edit import reel_slots as slots_engine
     from wonhee.nodes.subtitles import line_words, load_subs
     asset = creative.media_info(conn, settings, asset_id=submission['asset_id'])
-    options = MakeOptions.model_validate(submission['params'])
+    options = MakeOptions.model_validate(creative._caption_options(
+        submission['style'], submission['params'], None, None, duration_ms=asset['probe']['duration_ms']))
     tpl = service._reel_template(submission['style'])
-    speech_run, out = _phase(conn, settings, deps, submission, 'speech',
-                             [{'id':'s','node':'speech_subs','in':{'video':asset['ref']}}], options.cost_cap_usd)
-    subs = load_subs(settings.media_dir, out['subtitles'])
-    words = [w for line in subs.lines for w in line_words(line)[0]]
-    transcript = ' '.join(line.text for line in subs.lines).strip()
-    if transcript:
-        creative.memory_remember(conn, settings, project_id=submission['project_id'], kind='transcript',
-                                  content=transcript[:20000], source={'asset_id':asset['id'],'run_id':speech_run})
+    words = []
+    render_inputs = {'video':asset['ref']}
+    if tpl['reel'].get('words', True):
+        speech_run, out = _phase(conn, settings, deps, submission, 'speech',
+                                 [{'id':'s','node':'speech_subs','in':{'video':asset['ref']}}], options.cost_cap_usd)
+        subs = load_subs(settings.media_dir, out['subtitles'])
+        words = [w for line in subs.lines for w in line_words(line)[0]]
+        transcript = ' '.join(line.text for line in subs.lines).strip()
+        if transcript:
+            creative.memory_remember(conn, settings, project_id=submission['project_id'], kind='transcript',
+                                      content=transcript[:20000], source={'asset_id':asset['id'],'run_id':speech_run})
+        render_inputs['subtitles'] = out['subtitles']
     lecture = options.slots if submission['style'] == 'lecture' else None
     # Lecture's automatic writing stays a recorded node rather than an invisible model call.
     if submission['style'] == 'lecture' and not (lecture.get('theses') and lecture.get('subtitle')):
@@ -94,10 +101,15 @@ def execute(conn, settings, deps, submission: dict) -> dict:
                         'WHERE r.submission_id=?', (submission['id'],)).fetchone()[0]
     params = {'template':submission['style'],'slots':filled,'tighten':options.tighten,'quality':options.quality,
               'encoder':'x264'}
+    if options.caption_cues:
+        from wonhee.caption_plan import render_layout
+        params.pop('template')
+        params.pop('slots')
+        params['layout'] = render_layout(options.slots, [c.model_dump() for c in options.caption_cues], asset['probe']['duration_ms'])
     if options.look:
         params['look'] = options.look
     run_id, rendered = _phase(conn, settings, deps, submission, 'render', [{'id':'v','node':'compose_video',
-        'in':{'video':asset['ref'],'subtitles':out['subtitles']},'params':params}], max(.000001,options.cost_cap_usd-used))
+        'in':render_inputs,'params':params}], max(.000001,options.cost_cap_usd-used))
     ref = rendered['video']
     if media.path_for(settings.media_dir, ref).stat().st_size > 50_000_000:
         try:
@@ -110,12 +122,12 @@ def execute(conn, settings, deps, submission: dict) -> dict:
         except Exception as exc:
             writes.maintenance(conn, f"preview:{submission['id']}", str(exc)[:500])
     with tx(conn):
-        creative.outbox_add(conn, settings, ref=ref, filename=f"reel-{submission['id']}-{submission['style']}.mp4",
+        creative.outbox_add(conn, settings, ref=ref, filename=f"reel-{submission.get('variant') or submission['id']}-{submission['style']}.mp4",
             route=submission['route'], content=f"Your {submission['style']} reel is ready. Full file check: not yet run.",
             project_id=submission['project_id'], submission_id=submission['id'])
         writes.update(conn, 'creative_submission', submission['id'], status='done', phase='done', result_ref=ref, error=None)
     creative.memory_remember(conn, settings, project_id=submission['project_id'], kind='output',
-        content=f"Finished {submission['style']} reel {submission['id']}. Title: {options.title or ''}. " + ' '.join(notes),
+        content=f"Finished {submission['style']} reel {submission['id']}. Title: {options.title or options.slots.get('title') or (options.caption_cues[0].text if options.caption_cues else '')}. " + ' '.join(notes),
         source={'submission_id':submission['id'],'run_id':run_id,'ref':ref})
     return creative.make_show(conn, settings, submission_id=submission['id'])
 
@@ -213,6 +225,11 @@ def _handler(settings):
     return Handler
 
 
+def service_template_needs_speech(style: str) -> bool:
+    from wonhee import service
+    return service._reel_template(style)['reel'].get('words', True)
+
+
 def serve(settings, *, host: str | None = None, once: bool = False) -> None:
     """One daemon owns submissions; HTTP binds only to the tailnet unless explicitly overridden."""
     settings.home.mkdir(parents=True, exist_ok=True)
@@ -252,7 +269,9 @@ def serve(settings, *, host: str | None = None, once: bool = False) -> None:
                     try:
                         if submission['attempts'] >= 3:
                             raise RuntimeError('submission interrupted three times; inspect and resubmit explicitly')
-                        with gpu_lease(f"wonhee: creative submission {row['id']}"):
+                        # Static desktop finishing only needs the CPU compositor.
+                        needs_gpu = service_template_needs_speech(submission['style'])
+                        with (gpu_lease(f"wonhee: creative submission {row['id']}") if needs_gpu else contextlib.nullcontext()):
                             # A writing node must not leave a shared Ollama GPU resident after this lease.
                             job_settings = settings.model_copy(update={'local_llm_keep_alive': '0s'})
                             deps = Deps.live(job_settings)

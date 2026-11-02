@@ -64,3 +64,10 @@ used one Codex attempt, passed observed worker-pipe traffic and recorded/staged 
 isolated smoke video. Stagecraft has 35 passing tests, including local-echo bypass
 and unmatched-worker negative cases plus authored-bundle restart recovery. Wonhee's
 full 903-test suite passes. The final themed creator request remains unsubmitted.
+
+## Desktop-only extension, 2026-10-26
+
+The owner's current default is desktop application footage only: large decorative
+graph and dataset-driven profiler share the viewport. Wonhee owns the simple
+caption and final composition. See the direct-Moeka spec §Desktop asset and paragraph
+profiler for the current front door, immutable dataset and completion contracts.

@@ -232,3 +232,97 @@ uv run wonhee export <ref> data/exports
 ```
 
 Use a stored media reference or `content:<id>`. Agents have the matching `export(ref, dest)` MCP tool.
+
+### Stagecraft desktop footage and a simple caption
+
+Stagecraft builds the desktop display only by default: the large graph and profiler
+share the viewport. Wonhee handles the separate caption and portrait composition.
+Use stagecraft_build with profiler_asset_id pointing to project-owned plot-data.json
+and caption containing the finishing text. The caption stays out of the authored
+app; omitted caption uses the title, and an empty caption explicitly keeps raw
+footage. Fresh desktop captures default to 1280x800. For legacy revisions supply
+landscape desktop dimensions and caption_above_dashboard=false.
+
+A fixed offline script in sibling Stagecraft scripts/paragraph_echo.py produces
+seeded paragraph corpus CSV, verified per-message HTTP/stdio samples, paired CSV,
+full-data histograms, bounded replay JSON and hashes. Import plot-data.json with
+inbox_add, then use its asset ID as profiler_asset_id. Supplied timing values cannot
+be rewritten by the coding builder. Scope is single-worker local echo, not agent
+or mesh latency; the mesh and replay clock remain cinematic.
+
+To caption already stored footage, make_submit accepts style=desktop_caption with
+params={"title":"Your simple caption"}. The existing CPU compositor contains the
+whole desktop clip on a dark 1000x1600 canvas with the caption above. This style
+skips speech recognition and model/GPU work. Ordinary speech reel styles retain
+their speech pipeline. Final completion retains the original capture and separate
+Wonhee output hashes; retries do not stage the raw video or duplicate deliveries.
+
+### Ask Moeka; no scripts or JSON import needed
+
+For a finished demo, say: “Make a 20-second desktop demo with a huge cyan mesh next
+to a profiler comparing HTTP and stdio on fresh random paragraphs. Add a simple
+caption above the video.” Moeka uses stagecraft_build; the queue measures data,
+registers evidence, dispatches coding, checks the desktop, captions it in Wonhee
+and stages one final delivery. Its default benchmark=auto measures data when needed;
+refresh requests a new run and off disables measurement. An existing profiler_asset_id
+is optional reuse, never something the creator must locate or invent.
+
+For data only, say “Make a random-paragraph HTTP/stdio dataset.” Moeka uses
+stagecraft_dataset and the worker delivers one ZIP with CSV, plot JSON, source and
+method/hash manifest. No coding agent is dispatched for data-only work.
+
+For status or revisions, Moeka finds the project job with stagecraft_list, reads
+stagecraft_show and inspects returned preview/review asset IDs with media_info.
+Failures expose bounded compiler/layout/transport diagnostics and recovery guidance.
+The assistant can perform a corrective revision in the same request without an
+identity collision; captured-output recovery does not redo measurement or coding.
+Arbitrary benchmark servers/programs remain outside the supported fixed workflow.
+
+For desktop caption corrections use `make_submit(style="desktop_caption", caption="...")`
+or `caption_lines=["HOOK", "5.5× lower median RTT vs HTTP", "Local echo · 512 paragraphs · 5 trials", "Workload-specific; not live mesh latency"]`.
+The optional four lines become hook, metric, proof and caveat with distinct typography,
+visible throughout the video. The brief stores context; put the actual copy in these
+fields (or params.title / params.slots). Blank or unreadably long copy is rejected.
+A finished Wonhee asset can be supplied: recorded lineage recovers its original
+desktop, so corrections do not shrink an already framed portrait. Inspect make_show
+for the effective caption and resolved source before describing the result.
+
+Use `stagecraft_benchmarks` to find existing real paragraph HTTP/stdio datasets in
+this project before creating another dataset. It returns actual median RTTs, ratios,
+example paired observations and the profiler/evidence asset IDs. Feed its
+`profiler_asset_id` to stagecraft_build when a video is requested. The graph can be
+theatrical while the profiler replays real samples; describe the ratio as measured
+local echo RTT, rather than a speedup measured across thousands of agents. Discovery
+never queues a benchmark or video.
+
+For two cuts of one dashboard, build Stagecraft with presentation="mesh_story",
+primitive="scene", a saved profiler_asset_id and prepare_only=True. Then reuse its desktop
+asset in make_submit(style="desktop_reel"). For a static cut supply caption; for a
+reveal cut supply caption_cues with start_seconds, end_seconds and text. Ordered
+cues must cover the source continuously. The result is 1080x1920 (9:16). The original
+raw Stagecraft source is recovered for revisions; source pixels remain contained.
+
+Supply variant="viral-discovery" and variant="slow-unravel" to distinguish two
+make_submit calls from one message. Keep each label stable on retries. Shared-source
+prepare_only imports the verified raw asset without staging a delivery; it rejects
+nonempty caption text. Then use that asset in both final finishing jobs when asked.
+
+## Post assistant
+
+A post is a small project with named slots (`post_create`, `post_slot_set`, `post_status` under `wonhee creative`). The
+nodes `take_pick`, `text_style`, `text_place` and `photo_fit` pick takes, read a reference's text style, place a line
+on a photo and check that a photo can carry it. The numbers behind them are starting values that have not been tuned
+on the owner's takes or reference slides: see [Post assistant](production/post-assistant.md).
+
+## Chroma key (no real green screen needed)
+
+```bash
+uv run wonhee node run chroma_key --in video=take.mp4                        # drawn plane cabin behind you
+uv run wonhee node run chroma_key --in video=take.mp4 --in background=cabin.mp4 --param guard=person
+uv run wonhee node run chroma_key --in video=take.mp4 --param fill=matte     # white subject on black: check the key first
+```
+
+It finds the backdrop colour from the top and side edges, so a whitish wall works. Removal only happens where the
+backdrop touches the frame edge, and the person mask (CPU, same as `mask_cutout`) protects a white shirt on a white
+wall. Read the `report` output: `BACKDROP_UNEVEN` means add light or even out the wall. Light the wall evenly, keep it
+brighter than you, and stay a hand's width off it. Spec: [chroma key](specs/2026-11-01-chroma-key-design.md).

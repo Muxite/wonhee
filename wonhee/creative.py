@@ -9,12 +9,14 @@ import mimetypes
 import re
 import shutil
 import tempfile
+from contextvars import ContextVar
 from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 from typing import Literal
 
 from wonhee import media
+from wonhee.caption_plan import CaptionCue
 from wonhee.clock import now_iso
 from wonhee.db import repo
 from wonhee.db.connect import tx
@@ -68,6 +70,18 @@ def project_select(conn, settings, *, project_id: int | None, route_key: str) ->
     return project_show(conn, settings, route_key=route_key)
 
 
+PROJECT_STATUSES = ('active', 'stashed', 'done')
+
+
+def project_status(conn, settings, *, project_id: int, status: Literal['active', 'stashed', 'done']) -> dict:
+    """Mark a project active, stashed (set aside, to come back to) or done. Nothing else about it changes."""
+    if status not in PROJECT_STATUSES:
+        raise ValueError(f'unknown project status {status!r}; expected one of: {", ".join(PROJECT_STATUSES)}')
+    project_show(conn, settings, project_id=project_id)  # unknown ids fail here, with the usual message
+    writes.update(conn, 'creative_project', project_id, status=status)
+    return project_show(conn, settings, project_id=project_id)
+
+
 def project_brief_save(conn, settings, *, project_id: int, content: str, source: dict | None = None) -> dict:
     """Save the creator's stated brief for the selected project, with source provenance."""
     content=_text(content,'brief',16000)
@@ -111,9 +125,68 @@ def _serialized_intake(fn):
     return call
 
 
+# Which post slots a received file can fill. A file that fits no empty slot, or two, is asked about, not placed.
+KIND_SLOTS = {
+    'image': ('photos', 'selfie'),
+    'video': ('selfie', 'take', 'screen_record'),
+    'audio': ('typing_audio', 'voice'),
+}
+# Folder intake stores each child through inbox_add; children are not slotted one by one.
+_FOLDER_CHILD = ContextVar('wonhee_intake_folder_child', default=False)
+_SLOT_SOURCE_LIMIT = 500  # post_slot provenance limit; longer intake sources are cut for the slot label only.
+
+
+def _post_slot_states(conn, project_id: int) -> dict[str, str]:
+    slots = _post_format(_post_meta(conn, project_id)['format'])
+    have = {r['name']: r['state'] for r in conn.execute('SELECT name, state FROM post_slot WHERE project_id=?',
+                                                       (project_id,))}
+    return {slot: have.get(slot, 'empty') for slot in slots}
+
+
+def _check_explicit_slot(conn, project_id: int | None, slot: str) -> None:
+    """Refuse a slot before any write: it needs a post project and a slot that the post's format has."""
+    if project_id is None or conn.execute('SELECT 1 FROM post_meta WHERE project_id=?', (project_id,)).fetchone() is None:
+        raise ValueError('slot needs a post project; create it with post_create and pass its project_id')
+    slots = _post_slot_states(conn, project_id)
+    if slot not in slots:
+        raise ValueError(f'unknown slot {slot!r} for this post; expected one of: {", ".join(slots)}')
+
+
+def _place_intake(conn, settings, info: dict, *, project_id: int | None, slot: str | None, kind: str) -> dict:
+    """After the intake is stored, set the post slot it fills. Plain projects and folder children are left as they are."""
+    if _FOLDER_CHILD.get() or project_id is None or conn.execute(
+            'SELECT 1 FROM post_meta WHERE project_id=?', (project_id,)).fetchone() is None:
+        return info
+    held = conn.execute("SELECT name FROM post_slot WHERE project_id=? AND ref=? AND state='have'",
+                        (project_id, info['ref'])).fetchall()
+    if slot is None and held:  # a replay of an intake that already filled its slot
+        return {**info, 'slot': held[0]['name']}
+    if slot is None:
+        states = _post_slot_states(conn, project_id)
+        fits = [s for s in KIND_SLOTS.get(kind, ()) if states.get(s) == 'empty']
+        if len(fits) != 1:
+            empty = [s for s, state in states.items() if state == 'empty']
+            candidates = fits or empty
+            text = (f'Which slot should this {kind} go in? Empty: {", ".join(candidates)}' if candidates
+                    else 'This post has no empty slot; name one with slot to replace what it holds.')
+            return {**info, 'slot_question': {'text': text, 'candidates': candidates}}
+        slot = fits[0]
+    post_slot_set(conn, settings, project_id=project_id, slot=slot, state='have', ref=info['ref'],
+                  source=str(info.get('source') or '')[:_SLOT_SOURCE_LIMIT] or None)
+    return {**info, 'slot': slot}
+
+
+def _kind_of(mime: str | None) -> str:
+    prefix = (mime or '').split('/')[0]
+    return prefix if prefix in {'video', 'audio', 'image'} else 'file'
+
+
 @_serialized_intake
 def inbox_add(conn, settings, *, source: str, project_id: int | None = None, source_key: str | None = None,
-              role: str = 'raw', metadata: dict | None = None, dest: str | None = None) -> dict:
+              role: str = 'raw', metadata: dict | None = None, dest: str | None = None,
+              slot: str | None = None) -> dict:
+    """Record a file or Drive link in the project. In a post project the file also fills a slot: the named one, or the
+    only empty slot that fits its kind. When it fits none or several, the result has slot_question and the intake stays."""
     from wonhee.intake import download_drive, drive_identity
     if project_id is not None:
         project_show(conn, settings, project_id=project_id)
@@ -124,10 +197,14 @@ def inbox_add(conn, settings, *, source: str, project_id: int | None = None, sou
     from wonhee.drive import folder_identity
     folder = folder_identity(source) if remote else None
     if folder:
+        if slot is not None:
+            raise ValueError('slot fills from one file; a folder intake fills no slot')
         return _inbox_folder(conn, settings, source=source, project_id=project_id, source_key=source_key,
                              role=role, metadata=metadata, dest=dest)
     if dest is not None:
         raise ValueError('dest is supported for folder intake; use download for a single file destination')
+    if slot is not None and not _FOLDER_CHILD.get():
+        _check_explicit_slot(conn, project_id, slot)  # Validate before any receipt or download is written.
     if remote:
         drive_identity(source)  # Reject unsupported links before creating a receipt or doing network I/O.
     key = source_key or uuid4().hex
@@ -135,7 +212,8 @@ def inbox_add(conn, settings, *, source: str, project_id: int | None = None, sou
     if old and (old['project_id'] != project_id or old['source'] != source):
         raise ValueError('source_key already belongs to another source/project')
     if old and old['status'] == 'stored':
-        return media_info(conn, settings, asset_id=old['id'])
+        info = media_info(conn, settings, asset_id=old['id'])
+        return _place_intake(conn, settings, info, project_id=project_id, slot=slot, kind=_kind_of(old['mime']))
     intake_id = old['id'] if old else writes.insert(conn, 'creative_intake', project_id=project_id, source_key=key,
         source=source, role=role, status='received', metadata_json=json.dumps(metadata or {}, ensure_ascii=False))
     try:
@@ -173,10 +251,11 @@ def inbox_add(conn, settings, *, source: str, project_id: int | None = None, sou
             ref = repo.save_file(conn, settings.media_dir, path, kind, mime)
             writes.update(conn, 'creative_intake', intake_id, status='stored', ref=ref,
                           filename=Path(filename).name, mime=mime)
-        return media_info(conn, settings, asset_id=intake_id)
+        info = media_info(conn, settings, asset_id=intake_id)
     except Exception as exc:
         writes.update(conn, 'creative_intake', intake_id, status='failed', error=f'{type(exc).__name__}: {exc}'[:500])
         raise
+    return _place_intake(conn, settings, info, project_id=project_id, slot=slot, kind=kind)
 
 
 
@@ -206,13 +285,17 @@ def _inbox_folder(conn, settings, *, source, project_id, source_key, role, metad
         state['folder_result'] = result
         writes.update(conn, 'creative_intake', parent, metadata_json=json.dumps(state))
     assets = []
-    for file in result['files']:
-        key = hashlib.sha256((source_key + ':' + file['id'] + ':' + file['relative_path']).encode()).hexdigest()
-        asset = inbox_add(conn, settings, source=file['path'], project_id=project_id, source_key='drive:' + key,
-                          role=role, metadata={**(metadata or {}), 'original_name': Path(file['relative_path']).name,
-                                               'relative_path': file['relative_path'], 'drive_id': file['id'],
-                                               'drive_folder_id': folder_identity(source)[0]})
-        assets.append(asset)
+    token = _FOLDER_CHILD.set(True)
+    try:
+        for file in result['files']:
+            key = hashlib.sha256((source_key + ':' + file['id'] + ':' + file['relative_path']).encode()).hexdigest()
+            asset = inbox_add(conn, settings, source=file['path'], project_id=project_id, source_key='drive:' + key,
+                              role=role, metadata={**(metadata or {}), 'original_name': Path(file['relative_path']).name,
+                                                   'relative_path': file['relative_path'], 'drive_id': file['id'],
+                                                   'drive_folder_id': folder_identity(source)[0]})
+            assets.append(asset)
+    finally:
+        _FOLDER_CHILD.reset(token)
     writes.update(conn, 'creative_intake', parent, status='stored', ref=result['manifest_ref'],
                   filename='drive-folder.json', mime='application/json', error=None)
     return {'assets': assets, 'destination': str(destination), 'run_id': result['run_id']}
@@ -513,32 +596,145 @@ def idea_update(conn, settings, *, idea_id: int, status: IdeaState, source: dict
     return _get(conn, 'creative_idea', idea_id)
 
 
-def make_submit(conn, settings, *, project_id: int, asset_id: int, request_key: str, style: str = 'legend',
-                params: dict | None = None, route: dict | None = None, brief: str | None = None) -> dict:
-    """Queue a reel once per logical request. A request is an instruction to make, not merely an upload."""
+def _desktop_source(conn, settings, asset: dict, project_id: int, allow_portrait=False) -> dict:
+    """Follow only recorded, project-owned finishing lineage; never reframe a portrait finish."""
+    seen = set()
+    for _ in range(12):
+        if asset['ref'] in seen:
+            raise ValueError('cyclic desktop source lineage; choose the original desktop asset')
+        seen.add(asset['ref'])
+        post = asset.get('metadata', {}).get('manifest', {}).get('postproduction', {})
+        if not post:
+            # Telegram re-imports preserve bytes but may not preserve intake metadata.
+            receipt = conn.execute('SELECT manifest_json FROM stagecraft_delivery WHERE project_id=? AND ref=?',
+                                   (project_id, asset['ref'])).fetchone()
+            if receipt:
+                post = json.loads(receipt[0]).get('postproduction', {})
+        if not post:
+            prior = conn.execute("SELECT metadata_json FROM creative_intake WHERE project_id=? AND ref=? "
+                                 "AND json_extract(metadata_json,'$.manifest.postproduction.source_sha256') IS NOT NULL "
+                                 'ORDER BY id DESC LIMIT 1', (project_id, asset['ref'])).fetchone()
+            if prior:
+                post = json.loads(prior[0]).get('manifest',{}).get('postproduction',{})
+        source_ref = post.get('source_sha256') if post.get('template') in {'desktop_caption','desktop_reel'} else None
+        if source_ref:
+            row = conn.execute("SELECT id FROM creative_intake WHERE project_id=? AND ref=? AND status='stored' "
+                               'ORDER BY id LIMIT 1', (project_id, source_ref)).fetchone()
+            if not row:
+                raise ValueError('original desktop is missing from this project; choose a stored original desktop')
+            asset = media_info(conn, settings, asset_id=row[0])
+            continue
+        previous = conn.execute("SELECT asset_id FROM creative_submission WHERE project_id=? AND result_ref=? "
+                                "AND style IN ('desktop_caption','desktop_reel') ORDER BY id DESC LIMIT 1",
+                                (project_id, asset['ref'])).fetchone()
+        if previous:
+            asset = media_info(conn, settings, asset_id=previous[0])
+            continue
+        probe = asset.get('probe') or {}
+        portrait_source = (allow_portrait and asset.get('metadata',{}).get('producer') == 'stagecraft'
+                           and asset.get('metadata',{}).get('manifest',{}).get('capture_status') == 'mechanical_checks_passed'
+                           and asset.get('metadata',{}).get('manifest',{}).get('capture',{}).get('sha256') == asset['ref'])
+        if not probe.get('width') or not probe.get('height') or (probe['width'] < probe['height'] and not portrait_source):
+            raise ValueError('desktop_caption needs the original landscape desktop; portrait source has no recoverable lineage')
+        if asset['project_id'] != project_id or asset['status'] != 'stored':
+            raise ValueError('original desktop must be stored in this creative project')
+        return asset
+    raise ValueError('desktop source lineage is too deep; choose the original desktop asset')
+
+
+def _caption_options(style, params, caption, caption_lines, caption_cues=None, duration_ms=None):
     from wonhee import service
     from wonhee.creative_worker import MakeOptions
+    from wonhee.edit import compose
+    options = MakeOptions.model_validate(params or {}).model_dump(mode='json')
+    if caption_cues is not None:
+        if not caption_cues or options['caption_cues']:
+            raise ValueError('supply caption_cues once, with at least one cue')
+        options['caption_cues'] = [CaptionCue.model_validate(c).model_dump() for c in caption_cues]
+    timed = bool(options['caption_cues'])
+    if timed:
+        if style != 'desktop_reel':
+            raise ValueError('caption_cues require style=desktop_reel')
+        if caption is not None or caption_lines is not None or options['title'] is not None or any(
+                k in options['slots'] for k in ('title','metric','proof','caveat')):
+            raise ValueError('timed cues cannot mix with other caption copy')
+        if duration_ms is None:
+            raise ValueError('caption cues need a known source duration')
+        from wonhee.caption_plan import render_layout
+        render_layout(options['slots'], options['caption_cues'], duration_ms)
+    if caption is not None or caption_lines is not None:
+        if style not in {'desktop_caption','desktop_reel'}:
+            raise ValueError('caption / caption_lines require style=desktop_caption')
+        if caption is not None and caption_lines is not None:
+            raise ValueError('supply caption or caption_lines, not both')
+        if options['title'] is not None or any(k in options['slots'] for k in ('title','metric','proof','caveat')):
+            raise ValueError('caption copy conflicts with params.title or params.slots; choose one copy input')
+        if caption is not None:
+            options['title'] = _text(caption, 'caption', 1000)
+        else:
+            if not isinstance(caption_lines, list) or not 1 <= len(caption_lines) <= 4:
+                raise ValueError('caption_lines needs one to four strings: hook, metric, proof, caveat')
+            options['slots'].update({k:_text(v, 'caption line', 1000)
+                for k,v in zip(('title','metric','proof','caveat'), caption_lines)})
+    service._reel_template(style)
+    if style in {'desktop_caption','desktop_reel'}:
+        if options['cta'] or options['items'] or options['tighten'] is not False or options['look']:
+            raise ValueError('desktop_caption preserves the desktop; use caption/caption_lines, without cta/items/tighten/look')
+        given = dict(options['slots'])
+        if options['title'] is not None:
+            if 'title' in given and given['title'] != options['title']:
+                raise ValueError('conflicting caption title values')
+            given['title'] = options['title']
+        for key in ('title','metric','proof','caveat'):
+            if key in given and not isinstance(given[key], str):
+                raise ValueError('caption slots must be strings')
+        if not timed and not str(given.get('title', '')).strip():
+            raise ValueError('desktop_caption needs actual copy: supply caption="your text" or '
+                             'caption_lines=["hook", "metric", "proof", "caveat"]. '
+                             'The brief is saved context and does not render caption text.')
+        compose.load_template(style, given)  # slots and minimum readable fit checked before queueing
+    return options
+
+
+def make_submit(conn, settings, *, project_id: int, asset_id: int, request_key: str, style: str = 'legend',
+                params: dict | None = None, route: dict | None = None, brief: str | None = None,
+                caption: str | None = None, caption_lines: list[str] | None = None,
+                caption_cues: list[CaptionCue] | None = None, variant: str | None = None) -> dict:
+    """Queue a reel once per logical request. A request is an instruction to make, not merely an upload."""
+    from wonhee import service
     project_show(conn, settings, project_id=project_id)
     asset = media_info(conn, settings, asset_id=asset_id)
     if asset['status'] != 'stored' or asset['project_id'] != project_id or not asset['mime'].startswith('video/'):
         raise ValueError('choose a stored video asset in this creative project')
-    service._reel_template(style)
-    options = MakeOptions.model_validate(params or {}).model_dump(mode='json')
+    if style == 'desktop_reel' and (caption_cues is not None or (params or {}).get('caption_cues')):
+        asset = _desktop_source(conn, settings, asset, project_id, allow_portrait=True)
+        asset_id = asset['id']
+    options = _caption_options(style, params, caption, caption_lines, caption_cues, (asset.get('probe') or {}).get('duration_ms'))
+    if style in {'desktop_caption','desktop_reel'}:
+        asset = _desktop_source(conn, settings, asset, project_id, allow_portrait=style=='desktop_reel')
+        asset_id = asset['id']
     key = _text(request_key, 'request_key', 500)
+    if variant is not None:
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,39}', variant):
+            raise ValueError('variant must be a stable 1..40 character label: letters, digits, _ or -')
+        key += ':variant:' + variant
     old = conn.execute('SELECT * FROM creative_submission WHERE request_key=?', (key,)).fetchone()
     if old:
         previous_brief = conn.execute('SELECT content FROM creative_brief WHERE project_id=? AND revision=?',
                                       (project_id, old['brief_revision'])).fetchone()
         if brief is not None and previous_brief and previous_brief[0] != brief:
             raise ValueError('request_key already belongs to a different brief')
-        if old['project_id'] != project_id or old['asset_id'] != asset_id or old['style'] != style or json.loads(old['params_json']) != options:
+        from wonhee.creative_worker import MakeOptions
+        old_options = MakeOptions.model_validate_json(old['params_json']).model_dump(mode='json')
+        if old['project_id'] != project_id or old['asset_id'] != asset_id or old['style'] != style or old_options != options:
             raise ValueError('request_key already belongs to a different creation request')
         return make_show(conn, settings, submission_id=old['id'])
     with tx(conn):
         revision = writes.brief(conn, project_id, brief or json.dumps({'style': style, **options}, ensure_ascii=False),
                                 {'request_key': key, **(route or {})})
         record_id = writes.insert(conn, 'creative_submission', request_key=key, project_id=project_id, asset_id=asset_id,
-                                  style=style, params_json=json.dumps(options, sort_keys=True),
+                                  style=style, phase=('speech' if service._reel_template(style)['reel'].get('words', True) else 'render'),
+                                  params_json=json.dumps(options, sort_keys=True),
                                   route_json=json.dumps(route or {}), brief_revision=revision)
     memory_remember(conn, settings, content=brief or f'Make a {style} reel from asset {asset_id}', project_id=project_id,
                     kind='brief', source={'submission_id': record_id, 'request_key': key})
@@ -557,7 +753,15 @@ def make_show(conn, settings, *, submission_id: int | None = None, request_key: 
     row['runs'] = [dict(r) for r in conn.execute('SELECT phase,run_id FROM creative_run WHERE submission_id=?', (submission_id,))]
     row['deliveries'] = [_delivery_record(conn, settings, r) for r in conn.execute('SELECT * FROM creative_delivery WHERE submission_id=?',
                                                                                (submission_id,))]
+    row['variant'] = row['request_key'].rsplit(':variant:',1)[1] if ':variant:' in row['request_key'] else None
     row['full_check'] = None
+    if row['style'] in {'desktop_caption','desktop_reel'}:
+        opts = row['params']
+        row['effective_caption'] = {k:opts['slots'].get(k, opts.get('title') if k == 'title' else '')
+                                    for k in ('title','metric','proof','caveat')}
+        row['source_asset_id'] = row['asset_id']
+        row['effective_caption_cues'] = opts.get('caption_cues',[])
+        row['caption_persistence'] = 'contiguous source-time cues' if opts.get('caption_cues') else 'entire video'
     return row
 
 
@@ -661,13 +865,125 @@ def health(conn, settings) -> dict:
             'download_url': _download_endpoint(settings) or None}
 
 
-from wonhee.stagecraft import (stagecraft_schema, stagecraft_build, stagecraft_submit, stagecraft_show, stagecraft_retry,
+
+# A post is a small project with a format and named slots; each slot is required or optional for that format.
+# Required slots must be `have` before a build; a rejected slot blocks whatever its requirement (with its reason).
+POST_FORMATS = {
+    'talking_head': {'take': True, 'lines': False},
+    'image_post': {'lines': True, 'photos': True},
+    'mixed_reel': {'lines': True, 'selfie': True, 'typing_audio': True, 'screen_record': False, 'voice': False},
+}
+PostSlotState = Literal['empty', 'have', 'rejected']
+_POST_SLOT_STATES = {'empty', 'have', 'rejected'}
+
+
+def _optional(value, name: str, limit: int) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) > limit:
+        raise ValueError(f'{name} must be at most {limit} characters')
+    return value.strip() or None
+
+
+def _post_meta(conn, project_id: int) -> dict:
+    row = conn.execute('SELECT * FROM post_meta WHERE project_id=?', (project_id,)).fetchone()
+    if row is None:
+        raise ValueError(f'project {project_id} is not a post project; create it with post_create')
+    return dict(row)
+
+
+def _post_format(format: str) -> dict:
+    if format not in POST_FORMATS:
+        raise ValueError(f'unknown post format {format!r}; expected one of: {", ".join(POST_FORMATS)}')
+    return POST_FORMATS[format]
+
+
+def post_create(conn, settings, *, name: str, format: str, goal: str) -> dict:
+    """Create a post project (or return the existing one with the same format and goal) with its slots seeded empty."""
+    slots = _post_format(format)
+    name, goal = _text(name, 'name', 200), _text(goal, 'goal', 2000)
+    existing = conn.execute('SELECT p.id, m.format, m.goal FROM creative_project p '
+                            'LEFT JOIN post_meta m ON m.project_id=p.id WHERE p.name=?', (name,)).fetchone()
+    if existing is not None and existing['format'] is not None:
+        if (existing['format'], existing['goal']) != (format, goal):
+            raise ValueError(f'post {name!r} already exists with a different format or goal')
+        project_id = existing['id']
+    else:
+        project_id = writes.post_project(conn, name, format, goal, list(slots))
+    return {'id': project_id, 'name': name, 'format': format, 'goal': goal}
+
+
+def post_slot_set(conn, settings, *, project_id: int, slot: str, state: PostSlotState, ref: str | None = None,
+                  text: str | None = None, source: str | None = None, reason: str | None = None) -> dict:
+    """Set one slot to empty, have (a ref or text, with its source) or rejected (with the reason it is not usable)."""
+    slots = _post_format(_post_meta(conn, project_id)['format'])
+    if slot not in slots:
+        raise ValueError(f'unknown slot {slot!r} for this post; expected one of: {", ".join(slots)}')
+    if state not in _POST_SLOT_STATES:
+        raise ValueError(f'unknown slot state {state!r}; expected one of: empty, have, rejected')
+    ref = _optional(ref, 'ref', 2000)
+    text = _optional(text, 'text', 20000)
+    source = _optional(source, 'source', 500)
+    reason = _optional(reason, 'reason', 2000)
+    if state == 'have' and not (ref or text):
+        raise ValueError('a have slot needs a ref (file) or text')
+    if state == 'rejected' and not reason:
+        raise ValueError('a rejected slot needs a reason')
+    if state == 'empty':
+        ref = text = source = None
+    if state != 'rejected':
+        reason = None
+    writes.post_slot(conn, project_id, slot, state=state, ref=ref, text=text, source=source, reason=reason)
+    row = conn.execute('SELECT * FROM post_slot WHERE project_id=? AND name=?', (project_id, slot)).fetchone()
+    return _record(row)
+
+
+def post_status(conn, settings, *, project_id: int) -> str:
+    """What the post has, what blocks the build, what is skipped, and the one next step."""
+    meta = _post_meta(conn, project_id)
+    slots = _post_format(meta['format'])
+    name = _get(conn, 'creative_project', project_id)['name']
+    rows = {r['name']: dict(r) for r in conn.execute('SELECT * FROM post_slot WHERE project_id=?', (project_id,))}
+    have, rejected, missing, skipped = [], [], [], []
+    for slot, required in slots.items():
+        row = rows.get(slot, {'state': 'empty'})
+        if row['state'] == 'have':
+            have.append(f"{slot} ({row['ref'] or 'text'}{', from ' + row['source'] if row['source'] else ''})")
+        elif row['state'] == 'rejected':
+            rejected.append(f"{slot}: {row['reason']}")
+        elif required:
+            missing.append(slot)
+        else:
+            skipped.append(slot)
+    allowed = not rejected and not missing
+    lines = [f"Post {name!r} ({meta['format']}): {meta['goal']}",
+             f"Have: {', '.join(have) or 'nothing yet'}"]
+    if rejected:
+        lines.append(f"Rejected: {'; '.join(rejected)}")
+    if missing:
+        lines.append(f"Missing required: {', '.join(missing)}")
+    if skipped:
+        lines.append(f"Skipped optional: {', '.join(skipped)} (a preview can build without them)")
+    lines.append(f"Build: {'allowed' if allowed else 'blocked'}")
+    if rejected:
+        slot, _, reason = rejected[0].partition(': ')
+        lines.append(f"Next: replace {slot} ({reason})")
+    elif missing:
+        lines.append(f"Next: fill {missing[0]}")
+    elif skipped:
+        lines.append(f"Next: build the {meta['format']}; {', '.join(skipped)} can come later")
+    else:
+        lines.append(f"Next: build the {meta['format']}")
+    return '\n'.join(lines)
+
+
+from wonhee.stagecraft import (stagecraft_schema, stagecraft_benchmarks, stagecraft_dataset, stagecraft_dataset_complete, stagecraft_list, stagecraft_build, stagecraft_submit, stagecraft_show, stagecraft_review, stagecraft_retry,
                               stagecraft_complete)
 
 
 ACTIONS = {name: globals()[name] for name in (
-    'project_create', 'project_select', 'project_show', 'project_brief_save', 'inbox_add', 'inbox_list', 'media_info',
+    'project_create', 'project_select', 'project_show', 'project_status', 'project_brief_save', 'inbox_add', 'inbox_list', 'media_info',
     'idea_save', 'idea_list', 'idea_update', 'memory_remember', 'memory_query', 'memory_correct', 'memory_forget',
     'memory_export', 'memory_reindex', 'make_submit', 'make_show', 'outbox_add', 'outbox_list',
-    'delivery_show', 'delivery_retry', 'health', 'stagecraft_schema', 'stagecraft_submit', 'stagecraft_show',
-    'stagecraft_retry', 'stagecraft_build', 'stagecraft_complete')}
+    'delivery_show', 'delivery_retry', 'health', 'post_create', 'post_slot_set', 'post_status', 'stagecraft_schema', 'stagecraft_submit', 'stagecraft_show',
+    'stagecraft_review', 'stagecraft_retry', 'stagecraft_benchmarks', 'stagecraft_dataset', 'stagecraft_dataset_complete', 'stagecraft_list', 'stagecraft_build', 'stagecraft_complete')}

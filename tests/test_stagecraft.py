@@ -1,6 +1,7 @@
 """Design: stagecraft § trusted context, completion idempotency and project isolation."""
 import asyncio
 import hashlib
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -56,3 +57,89 @@ def test_job_show_and_retry_are_project_scoped(conn,settings,monkeypatch):
         stagecraft.stagecraft_show(conn,settings,job_id='a'*32,project_id=1)
     with pytest.raises(ValueError):
         stagecraft.stagecraft_retry(conn,settings,job_id='a'*32,project_id=1)
+
+
+def test_completion_caption_is_wonhee_owned_cpu_cached_and_idempotent(conn,settings,tiny_video):
+    from pathlib import Path
+    from wonhee import media
+    project=creative.project_create(conn,settings,name='Desktop finishing')
+    digest=hashlib.sha256(tiny_video.read_bytes()).hexdigest()
+    args={'job_id':'b'*32,'project_id':project['id'],'source':str(tiny_video),'request_key':'caption-1',
+          'title':'Desktop','caption':'Pipes, dressed as infrastructure.','route':{},
+          'manifest':{'capture_status':'mechanical_checks_passed','capture':{'sha256':digest}}}
+    first=stagecraft.stagecraft_complete(conn,settings,**args)
+    assert first['ref']!=digest
+    probe=media.probe(Path(first['path']))
+    assert (probe.width,probe.height)==(1000,1600)
+    count=conn.execute('SELECT count(*) FROM run').fetchone()[0]
+    again=stagecraft.stagecraft_complete(conn,settings,**args)
+    assert first['id']==again['id']
+    assert conn.execute('SELECT count(*) FROM run').fetchone()[0]==count
+    assert conn.execute('SELECT count(*) FROM creative_delivery').fetchone()[0]==1
+    with pytest.raises(ValueError,match='conflicts'):
+        stagecraft.stagecraft_complete(conn,settings,**{**args,'caption':'Changed caption'})
+    receipt=json.loads(conn.execute('SELECT manifest_json FROM stagecraft_delivery WHERE job_id=?',('b'*32,)).fetchone()[0])
+    assert receipt['postproduction']['source_sha256']==digest
+    assert receipt['postproduction']['output_sha256']==first['ref']
+
+
+def test_failed_caption_can_recover_without_staging_raw_output(conn,settings,tiny_video,monkeypatch):
+    from wonhee import service
+    project=creative.project_create(conn,settings,name='Recover finishing')
+    digest=hashlib.sha256(tiny_video.read_bytes()).hexdigest()
+    args={'job_id':'c'*32,'project_id':project['id'],'source':str(tiny_video),'request_key':'caption-recovery',
+          'title':'Desktop','caption':'Two transports. One paragraph.','route':{},
+          'manifest':{'capture_status':'mechanical_checks_passed','capture':{'sha256':digest}}}
+    actual=service.node_run
+    def fail(*args,**kwargs):
+        raise RuntimeError('interrupted finishing')
+    monkeypatch.setattr(service,'node_run',fail)
+    with pytest.raises(RuntimeError,match='interrupted finishing'):
+        stagecraft.stagecraft_complete(conn,settings,**args)
+    assert conn.execute('SELECT count(*) FROM creative_delivery').fetchone()[0]==0
+    assert conn.execute('SELECT count(*) FROM stagecraft_delivery').fetchone()[0]==0
+    monkeypatch.setattr(service,'node_run',actual)
+    result=stagecraft.stagecraft_complete(conn,settings,**args)
+    assert result['status']=='queued'
+    assert conn.execute('SELECT count(*) FROM creative_delivery').fetchone()[0]==1
+    assert conn.execute("SELECT count(*) FROM creative_intake WHERE source_key=?",('stagecraft:'+'c'*32+':desktop',)).fetchone()[0]==1
+
+
+def test_prepare_only_completion_imports_raw_once_without_outbox(conn,settings,tiny_video,monkeypatch):
+    project=creative.project_create(conn,settings,name='Shared source only')
+    digest=hashlib.sha256(tiny_video.read_bytes()).hexdigest()
+    args={'job_id':'e'*32,'project_id':project['id'],'source':str(tiny_video),'request_key':'prepare-source',
+          'title':'Shared desktop','prepare_only':True,'manifest':{'capture_status':'mechanical_checks_passed',
+          'capture':{'sha256':digest}}}
+    first=stagecraft.stagecraft_complete(conn,settings,**args)
+    second=stagecraft.stagecraft_complete(conn,settings,**args)
+    assert first==second and first['prepared']
+    assert conn.execute('select count(*) from creative_delivery').fetchone()[0]==0
+    assert conn.execute('select count(*) from stagecraft_delivery').fetchone()[0]==0
+    asset=creative.media_info(conn,settings,asset_id=first['assets']['desktop_asset_id'])
+    assert asset['role']=='raw' and asset['ref']==digest
+    monkeypatch.setattr(stagecraft,'_call',lambda *a,**k:{'project_id':project['id'],'prepared':first,
+        'resolved_settings':{'presentation':'mesh_story'},'phase':'prepared'})
+    shown=stagecraft.stagecraft_show(conn,settings,job_id='e'*32,project_id=project['id'])
+    assert shown['assets']==first['assets'] and 'delivery' not in shown
+    assert shown['finishing']['style']=='desktop_reel'
+
+
+def test_prepared_source_rejects_changed_bytes_and_request(conn,settings,tiny_video,tmp_path):
+    import shutil
+    path=tmp_path/'shared.mp4';shutil.copyfile(tiny_video,path)
+    project=creative.project_create(conn,settings,name='Immutable preparation')
+    digest=hashlib.sha256(path.read_bytes()).hexdigest()
+    args={'job_id':'f'*32,'project_id':project['id'],'source':str(path),'request_key':'original',
+          'title':'Source','prepare_only':True,'caption':'','manifest':{'capture_status':'mechanical_checks_passed',
+          'capture':{'sha256':digest}}}
+    first=stagecraft.stagecraft_complete(conn,settings,**args)
+    with pytest.raises(ValueError,match='original capture/request'):
+        stagecraft.stagecraft_complete(conn,settings,**{**args,'request_key':'changed'})
+    path.write_bytes(path.read_bytes()+b'changed trailer')
+    changed=hashlib.sha256(path.read_bytes()).hexdigest()
+    with pytest.raises(ValueError,match='original capture/request'):
+        stagecraft.stagecraft_complete(conn,settings,**{**args,'manifest':{'capture_status':'mechanical_checks_passed',
+            'capture':{'sha256':changed}}})
+    assert creative.media_info(conn,settings,asset_id=first['assets']['desktop_asset_id'])['ref']==digest
+    assert conn.execute('select count(*) from creative_delivery').fetchone()[0]==0

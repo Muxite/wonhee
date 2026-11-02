@@ -29,6 +29,7 @@ Things that silently cost time or quality. **Seen** marks ones observed in this 
 - **Licensed music.** Trending audio is attached in the Instagram app. Don't bake third-party music into uploads.
 
 ## Data and safety
+- **Grabbed files are untrusted input** (hardened 2026-10-26). `sources/fetch.py` fetches only https URLs on Instagram CDN hosts (redirects re-checked, size capped, yt-dlp run with `--ignore-config` and `--`). `library/grab.py` checks the magic bytes (`media.require_kind`) before a file enters the store, so a playlist or script named `.mp4` is refused, and `ffprobe` runs with `-protocol_whitelist file,pipe`. Temp names never come from the scraper's text.
 - **Third-party media** (seen policy): grabbed reels are reference only, never source footage for our posts, and never committed. `data/` is gitignored, and keep it that way.
 - **Vision OCR errors** (seen): `screen_text` read "OCtranspo" as "Otranspo" in the reference reel. Treat OCR as a draft. Names and places need a human glance or a second source, such as the caption.
 - **Cache poisoning by version.** If a node's behaviour changes and its `version` doesn't, old cached outputs get reused silently. Bump the version.

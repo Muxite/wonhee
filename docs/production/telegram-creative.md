@@ -22,6 +22,12 @@ The existing styles are `legend`, `explainer`, `scrapbook`, `series`, `list` and
 can inspect real timestamped contact sheets with `media_info(analyze=true)` rather than guessing from a filename.
 Full rendered-file checking remains unbuilt; “ready” means rendered, not certified against all posting checks.
 
+Post slots: when the selected project is a post, a photo or clip lands in a slot. Name one with `slot` (for example
+`selfie`), or leave it out: wonhee fills the only empty slot that fits the file's kind (image: `photos`/`selfie`;
+video: `selfie`/`take`/`screen_record`; audio: `typing_audio`/`voice`). When no empty slot fits or more than one does,
+the file is still saved and the result carries `slot_question` with the candidates, so moeka asks rather than guesses.
+An unknown slot is refused before anything is saved. Folder intake fills no slot.
+
 ## Memory in ordinary words
 
 Stated preferences, decisions and feedback are saved automatically with their source. Corrections supersede

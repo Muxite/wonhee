@@ -9,7 +9,8 @@ from wonhee.clock import now_iso
 from wonhee.db.connect import tx
 
 # Identifiers are internal constants; callers never supply SQL identifiers from a wire payload.
-_TABLES = {'creative_intake', 'creative_memory', 'creative_idea', 'creative_submission', 'creative_delivery'}
+_TABLES = {'creative_project', 'creative_intake', 'creative_memory', 'creative_idea', 'creative_submission', 'creative_delivery',
+           'post_meta', 'post_slot'}
 
 
 def insert(conn, table: str, **fields) -> int:
@@ -70,6 +71,27 @@ def correct(conn, memory_id: int, content: str, source: dict) -> int:
         update(conn, 'creative_memory', memory_id, status='superseded', indexed=0)
         return insert(conn, 'creative_memory', project_id=old['project_id'], kind=old['kind'], content=content,
                       status=old['status'], source_json=json.dumps(source), supersedes=memory_id)
+
+
+def post_project(conn, name: str, format: str, goal: str, slots: list[str]) -> int:
+    """Create (or reuse) the project, record its format and goal, and seed every slot as empty."""
+    with tx(conn):
+        project_id = project_create(conn, name)
+        conn.execute('INSERT INTO post_meta(project_id,format,goal) VALUES(?,?,?)', (project_id, format, goal))
+        conn.executemany('INSERT OR IGNORE INTO post_slot(project_id,name,state,updated_at) VALUES(?,?,?,?)',
+                         [(project_id, slot, 'empty', now_iso()) for slot in slots])
+        return project_id
+
+
+def post_slot(conn, project_id: int, name: str, **fields) -> None:
+    """Replace a slot's state and provenance; the slot key is (project, name), so this is not the id-keyed update."""
+    columns = {'state', 'ref', 'text', 'source', 'reason'}
+    if not fields.keys() <= columns:
+        raise ValueError('unknown post slot field')
+    fields = {**fields, 'updated_at': now_iso()}
+    with tx(conn):
+        conn.execute(f"UPDATE post_slot SET {','.join(k+'=?' for k in fields)} WHERE project_id=? AND name=?",
+                     (*fields.values(), project_id, name))
 
 
 def maintenance(conn, name: str, error: str | None) -> None:

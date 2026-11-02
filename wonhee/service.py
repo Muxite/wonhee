@@ -1369,7 +1369,7 @@ def reel_styles() -> str:
 
     rows = [(t["name"], t["reel"]["summary"]) for t in C.list_templates() if t.get("reel")]
     w = max(len(n) for n, _ in rows)
-    return "\n".join(f"{n.ljust(w)}  {s}" for n, s in rows)
+    return "\n".join(f"{n.ljust(w)}  {summary}" for n, summary in rows)
 
 
 def _reel_template(style: str) -> dict:
@@ -1423,11 +1423,14 @@ def reel(conn, settings, deps, video: str | Path, style: str, *, title: str | No
     info = media.probe(media.path_for(settings.media_dir, sha))
     if not info.duration_ms:
         raise ValueError("cannot read the video's duration")
-    rid, text = chain_run(conn, settings, deps, [{"id": "s", "node": "speech_subs", "in": {"video": sha}}], progress=progress)
-    so = _step_out(conn, rid, "s")
-    if so is None:
-        return text
-    words = [w for ln in load_subs(settings.media_dir, so["subtitles"]).lines for w in line_words(ln)[0]]
+    needs_words = tpl['reel'].get('words', True)
+    words = []
+    if needs_words:
+        rid, text = chain_run(conn, settings, deps, [{"id": "s", "node": "speech_subs", "in": {"video": sha}}], progress=progress)
+        so = _step_out(conn, rid, "s")
+        if so is None:
+            return text
+        words = [w for ln in load_subs(settings.media_dir, so["subtitles"]).lines for w in line_words(ln)[0]]
     lecture = None
     if style == "lecture":
         # theses/footnotes given as --set thesis_N / footnote_N (or --items) go through the timing code like the model's
@@ -1452,10 +1455,14 @@ def reel(conn, settings, deps, video: str | Path, style: str, *, title: str | No
                                  cta=cta, items=None if style == "lecture" else items, n_insets=len(insets or []), lecture=lecture)
     slots.update({k: v for k, v in opts.items() if k in tpl["slots"]})
     params: dict = {"template": style, "slots": slots}
+    if not needs_words:
+        params["encoder"] = "x264"
     for k in ("tighten", "encoder", "quality", "seed", "look"):
         if k in opts:
             params[k] = opts[k]
-    comp_in = {"video": sha, "subtitles": "s.subtitles"}
+    comp_in = {"video": sha}
+    if needs_words:
+        comp_in["subtitles"] = "s.subtitles"
     if insets:
         paths = [Path(p).expanduser() for p in insets]
         for p in paths:
@@ -1463,8 +1470,8 @@ def reel(conn, settings, deps, video: str | Path, style: str, *, title: str | No
                 raise ValueError(f"{p}: no such image")
         comp_in["images"] = save_images(conn, settings.media_dir, Images(items=[
             Slide(sha=repo.save_file(conn, settings.media_dir, p, "image", _mime(p))) for p in paths]))
-    nodes = [{"id": "s", "node": "speech_subs", "in": {"video": sha}},
-             {"id": "v", "node": "compose_video", "in": comp_in, "params": params}]
+    nodes = ([{"id": "s", "node": "speech_subs", "in": {"video": sha}}] if needs_words else [])
+    nodes.append({"id": "v", "node": "compose_video", "in": comp_in, "params": params})
     rid, text = chain_run(conn, settings, deps, nodes, progress=progress)
     vo = _step_out(conn, rid, "v")
     if vo is None:
@@ -1504,11 +1511,11 @@ def reel(conn, settings, deps, video: str | Path, style: str, *, title: str | No
 # Creative actions return typed receipts shared by CLI, MCP and the trusted transport adapter.
 from wonhee.creative import (  # noqa: E402,F401
     project_create as creative_project_create, project_select as creative_project_select,
-    project_show as creative_project_show, project_brief_save as creative_project_brief_save, inbox_add, inbox_list, media_info,
+    project_show as creative_project_show, project_status as creative_project_status, project_brief_save as creative_project_brief_save, inbox_add, inbox_list, media_info,
     idea_save, idea_list, idea_update, memory_remember, memory_query, memory_correct,
     memory_forget, memory_export, memory_reindex, make_submit, make_show, outbox_add, outbox_list,
-    delivery_show, delivery_retry, health as creative_health,
-    stagecraft_schema, stagecraft_build, stagecraft_submit, stagecraft_show, stagecraft_retry, stagecraft_complete,
+    delivery_show, delivery_retry, health as creative_health, post_create, post_slot_set, post_status,
+    stagecraft_schema, stagecraft_benchmarks, stagecraft_dataset, stagecraft_dataset_complete, stagecraft_list, stagecraft_build, stagecraft_submit, stagecraft_show, stagecraft_review, stagecraft_retry, stagecraft_complete,
 )
 
 

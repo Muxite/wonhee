@@ -470,3 +470,46 @@ def test_hybrid_search_partitions_project_scopes_before_semantic_retrieval(conn,
     assert {tag for tags in selected_scopes for tag in tags if tag.startswith("project:")} == {
         "project:None", f"project:{project['id']}",
     }
+
+
+def test_desktop_caption_finishing_skips_speech_and_reuses_render(conn, settings, tiny_video):
+    from tests.fakes import fake_deps
+    from tests.test_nodes_subs import CountingTranscriber
+    from wonhee import creative_worker
+    import subprocess
+    desktop=tiny_video.parent/'finishing-desktop.mp4'
+    subprocess.run(['ffmpeg','-v','error','-y','-i',str(tiny_video),'-vf','transpose=1',
+                    '-c:v','libx264','-threads','1','-an',str(desktop)],check=True)
+    tiny_video=desktop
+    project=creative.project_create(conn,settings,name='Desktop finish')
+    asset=creative.inbox_add(conn,settings,source=str(tiny_video),project_id=project['id'])
+    submission=creative.make_submit(conn,settings,project_id=project['id'],asset_id=asset['id'],
+        request_key='desktop-caption',style='desktop_caption',params={'title':'Only a simple caption.'})
+    transcriber=CountingTranscriber()
+    deps=fake_deps(transcriber=transcriber)
+    first=creative_worker.execute(conn,settings,deps,submission)
+    assert transcriber.n==0
+    assert {run['phase'] for run in first['runs']}=={'render'}
+    assert not creative_worker.service_template_needs_speech('desktop_caption')
+    again=creative_worker.execute(conn,settings,deps,submission)
+    assert first['result_ref']==again['result_ref']
+    assert len(again['deliveries'])==1
+
+
+def test_project_status_stashes_and_reactivates_a_project(conn, settings):
+    from wonhee import creative
+    pid = creative.project_create(conn, settings, name="stash me")["id"]
+    assert creative.project_show(conn, settings, project_id=pid)["status"] == "active"
+    assert creative.project_status(conn, settings, project_id=pid, status="stashed")["status"] == "stashed"
+    listed = {p["id"]: p["status"] for p in creative.project_show(conn, settings)["projects"]}
+    assert listed[pid] == "stashed"
+    assert creative.project_status(conn, settings, project_id=pid, status="active")["status"] == "active"
+
+
+def test_project_status_refuses_unknown_status_and_unknown_project(conn, settings):
+    from wonhee import creative
+    pid = creative.project_create(conn, settings, name="p").get("id")
+    with pytest.raises(ValueError, match="unknown project status"):
+        creative.project_status(conn, settings, project_id=pid, status="paused")
+    with pytest.raises(Exception):
+        creative.project_status(conn, settings, project_id=9999, status="done")

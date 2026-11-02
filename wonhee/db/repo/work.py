@@ -129,6 +129,18 @@ def save_image_analyses(conn: sqlite3.Connection, *, analyzer_version: int, step
             conn.execute("INSERT INTO image_analysis VALUES (?,?,?,?,?)", (sha, analyzer_version, step_id, text, visual))
 
 
+def save_text_style(conn: sqlite3.Connection, *, sha: str, analyzer_version: int, profile_json: str) -> None:
+    """Store (or replace) the measured text-style profile of one image."""
+    with tx(conn):
+        conn.execute("INSERT OR REPLACE INTO text_style VALUES (?,?,?)", (sha, analyzer_version, profile_json))
+
+
+def load_text_style(conn: sqlite3.Connection, sha: str, analyzer_version: int) -> str | None:
+    row = conn.execute("SELECT profile_json FROM text_style WHERE media_sha256=? AND analyzer_version=?",
+                       (sha, analyzer_version)).fetchone()
+    return row[0] if row else None
+
+
 def save_analysis(conn: sqlite3.Connection, *, sha: str, analyzer_version: int, step_id: int,
                   first_word_ms: int | None, language: str | None, transcript_sha: str | None,
                   shots: list[ShotAnalysis]) -> None:
