@@ -12,7 +12,7 @@ from wonhee.edit import compose as C
 from wonhee.edit import reel_slots as RS
 from wonhee.nodes.subtitles import Word
 
-STYLES = ["legend", "explainer", "scrapbook", "series", "list", "lecture"]
+STYLES = ["legend", "explainer", "scrapbook", "series", "list", "lecture", "desktop_caption", "desktop_reel"]
 LONG = "a very long line of words that goes on and on past any sensible width for a title"
 
 
@@ -44,9 +44,9 @@ def lecture_llm(monkeypatch):
 
 # ---- the styles ---------------------------------------------------------------------------------------------------
 
-def test_reel_styles_lists_six_one_line_each():
+def test_reel_styles_lists_every_style_one_line_each():
     lines = service.reel_styles().splitlines()
-    assert len(lines) == 6 and [ln.split()[0] for ln in lines] == sorted(STYLES)
+    assert len(lines) == len(STYLES) and [ln.split()[0] for ln in lines] == sorted(STYLES)
     assert all(len(ln) < 200 for ln in lines)
 
 
@@ -64,7 +64,7 @@ def test_template_still_stays_inside_the_safe_zones(name):
              for k, v in t["slots"].items()}
     img, notes = C.render_ex(C.load_template(name, slots), [photo()], 1)
     assert notes.adjusted == [], notes.adjusted
-    assert img.size[0] == 1080
+    assert img.size[0] == C.load_template(name, slots).canvas.w
 
 
 def test_lecture_card_is_a_paper_still():
@@ -189,7 +189,7 @@ def test_reel_rejects_unknown_style_and_slot(conn, settings, tiny_video):
 
 def test_cli_reel_and_styles(settings, tiny_video, capsys, monkeypatch):
     assert cli.main(["reel", "styles"]) == 0
-    assert len(capsys.readouterr().out.strip().splitlines()) == 6
+    assert len(capsys.readouterr().out.strip().splitlines()) == len(STYLES)
     seen = {}
     monkeypatch.setattr(service, "reel", lambda *a, **k: seen.update(a=a, k=k) or "ok")
     assert cli.main(["reel", str(tiny_video), "--style", "list", "--title", "T", "--items", "a, b , c", "--inset", "x.png",

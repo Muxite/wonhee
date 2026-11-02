@@ -1,0 +1,125 @@
+{
+  "doc": "Phone-first 9:16 frame around a complete Stagecraft dashboard; static or timed captions. No speech/model.",
+  "reel": {
+    "summary": "CPU 9:16; persistent caption or caption_cues covering the source. Full desktop contained below; no speech.",
+    "words": false
+  },
+  "params": {
+    "tighten": false
+  },
+  "slots": {
+    "title": {
+      "default": "",
+      "doc": "the creator's simple caption above the desktop capture"
+    },
+    "bg": {
+      "default": "#080d12",
+      "doc": "canvas background colour"
+    },
+    "metric": {
+      "default": "",
+      "doc": "short prominent metric or technical claim"
+    },
+    "proof": {
+      "default": "",
+      "doc": "short measurement scope / evidence"
+    },
+    "caveat": {
+      "default": "",
+      "doc": "short qualification, always visible"
+    }
+  },
+  "layout": {
+    "canvas": {
+      "w": 1080,
+      "h": 1920,
+      "bg": "slot:bg"
+    },
+    "palette": "ink",
+    "layers": [
+      {
+        "type": "photo",
+        "src": "clip",
+        "clip_fit": "contain",
+        "box": {
+          "x": 0,
+          "y": 0.25,
+          "w": 1,
+          "h": 0.75
+        }
+      },
+      {
+        "type": "text",
+        "content": "slot:title",
+        "preset": "outline",
+        "role": "headline",
+        "size_frac": 0.027,
+        "colour": "#edf8f7",
+        "stroke_em": 0,
+        "line_height": 1.05,
+        "align": "left",
+        "box": {
+          "x": 0.055,
+          "y": 0.12,
+          "w": 0.89,
+          "h": 0.028
+        },
+        "min_size_px": 40
+      },
+      {
+        "type": "text",
+        "content": "slot:metric",
+        "preset": "outline",
+        "role": "numeral",
+        "size_frac": 0.0255,
+        "colour": "#70f3df",
+        "stroke_em": 0,
+        "line_height": 1.05,
+        "align": "left",
+        "box": {
+          "x": 0.055,
+          "y": 0.15,
+          "w": 0.89,
+          "h": 0.028
+        },
+        "min_size_px": 40
+      },
+      {
+        "type": "text",
+        "content": "slot:proof",
+        "preset": "outline",
+        "role": "sans",
+        "size_frac": 0.024,
+        "colour": "#edf8f7",
+        "stroke_em": 0,
+        "line_height": 1.05,
+        "align": "left",
+        "box": {
+          "x": 0.055,
+          "y": 0.18,
+          "w": 0.89,
+          "h": 0.028
+        },
+        "min_size_px": 40
+      },
+      {
+        "type": "text",
+        "content": "slot:caveat",
+        "preset": "outline",
+        "role": "mono",
+        "size_frac": 0.0225,
+        "colour": "#afc5ce",
+        "stroke_em": 0,
+        "line_height": 1.05,
+        "align": "left",
+        "box": {
+          "x": 0.055,
+          "y": 0.21,
+          "w": 0.89,
+          "h": 0.028
+        },
+        "min_size_px": 40
+      }
+    ]
+  }
+}

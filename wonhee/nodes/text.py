@@ -6,13 +6,13 @@ import tempfile
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from wonhee import media
 from wonhee.db import repo
 from wonhee.edit.looks import Preset as LookPreset
 from wonhee.edit.looks import filter_chain
-from wonhee.edit.text import Position, TextSpec, render_layer
+from wonhee.edit.text import ROLES, BoxKind, Position, TextSpec, render_layer
 from wonhee.edit.text import Preset as TextPreset
 from wonhee.nodes import registry
 from wonhee.nodes.base import Node
@@ -20,10 +20,51 @@ from wonhee.fsutil import run_timed
 from wonhee.procenv import clean_env
 
 
-class TextParams(BaseModel):
+class TextStyle(BaseModel):
+    """The TextSpec knobs beyond preset and position (docs/specs/2026-10-20-reel-styles-design.md §4, and the sticker
+    and placement knobs of the meme spec). Every default is TextSpec's own, so a node with none of them set renders
+    exactly as it did before these existed. Shared by text_image / text_video and by carousel's text_style."""
     model_config = ConfigDict(extra="forbid")
+    at: tuple[float, float] | None = None  # block centre (x, y) as frame fractions; overrides position, kept in the safe band
+    role: str | None = None  # a font role (edit/text.py ROLES) replacing the preset's font
+    colours: list[str] | None = Field(default=None, min_length=1, max_length=3)  # fill, stroke (sticker: + outer stroke)
+    align: Literal["left", "center", "right"] = "center"  # used by render_block (compose); text_image lines are centred
+    tracking_em: float = Field(default=0.0, ge=-0.1, le=0.2)
+    line_height: float | None = Field(default=None, ge=0.8, le=1.6)
+    box: BoxKind = "none"  # a background per line: box, pill or paper
+    box_colour: str | None = None  # None = the box kind's own default
+    box_pad_em: float = Field(default=0.25, ge=0, le=1)
+    box_radius_em: float | None = Field(default=None, ge=0, le=1)
+    stroke_em: float | None = Field(default=None, ge=0, le=0.15)  # outline width; None = the preset's own
+    slant: float = Field(default=0.0, ge=-12, le=12)  # sticker only, degrees
+    drop: float = Field(default=0.06, ge=0, le=0.5)  # sticker only: shadow offset as a fraction of the glyph size
+
+    @field_validator("at")
+    @classmethod
+    def _unit(cls, v):
+        if v is not None and not all(0 <= c <= 1 for c in v):
+            raise ValueError("at must be two fractions of the frame, 0..1")
+        return v
+
+    @field_validator("role")
+    @classmethod
+    def _role(cls, v):
+        if v is not None and v not in ROLES:
+            raise ValueError(f"unknown font role '{v}'; known: {', '.join(ROLES)}")
+        return v
+
+
+def style_kwargs(s: TextStyle) -> dict:
+    """The TextSpec keyword arguments for a TextStyle."""
+    return dict(role=s.role, colours=tuple(s.colours) if s.colours else None, align=s.align,
+                tracking_em=s.tracking_em, line_height=s.line_height, box=s.box, box_colour=s.box_colour,
+                box_pad_em=s.box_pad_em, box_radius_em=s.box_radius_em, stroke_em=s.stroke_em, slant=s.slant,
+                drop=s.drop, at=s.at)
+
+
+class TextParams(TextStyle):
     text: str = Field(min_length=1, max_length=400)
-    preset: TextPreset = "outline"  # outline | band (solid bar) | script (cursive)
+    preset: TextPreset = "outline"  # outline | band (solid bar) | script (cursive) | sticker (pop-art)
     position: Position = "upper"
     size_frac: float | None = Field(default=None, gt=0.01, le=0.2)
     width_frac: float = Field(default=0.84, ge=0.3, le=1.0)
@@ -40,7 +81,7 @@ class VideoTextParams(TextParams):
 
 
 def _spec(p: TextParams) -> TextSpec:
-    return TextSpec(p.text, p.preset, p.position, p.size_frac, p.width_frac, p.band)
+    return TextSpec(p.text, p.preset, p.position, p.size_frac, p.width_frac, p.band, **style_kwargs(p))
 
 
 def _graph(p: TextParams, video: bool, window: str = "") -> str:

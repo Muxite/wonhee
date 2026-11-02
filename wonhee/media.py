@@ -61,10 +61,36 @@ class Probe:
     fps: float | None
 
 
+class UnsafeMedia(RuntimeError):
+    """A downloaded file is not the kind of media it was supposed to be."""
+
+
+def sniff(path: Path) -> str | None:
+    """'video' or 'image' from the file's magic bytes, else None. The extension and the server's say-so are ignored."""
+    with open(path, "rb") as f:
+        head = f.read(16)
+    if head[4:8] == b"ftyp" or head[:4] == b"\x1a\x45\xdf\xa3":  # mp4/mov, webm/mkv
+        return "video"
+    if head[:3] == b"\xff\xd8\xff" or head[:8] == b"\x89PNG\r\n\x1a\n" or (head[:4] == b"RIFF" and head[8:12] == b"WEBP"):
+        return "image"
+    return None
+
+
+def require_kind(path: Path, kind: str) -> None:
+    """Refuse text playlists (m3u8, concat), scripts and anything else that is not really `kind` before ffmpeg sees it."""
+    got = sniff(path)
+    if got != kind:
+        raise UnsafeMedia(f"downloaded file is not a {kind} (looks like {got or 'something else'}); refused")
+
+
+# ffprobe/ffmpeg must only read the one local file: a playlist inside it could name other files or hosts
+LOCAL_ONLY = ["-protocol_whitelist", "file,pipe"]
+
+
 def has_audio(path: Path) -> bool:
     """True if the file has at least one audio stream (IG strips muted-song audio entirely)."""
     proc = run_timed(
-        ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+        ["ffprobe", *LOCAL_ONLY, "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
          "-of", "csv=p=0", str(path)],
         capture_output=True, text=True, env=clean_env(),
     )
@@ -83,7 +109,7 @@ def _num(x) -> float | None:
 
 def probe(path: Path) -> Probe:
     proc = run_timed(
-        ["ffprobe", "-v", "error", "-print_format", "json", "-show_format", "-show_streams", str(path)],
+        ["ffprobe", *LOCAL_ONLY, "-v", "error", "-print_format", "json", "-show_format", "-show_streams", str(path)],
         capture_output=True, text=True, env=clean_env(),
     )
     if proc.returncode != 0:

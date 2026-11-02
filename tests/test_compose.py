@@ -136,13 +136,13 @@ def test_shapes_cover_the_box():
 def test_every_template_renders_and_lists_its_slots():
     names = {t["name"] for t in C.list_templates()}
     assert names == {"meme_frame", "sticker_frame", "brag_collage", "popart_cutout", "slop_card", "legend", "explainer",
-                     "scrapbook", "series", "list", "lecture", "lecture_card"}
+                     "scrapbook", "series", "list", "lecture", "lecture_card", "desktop_caption", "desktop_reel"}
     for t in C.list_templates():
         assert t["slots"] and all("default" in s and s.get("doc") for s in t["slots"].values())
         im = C.render(C.load_template(t["name"], {"cutout": False} if "cutout" in t["slots"] else {}), [photo()], 1,
                       mask_fn=mask_of())
         # a reel style's clip window is a transparent hole (the video fills it); every other template is opaque
-        assert im.size[0] == 1080 and (im.getchannel("A").getextrema()[0] == 255 or t["reel"]), t["name"]
+        assert im.size[0] == C.load_template(t["name"], {}).canvas.w and (im.getchannel("A").getextrema()[0] == 255 or t["reel"]), t["name"]
 
 
 def test_layout_and_template_reject_unknowns():

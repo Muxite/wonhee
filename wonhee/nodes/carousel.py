@@ -18,6 +18,7 @@ from wonhee.edit.text import Preset as TextPreset
 from wonhee.nodes import registry
 from wonhee.nodes.base import Node
 from wonhee.nodes.images import Images, Slide, load_images, save_images
+from wonhee.nodes.text import TextStyle, style_kwargs
 from wonhee.fsutil import run_timed
 from wonhee.procenv import clean_env
 
@@ -32,8 +33,9 @@ class CarouselParams(BaseModel):
     grain: int | None = Field(default=None, ge=0, le=60)
     datestamp: str | None = Field(default=None, pattern=r"^[0-9' .:/-]{1,20}$")
     texts: list[str | None] = Field(default_factory=list, max_length=40)  # per input photo; overrides manifest text
-    text_preset: TextPreset = "outline"
-    text_position: Position = "lower"
+    text_preset: TextPreset = "outline"  # outline | band | script | sticker
+    text_position: Position = "lower"  # overridden by text_style.at when that is set
+    text_style: TextStyle = Field(default_factory=TextStyle)  # the same font, colour, box and placement knobs as text_image
     text_slide: Literal["first", "last"] = "last"  # which slide of a spanning photo gets its text
 
 
@@ -83,7 +85,7 @@ def carousel_fn(ctx, inputs, p: CarouselParams) -> dict[str, str]:
             with Image.open(path) as im:
                 im = im.convert("RGB")
                 if caption:
-                    im = draw_on(im, TextSpec(caption, p.text_preset, p.text_position))
+                    im = draw_on(im, TextSpec(caption, p.text_preset, p.text_position, **style_kwargs(p.text_style)))
                 out = tmpd / f"slide{i:03d}.jpg"
                 im.save(out, quality=95, subsampling=0)
             items.append(Slide(sha=repo.save_file(ctx.conn, d, out, "image", "image/jpeg")))

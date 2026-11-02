@@ -86,3 +86,32 @@ def test_too_many_slides_is_flagged(conn, settings, tmp_path):
         Image.new("RGB", (100, 125), (i * 10, 0, 0)).save(d / f"{i}.jpg")
     rid, _ = service.node_run(conn, settings, fake_deps(), "carousel", {"images": str(d)}, {"size": "200x250"})
     assert "TOO_MANY_SLIDES" in flags(conn, rid, "carousel")
+
+
+def test_text_style_reaches_the_caption(conn, settings, tmp_path):
+    from wonhee.nodes.text import TextStyle, style_kwargs
+    from wonhee.edit.text import TextSpec
+    from wonhee.nodes.carousel import CarouselParams
+    import pytest
+    from pydantic import ValidationError
+    assert style_kwargs(TextStyle()) == dict(role=None, colours=None, align="center", tracking_em=0.0, line_height=None,
+                                             box="none", box_colour=None, box_pad_em=0.25, box_radius_em=None,
+                                             stroke_em=None, slant=0.0, drop=0.06, at=None)
+    assert TextSpec("c", "outline", "lower", **style_kwargs(TextStyle())) == TextSpec("c", "outline", "lower")
+    with pytest.raises(ValidationError):
+        CarouselParams(text_style={"bogus": 1})
+
+    d = _photos(tmp_path)
+    base = {"span": False, "texts": ["Q4 site visit", None, None]}
+    plain_rid, _ = service.node_run(conn, settings, fake_deps(), "carousel", {"images": str(d)}, base)
+    styled = dict(base, text_style={"box": "pill", "box_colour": "#ff0000", "role": "caption_bold"})
+    styled_rid, _ = service.node_run(conn, settings, fake_deps(), "carousel", {"images": str(d)}, styled)
+    a = load_images(settings.media_dir, out(conn, plain_rid, "carousel", "images")).items
+    b = load_images(settings.media_dir, out(conn, styled_rid, "carousel", "images")).items
+    first_a = Image.open(path_for(settings.media_dir, a[0].sha)).convert("RGB")
+    first_b = Image.open(path_for(settings.media_dir, b[0].sha)).convert("RGB")
+    assert first_a.tobytes() != first_b.tobytes()  # the caption changed
+    reddish = sum(1 for r, g, b in first_b.get_flattened_data() if r > 200 and g < 60 and b < 60)  # JPEG: not exact
+    assert reddish > 1000  # and its box is drawn
+    assert ImageStat.Stat(Image.open(path_for(settings.media_dir, a[1].sha))).mean == \
+        ImageStat.Stat(Image.open(path_for(settings.media_dir, b[1].sha))).mean  # no caption, no change

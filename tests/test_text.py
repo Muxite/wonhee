@@ -220,3 +220,82 @@ def test_new_weight_roles_resolve_and_differ():
     w = lambda r: T.font_for(r, 60).getlength("Weights")
     assert w("ui") > w("ui_medium") and w("caption_bold") > w("caption")
     assert T.font_for("numeral", 60).getlength("123") > 0
+
+
+# ---- node-level knobs (nodes/text.py): every TextSpec knob reachable from text_image / text_video --------------------
+
+def test_node_defaults_map_to_the_plain_spec():
+    from wonhee.nodes.text import TextParams, _spec
+    assert _spec(TextParams(text="hi")) == TextSpec("hi", "outline", "upper", None, 0.84, "dark")
+
+
+def test_node_rejects_unknown_and_out_of_range_knobs():
+    from pydantic import ValidationError
+    from wonhee.nodes.text import TextParams
+    for bad in (dict(bogus=1), dict(tracking_em=0.5), dict(role="comic"), dict(at=(1.5, 0.5)), dict(box="blob"),
+                dict(slant=45), dict(colours=[]), dict(stroke_em=0.3), dict(line_height=3)):
+        with pytest.raises(ValidationError):
+            TextParams(text="x", **bad)
+
+
+def test_node_knobs_reach_the_spec():
+    from wonhee.nodes.text import TextParams, VideoTextParams, _spec
+    s = _spec(TextParams(text="x", role="caption", colours=["#00ff00", "#ff00ff"], align="left", tracking_em=0.1,
+                         line_height=1.2, box="paper", box_colour="#123456", box_pad_em=0.4, box_radius_em=0.5,
+                         stroke_em=0.02, slant=5, drop=0.1, at=(0.3, 0.6)))
+    assert (s.role, s.colours, s.align, s.tracking_em, s.line_height, s.box, s.box_colour, s.box_pad_em,
+            s.box_radius_em, s.stroke_em, s.slant, s.drop, s.at) == (
+        "caption", ("#00ff00", "#ff00ff"), "left", 0.1, 1.2, "paper", "#123456", 0.4, 0.5, 0.02, 5, 0.1, (0.3, 0.6))
+    assert _spec(VideoTextParams(text="x", box="pill")).box == "pill"
+
+
+def test_node_sticker_preset_renders():
+    from wonhee.nodes.text import TextParams, _spec
+    assert render_layer(_spec(TextParams(text="POP", preset="sticker")), (540, 960)).getbbox() is not None
+
+
+def test_node_box_knob_draws_a_filled_region():
+    from wonhee.nodes.text import TextParams, _spec
+    bare = render_layer(_spec(TextParams(text="Boxed", position="center")), (540, 960))
+    boxed = render_layer(_spec(TextParams(text="Boxed", position="center", box="pill", box_colour="#ff0000")), (540, 960))
+    assert sum(1 for p in boxed.get_flattened_data() if p == (255, 0, 0, 255)) > 1000
+    assert _ink_width(boxed) > _ink_width(bare)
+
+
+def test_node_role_changes_glyph_widths():
+    from wonhee.nodes.text import TextParams, _spec
+    w = lambda role: _ink_width(render_layer(_spec(TextParams(text="Glyph widths", role=role)), (1080, 1920)))  # noqa: E731
+    assert len({w(None), w("editorial"), w("mono")}) == 3
+
+
+def test_node_colours_set_fill_and_stroke():
+    from wonhee.nodes.text import TextParams, _spec
+    px = set(render_layer(_spec(TextParams(text="Colour", colours=["#00ff00", "#ff00ff"])), (540, 960)).get_flattened_data())
+    assert (0, 255, 0, 255) in px and (255, 0, 255, 255) in px
+
+
+@pytest.mark.parametrize("at", [(0.3, 0.5), (0.7, 0.4), (0.5, 0.6)])
+def test_at_puts_the_block_centre_on_the_point(at):
+    W, H = 540, 960
+    x0, y0, x1, y1 = render_layer(TextSpec("short line", at=at), (W, H)).getbbox()
+    assert abs((x0 + x1) / 2 - at[0] * W) <= 3 and abs((y0 + y1) / 2 - at[1] * H) <= 1
+
+
+def test_at_overrides_position_and_none_keeps_it():
+    W, H = 540, 960
+    a = render_layer(TextSpec("short line", "outline", "bottom", at=(0.5, 0.4)), (W, H)).getbbox()
+    assert abs((a[1] + a[3]) / 2 - 0.4 * H) <= 1
+    assert render_layer(TextSpec("short line", position="bottom"), (W, H)).getbbox() != a
+
+
+def test_at_is_clamped_into_the_safe_band():
+    W, H = 540, 960
+    assert render_layer(TextSpec("x", at=(0.5, 0.0)), (W, H)).getbbox()[1] >= H * 0.12 - 1
+    assert render_layer(TextSpec("x", at=(0.5, 1.0)), (W, H)).getbbox()[3] <= H * 0.76 + 1
+    assert render_layer(TextSpec("x", at=(1.0, 0.5)), (W, H)).getbbox()[2] <= W * 0.98 + 1
+    assert render_layer(TextSpec("x", at=(0.0, 0.5)), (W, H)).getbbox()[0] >= W * 0.02 - 1
+
+
+def test_at_out_of_unit_square_is_rejected():
+    with pytest.raises(ValueError):
+        TextSpec("x", at=(1.2, 0.5))

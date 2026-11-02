@@ -1,0 +1,125 @@
+{
+  "doc": "Wonhee finishes a Stagecraft desktop capture: simple caption above the complete contained clip. No speech or model required.",
+  "reel": {
+    "summary": "CPU; persistent caption above uncropped desktop. make_submit: caption=\"copy\" or caption_lines=[hook,metric,proof,caveat]. Brief is context only.",
+    "words": false
+  },
+  "params": {
+    "tighten": false
+  },
+  "slots": {
+    "title": {
+      "default": "",
+      "doc": "the creator's simple caption above the desktop capture"
+    },
+    "bg": {
+      "default": "#080d12",
+      "doc": "canvas background colour"
+    },
+    "metric": {
+      "default": "",
+      "doc": "short prominent metric or technical claim"
+    },
+    "proof": {
+      "default": "",
+      "doc": "short measurement scope / evidence"
+    },
+    "caveat": {
+      "default": "",
+      "doc": "short qualification, always visible"
+    }
+  },
+  "layout": {
+    "canvas": {
+      "w": 1000,
+      "h": 1600,
+      "bg": "slot:bg"
+    },
+    "palette": "ink",
+    "layers": [
+      {
+        "type": "photo",
+        "src": "clip",
+        "clip_fit": "contain",
+        "box": {
+          "x": 0.02,
+          "y": 0.43,
+          "w": 0.96,
+          "h": 0.375
+        }
+      },
+      {
+        "type": "text",
+        "content": "slot:title",
+        "preset": "outline",
+        "role": "headline",
+        "size_frac": 0.05,
+        "colour": "#edf8f7",
+        "stroke_em": 0,
+        "line_height": 1.05,
+        "align": "left",
+        "box": {
+          "x": 0.07,
+          "y": 0.065,
+          "w": 0.86,
+          "h": 0.095
+        },
+        "min_size_px": 32
+      },
+      {
+        "type": "text",
+        "content": "slot:metric",
+        "preset": "outline",
+        "role": "numeral",
+        "size_frac": 0.039,
+        "colour": "#70f3df",
+        "stroke_em": 0,
+        "line_height": 1.05,
+        "align": "left",
+        "box": {
+          "x": 0.07,
+          "y": 0.17,
+          "w": 0.86,
+          "h": 0.105
+        },
+        "min_size_px": 32
+      },
+      {
+        "type": "text",
+        "content": "slot:proof",
+        "preset": "outline",
+        "role": "sans",
+        "size_frac": 0.025,
+        "colour": "#edf8f7",
+        "stroke_em": 0,
+        "line_height": 1.05,
+        "align": "left",
+        "box": {
+          "x": 0.07,
+          "y": 0.29,
+          "w": 0.86,
+          "h": 0.055
+        },
+        "min_size_px": 32
+      },
+      {
+        "type": "text",
+        "content": "slot:caveat",
+        "preset": "outline",
+        "role": "mono",
+        "size_frac": 0.021,
+        "colour": "#afc5ce",
+        "stroke_em": 0,
+        "line_height": 1.05,
+        "align": "left",
+        "box": {
+          "x": 0.07,
+          "y": 0.355,
+          "w": 0.86,
+          "h": 0.06
+        },
+        "min_size_px": 32
+      }
+    ]
+  }
+}

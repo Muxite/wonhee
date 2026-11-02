@@ -110,6 +110,7 @@ class Layer(BaseModel):
     items: list[str] | None = None  # checklist rows
     preset: Literal["outline", "band", "script", "sticker"] | None = None
     size_frac: float | None = Field(default=None, gt=0.005, le=0.4)  # of the canvas height
+    min_size_px: int = Field(default=10, ge=10, le=200)
     align: Literal["left", "center", "right"] = "center"
     colour: str | None = None  # text fill (or the band colour)
     stroke: list[str] | None = None  # sticker preset: inner and outer stroke colours
@@ -650,7 +651,8 @@ def text_spec(ly: Layer, pal: list[str], content: str, preset: str | None = None
                       "light" if (ly.colour or "").lower() in ("#000000", "black") else "dark", cols, ly.slant, 0.06,
                       ly.align, role=ly.role, tracking_em=ly.tracking_em, line_height=ly.line_height, box=ly.bg_box,
                       box_colour="#%02x%02x%02x%02x" % colour(ly.bg_colour, pal) if ly.bg_colour else None,
-                      box_pad_em=ly.bg_pad_em, box_radius_em=ly.bg_radius_em, stroke_em=ly.stroke_em)
+                      box_pad_em=ly.bg_pad_em, box_radius_em=ly.bg_radius_em, stroke_em=ly.stroke_em,
+                      min_size_px=ly.min_size_px)
 
 
 def backed_block(spec: T.TextSpec, size: tuple[int, int], ref_h: int) -> Image.Image:
@@ -835,7 +837,23 @@ def load_template(name: str, slots: dict | None = None) -> Layout:
     if unknown:
         raise ValueError(f"template '{name}' has no slot(s) {sorted(unknown)}; slots: {sorted(declared)}")
     merged = {k: v.get("default") for k, v in declared.items()} | given
-    return Layout.model_validate(_fill_slots(d["layout"], merged))
+    if name in {"desktop_caption", "desktop_reel"} and not any(merged.get(k) for k in ("metric", "proof", "caveat")):
+        # A single caption owns the full upper area; hierarchical copy has separate boxes.
+        title = d["layout"]["layers"][1]
+        title["box"] = ({"x": .055, "y": .12, "w": .89, "h": .11} if name == "desktop_reel"
+                        else {"x": 0.07, "y": 0.065, "w": 0.86, "h": 0.32})
+        title["size_frac"] = 0.033
+        title["role"] = "caption"
+    layout = Layout.model_validate(_fill_slots(d["layout"], merged))
+    if name in {"desktop_caption", "desktop_reel"}:
+        for ly in layout.layers:
+            if ly.type == "text" and ly.content:
+                if not isinstance(ly.content, str) or len(ly.content) > 1000:
+                    raise ValueError("caption slots must contain bounded text")
+                T.render_block(text_spec(ly, palette_of(layout), ly.content),
+                               (round(ly.box.w * layout.canvas.w), round(ly.box.h * layout.canvas.h)),
+                               layout.canvas.h)
+    return layout
 
 
 # ---- captions (frame_video) --------------------------------------------------------------------------------------

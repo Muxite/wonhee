@@ -116,7 +116,14 @@ class TextSpec:
     # stroke_em: outline width in em (0..0.15) for outline/band/script text; None = the preset's own (a box defaults to 0).
     stroke_em: float | None = None
 
+    min_size_px: int = 10  # bounded finishing copy must stay readable
+    # at: the block's exact centre as (x, y) fractions of the frame, overriding `position`; clamped into the safe band
+    # and the 2% margin. None (the default) keeps the position's anchor and centres horizontally.
+    at: tuple[float, float] | None = None
+
     def __post_init__(self):
+        if self.at is not None and not all(0 <= v <= 1 for v in self.at):
+            raise ValueError(f"at {self.at} outside the unit square")
         if self.role is not None and self.role not in ROLES:
             raise ValueError(f"unknown font role '{self.role}'; known: {', '.join(ROLES)}")
         if not -0.1 <= self.tracking_em <= 0.2:
@@ -429,7 +436,9 @@ def _place(spec: TextSpec, size: tuple[int, int]):
     lines, px = _render_lines(spec, size)
     gap = _line_gap(spec, px)
     block_h = sum(l.height for l in lines) + gap * (len(lines) - 1)
-    if spec.position == "top":
+    if spec.at is not None:  # an exact centre overrides the position; the clamps below still apply
+        y0 = round(H * spec.at[1] - block_h / 2)
+    elif spec.position == "top":
         y0 = round(H * SAFE_TOP)
     elif spec.position == "bottom":
         y0 = round(H * SAFE_BOTTOM) - block_h
@@ -455,9 +464,15 @@ def render_layer(spec: TextSpec, size: tuple[int, int]) -> Image.Image:
         pad = round(px * 0.55)
         colour = (0, 0, 0, 235) if spec.band == "dark" else (255, 255, 255, 240)
         ImageDraw.Draw(layer).rectangle((0, y0 - pad, W, y0 + block_h + pad), fill=colour)
+    if spec.at is None:
+        xs = [max(0, (W - l.width) // 2) for l in lines]
+    else:  # the block (widest line) is centred on at[0], then kept inside the same 2% margin as the height
+        bw, m = max(l.width for l in lines), round(W * 0.02)
+        bx = max(m, min(round(W * spec.at[0] - bw / 2), W - m - bw))
+        xs = [bx + (bw - l.width) // 2 for l in lines]
     y = y0
-    for l in lines:
-        layer.alpha_composite(l, (max(0, (W - l.width) // 2), y))
+    for l, x in zip(lines, xs):
+        layer.alpha_composite(l, (x, y))
         y += l.height + gap
     return layer
 
@@ -484,14 +499,18 @@ def render_block(spec: TextSpec, size: tuple[int, int], ref_h: int | None = None
     for _ in range(40):
         sp = replace(spec, size_frac=frac, width_frac=1.0)
         px = max(10, round(ref * frac))
+        if px < spec.min_size_px:
+            raise ValueError(f"caption cannot fit at {spec.min_size_px}px; shorten the copy")
         lines, px = _render_lines(replace(sp, width_frac=max(0.2, 1 - k * px * 1.5 / max(W, 1))), (W, ref))
         gap = _line_gap(sp, px)
         block_h = sum(l.height for l in lines) + gap * max(0, len(lines) - 1)
         if lines and max(l.width for l in lines) <= W and block_h <= H:
             break
-        if px <= 10:
+        if px <= spec.min_size_px:
+            if spec.min_size_px > 10:
+                raise ValueError("caption cannot fit; shorten the copy")
             break
-        frac *= 0.93
+        frac = max(spec.min_size_px / ref, frac * 0.93)
     y = max(0, (H - block_h) // 2)
     for l in lines:
         x = {"left": 0, "right": W - l.width}.get(spec.align, (W - l.width) // 2)
