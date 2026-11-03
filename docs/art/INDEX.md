@@ -1,6 +1,6 @@
 # Art effect index
 
-Total: 188 effects.
+Total: 201 effects.
 
 Generate: `PYTHONPATH=. /home/muk/projects/wonhee/.venv/bin/python -m wonhee.art.catalog --out docs/art/INDEX.md`
 
@@ -12,18 +12,18 @@ Generate: `PYTHONPATH=. /home/muk/projects/wonhee/.venv/bin/python -m wonhee.art
 | contour | 5 |
 | data | 6 |
 | dither | 4 |
-| dots | 12 |
-| feature | 17 |
+| dots | 16 |
+| feature | 18 |
 | grade | 36 |
-| graph | 22 |
+| graph | 28 |
 | layers | 2 |
-| light | 14 |
+| light | 15 |
 | micro | 6 |
 | motion | 5 |
 | multichan | 5 |
 | nature | 5 |
 | optics | 4 |
-| physics | 15 |
+| physics | 16 |
 | print | 5 |
 | region | 5 |
 | swiss | 3 |
@@ -106,6 +106,10 @@ Generate: `PYTHONPATH=. /home/muk/projects/wonhee/.venv/bin/python -m wonhee.art
 | dots-rings | dots, polar, rings, ripple, all-over | dots-rings: several systems of polar dot rings spread over the frame (a | centers=7 — number of ring systems; pitch=0.02 — ring spacing, fraction of width; pulse=3.2 — ring cycles of the size wave; shape='round' — round \| square \| diamond | data |
 | dots-stipple | dots, stipple, voronoi, source, all-over | dots-stipple: weighted Voronoi stipple (Lloyd-relaxed blue-noise dots) of | dots=5500 — number of dots; size=0.42 — dot radius as fraction of local spacing; contrast=1.3 — density contrast (gamma); invert=False — dense where the field is dark | source, data |
 | dots-word | dots, text, led, lettering, all-over | dots-word: dot-matrix lettering mosaic. The text is rasterised with the | text='WONHEE' — word to set (or ctx.data str / list of str); cols=62 — dots across the frame; gap=4 — blank columns between repeats; shape='round' — round \| square \| diamond; bands=0 — text bands (0 = as many as fit) | data |
+| proj-euglena-bench | euglena, benchmark, heatmap, data, all-over, project | proj-euglena-bench: the real euglena benchmark (38 tests x 9 model/variant | mode='heat' — heat \| runs \| skyline \| scatter; ramp='magma' — magma \| ember \| cyan; col_w=0.19 — heat: cell width, fraction of frame width; row_h=0.068 — heat: cell height, fraction of frame height; x0=0.6 — heat: first column offset in cells; y0=3.3 — heat: first row offset in cells; gap=2.0 — gap px; order='data' — data \| mean (rows sorted by mean score); grain=0.03 — per-cell texture | none |
+| proj-ledger-spans | project, text, bars, all-over | proj-ledger-spans: Ledger's real source windows as an all-over field of word bars. | pitch=0.036 — row pitch, fraction of height; cw=0.0085 — bar width per character, fraction of width; para_gap=0.35 — extra blank fraction of a row between paragraphs; glow=7 — accent glow sigma px | data |
+| proj-trainnet-review | dots, voronoi, rings, data, all-over, project | proj-trainnet-review: TrainNet v2's review-repair pass as a mosaic. | pitch=0.0105 — dot pitch, fraction of width; ring=1.0 — ring size multiplier; gap=3.0 — gap between cells, px at 1500 wide; glyph='ring' — ring \| box (detection boxes); lattice='hex' — hex \| square; shape='round' — round \| square | data |
+| proj-wordle-duel | dots, wordle, tiles, project, all-over | proj-wordle-duel: Wordle feedback tiles as a dot-matrix mosaic, built as duels. | d=0.0078 — dot pitch, fraction of width; hue=135 — green hue; gold=0.16 — gold weight; rows=6 — guesses per board | data |
 
 ## feature
 
@@ -128,6 +132,7 @@ Generate: `PYTHONPATH=. /home/muk/projects/wonhee/.venv/bin/python -m wonhee.art
 | feature-superpixel-mosaic | source, superpixels, mosaic, all-over, flat | SLIC-like superpixels of the source, each flooded with its mean tone | n=420 — superpixel count; levels=7 — tone levels in the palette; seam=2.0 — seam width px at 1500 wide; compact=14.0 — SLIC compactness (higher = blockier); color='palette' — palette \| graded (OKLCH-graded source colours); crop='feature' — how a source of another aspect is cropped: feature (by detail) \| center; zoom=0.0 — 0 = auto; 0.3-0.9 forces a crop of that fraction of the frame-fitting window, centred on the densest region (use on screenshots with empty margins); local=0.8 — 0..1 local-contrast equalisation of the source tone (spreads detail over the whole frame); hue_from_source=False — re-key the palette to the source's dominant hue (keeps role lightnesses) | none |
 | feature-thermal | source, thermal, heatmap, all-over, isotherms | False-colour thermal camera look in ONE hue family: tone runs through the | isotherms=10 — number of isotherm lines; marks='8x5' — measurement marks as COLSxROWS (one per cell, at the local peak; '0x0' off); smooth=2.0 — tone smoothing px; crop='feature' — how a source of another aspect is cropped: feature (by detail) \| center; zoom=0.0 — 0 = auto; 0.3-0.9 forces a crop of that fraction of the frame-fitting window, centred on the densest region (use on screenshots with empty margins); local=0.8 — 0..1 local-contrast equalisation of the source tone (spreads detail over the whole frame); hue_from_source=False — re-key the palette to the source's dominant hue (keeps role lightnesses) | none |
 | feature-wave-field | source, wave, physics, simulation, all-over, medium | The picture as a wave medium. Luminance sets the local wave speed | sources=5 — point sources on a jittered grid; steps=130 — time steps; scale=3 — sim downscale; medium=0.5 — 0..1 how strongly image luminance bends the waves (wave speed); bands=2.5 — interference band density; imprint=1.0 — 0..1 initial condition: the image's high-pass detail is the starting disturbance; show=0.6 — 0..1 source tone mixed into the picture so the subject reads; crop='feature' — how a source of another aspect is cropped: feature (by detail) \| center; zoom=0.0 — 0 = auto; 0.3-0.9 forces a crop of that fraction of the frame-fitting window, centred on the densest region (use on screenshots with empty margins); local=0.8 — 0..1 local-contrast equalisation of the source tone (spreads detail over the whole frame); hue_from_source=False — re-key the palette to the source's dominant hue (keeps role lightnesses) | none |
+| proj-filedex-treemap | filedex, treemap, all-over, real-data, file-tree | FileDex project effects: the two pictures a semantic file search is made of. | gap=0.003 — tile gap, fraction of width; bleed=0.03 — layout overscan beyond the frame; round=0.22 — tile corner radius, fraction of tile; paths=1 — draw the query result path (0 = tiles only); dim=1.0 — tile lightness multiplier toward canvas | data |
 
 ## grade
 
@@ -196,6 +201,12 @@ Generate: `PYTHONPATH=. /home/muk/projects/wonhee/.venv/bin/python -m wonhee.art
 | graph-ring-spiral | ring, graph, all-over, spiral, buffer | Buffer laid along a growing spiral whose centre sits off the frame corner; cells are tangent-aligned squares that grow with radius, so detail is spread. ctx.data: {"values","head"}. | arms=1 — spiral arms; pitch=0.2 — radial gain per turn (fraction of frame height) | data |
 | graph-ring-wheel | ring, graph, all-over, wheel, buffer | Concentric ring buffers of a huge wheel whose hub is off the frame: cells sweep across the frame as stacked arcs. One head per ring. ctx.data: {"values","head"}. | rings=7 — concentric buffers; thick=0.075 — ring thickness / frame width | data |
 | graph-skiplist | structure, graph, all-over, skiplist | Skip list: towers of random height joined by express lanes per level; the accent is the classic search path, a staircase from the top-left to the bottom-right across the whole frame. ctx.data: ignored. | levels=7 — levels; towers=26 — towers across; p=0.58 — promotion probability | data |
+| proj-autospotcv-embedding | embedding, clusters, all-over, project | data: optional (x, y[, w]) cluster centres in 0..1. Synthetic and seeded otherwise. | clusters=30 — identity clusters (jittered grid, bleeds off the frame); points=60 — points per cluster; tether=0.8 — fraction of points with a pull tether; spread=0.23 — cluster radius as a fraction of the cell; voronoi=0.5 — boundary line strength | none |
+| proj-awork-pixelpipe | project, awork, dag, pixel-waves, all-over | awork card image: quadtree pixel waves with the project's real pipeline DAG tiled across the frame. | rows=3 — tiled DAG bands; cell=0.06 — pixel-wave cell / width; depth=2 — quartering levels; edge=3.4 — edge width px at 1500; node=0.3 — node radius / band height share per row slot; bg_alpha=1.0 — pixel field strength; accent_hue=28.0 — coral accent hue (oklch deg); wave_deep=0.55 — tone of the pixel field's densest cells (teal) | source, data |
+| proj-dag-arcs | project, dag, plasma, light, all-over | proj-dag-arcs: the real Native DAG (ctx.data = nodes by job kind + parent edges from the euglena | tiles=3 — copies of the DAG across the frame (small scale); arc=7.0 — plasma jitter amplitude px; halo=9.0 — glow sigma px; big=1 — also draw a large dim copy behind (0/1) | data |
+| proj-filedex-embedding | filedex, embedding, all-over, real-data, similarity | FileDex project effects: the two pictures a semantic file search is made of. | links=3 — nearest neighbours linked per file; spread=1.0 — 0 = raw SVD positions, 1 = fully relaxed | data |
+| proj-moeka-traffic | graph, light, all-over, project, moeka, long-exposure | Moeka: message traffic on the real module graph. | max_nodes=110 — cap for real data; walks=170 — message walks; steps=9 — edges per walk; exposure=0.28 — light exposure; spread=0.85 — rank-equalisation of the force layout (even density) | data |
+| proj-nexus-sectors | knowledge-graph, graph, all-over, radial, project | NEXUS card image: the original DYNAMIC KNOWLEDGE GRAPH radial (news centre, entity sectors, market halo) re-tiled. | cell=330 — lattice pitch in px at 1500 wide; dots=2600 — dots per radial; spokes=170 — fine edges per radial | none |
 
 ## layers
 
@@ -220,6 +231,7 @@ Generate: `PYTHONPATH=. /home/muk/projects/wonhee/.venv/bin/python -m wonhee.art
 | lightning-dbm | lightning, physics, all-over, simulation, lichtenberg | Dielectric breakdown model. Poisson's equation (uniform background charge, periodic domain so there is no | seeds=15 — discharge roots on a jittered grid (they tile the frame); eta=2.2 — DBM exponent: growth ~ potential^eta (1 = bushy, 3+ = sparse stringy); cells=170 — simulation grid width in cells; fill=0.15 — fraction of grid cells the discharges may occupy; exposure=1.0 — exposure | none |
 | neon-circuit | neon, tubes, circuit, graph, all-over, data-driven | Neon tubing routed like PCB traces: random walks on a lattice that | traces=60 — number of tube traces (stratified over the frame); pitch=0.095 — routing lattice pitch as a fraction of frame height; length=7 — mean trace length in lattice steps; lit=0.8 — fraction of tubes that are powered (rest are dim glass); exposure=1.0 — exposure | none |
 | plasma-arcs | plasma, arcs, graph, all-over, electric, data-driven | Electric arcs between electrodes. Nodes (blue-noise spread, or real | nodes=46 — electrode count when no data is given (blue noise); exposures=5 — re-strikes of each arc (long exposure of a flickering arc); rough=0.16 — arc jaggedness relative to its length; keep=0.8 — fraction of Delaunay edges kept (shortest first); exposure=1.0 — exposure | none |
+| proj-nightcall-fleet | nightcall, ballistic, trails, all-over, physics | Real game physics in miniature: each ship is a particle with thrust, | ships=150 — ships (two teams) on a periodic arena; steps=420 — simulation ticks; drag=0.035 — linear drag per tick; thrust=0.16 — max thrust (px/tick^2 at 1500 wide); fire=0.016 — weapon-vector probability per ship per tick when in range; warp_scale=1.0 — scale of the warp fraction taken from ctx.data (3 levels x checkpoints) | data |
 | rain-shutter | rain, streaks, rolling-shutter, all-over, night | Night rain lit by lights, photographed with a rolling shutter. Falling | streaks=2600 — number of light streaks over all depth layers; shear=0.22 — rolling-shutter shear (horizontal px per row / row); wobble=14.0 — camera-shake wobble amplitude in px at 1500 wide; bands=0.3 — scan-line flicker banding 0..1; exposure=1.0 — exposure | none |
 | star-trails | stars, long-exposure, all-over, astro | Earth's rotation turns every star into a circular arc about the | stars=2600 — number of stars; arc=0.3 — exposure length as rotation angle in radians; pole=1.6 — pole distance in frame widths (outside the frame, so arcs cross evenly); exposure=1.0 — exposure | none |
 
@@ -291,6 +303,7 @@ Generate: `PYTHONPATH=. /home/muk/projects/wonhee/.venv/bin/python -m wonhee.art
 | physics-swift-hohenberg | reaction, physics, all-over, turing, convection, simulation | source: luminance sets the hex-vs-stripe parameter g (bright = hexagons). | pattern='mixed' — hex \| stripes \| mixed; wavelength=0.034 — pattern wavelength (fraction of frame height); r=0.35 — control parameter (distance above onset); steps=420 — time steps | none |
 | physics-vortex | fluid, physics, all-over, vortex, simulation | data: (x, y, w) in 0..1 = vortices (w = signed circulation). source: its luminance is the dye (recoloured through the palette), so the image is stirred and wound into spirals. | vortices=26 — number of vortices (jittered grid, mixed sign); steps=55 — time steps; stripes=14.0 — dye stripes per frame height; strength=1.0 — vortex strength (more = more winding); radius=0.085 — vortex core radius (fraction of height) | none |
 | physics-wavemedium | wave, physics, all-over, refraction, simulation | data: (x, y, w) points in 0..1 = sources (w amplitude). source: luminance IS the speed map (bright = fast). | sources=6 — point sources (jittered grid); contrast=1.1 — speed-map contrast (0 = homogeneous medium); wavelength=0.07 — mean wavelength (fraction of frame height); steps=700 — time steps; patch=0.2 — size of speed patches (fraction of height) | none |
+| proj-wavesim-field | wave, physics, all-over, simulation, wavesim | data: (x, y[, w]) sources in 0..1. Exact WaveSim stencil, zero border. | sources=7 — point sources when no data; steps=1400 — time steps; speed=0.4 — WaveSim speed (<= 0.5); wavelength=0.045 — wavelength (fraction of frame height); gain=1.5 — tanh gain; ramp='violet' — violet \| diverging; hue=305.0 — violet ramp body hue; energy=0.35 — mix of local wave energy into the glow | none |
 | wave-ripple | wave, physics, all-over, simulation | Reference effect: a 2D wave-equation ripple tank (the physics behind the | sources=7 — number of point sources (jittered grid); steps=260 — time steps before the still; freq=0.045 — source frequency (cycles per step); scale=4 — simulation downscale factor | none |
 
 ## print

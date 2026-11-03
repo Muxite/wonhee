@@ -25,10 +25,7 @@ def _size(s: str) -> tuple[int, int]:
 
 
 def _palette(s: str):
-    if s.startswith("hue:"):
-        _, hue, pol, har = (s.split(":") + ["dark", "analogous"])[:4]
-        return pal.make(float(hue), polarity=pol, harmony=har)
-    return pal.named(s)
+    return s   # compose resolves names and hue:H:polarity:harmony strings
 
 
 def main(argv=None) -> int:

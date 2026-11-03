@@ -36,6 +36,8 @@ def ramp(name, v):
 
 def _data(ctx):
     d = ctx.data
+    if d is None:
+        raise ValueError("proj-euglena-bench requires ctx.data: a score matrix (38 x 9) or {'scores','costs'}")
     if isinstance(d, dict) and "scores" in d:
         return np.asarray(d["scores"], np.float32), np.asarray(d["costs"], np.float32)
     m = np.asarray(d["matrix"] if isinstance(d, dict) else d, np.float32)

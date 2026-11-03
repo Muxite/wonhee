@@ -14,6 +14,9 @@ def _palette(spec: Any) -> pal.Palette:
     if isinstance(spec, pal.Palette):
         return spec
     if isinstance(spec, str):
+        if spec.startswith("hue:"):   # hue:H[:polarity[:harmony]] e.g. hue:225:dark:analogous
+            parts = (spec.split(":") + ["dark", "analogous"])[:4]
+            return pal.make(float(parts[1]), polarity=parts[2], harmony=parts[3])
         return pal.named(spec)
     if isinstance(spec, dict):
         return pal.make(float(spec.get("hue", 40)), polarity=spec.get("polarity", "dark"), harmony=spec.get("harmony", "analogous"), three=bool(spec.get("three", False)))

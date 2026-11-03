@@ -42,3 +42,9 @@ def test_provenance_meta_flags_synthetic_data():
     assert meta2["synthetic"] is False
     _, meta3 = compose.render_effect("wave-ripple", size=(96, 64), seed=0, params={"steps": 20}, with_meta=True)
     assert "synthetic" not in meta3
+
+
+def test_hue_palette_strings_work_in_the_library_call():
+    from wonhee.art import compose
+    img = compose.render_effect("wave-ripple", size=(96, 64), seed=0, palette="hue:225:dark:analogous", params={"steps": 20})
+    assert img.shape == (64, 96, 3)
