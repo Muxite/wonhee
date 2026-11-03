@@ -71,3 +71,9 @@ def test_source_hook(name):
     base = compose.render_effect(name, size=(240, 160), seed=0, params=SMALL.get(name))
     with_s = compose.render_effect(name, size=(240, 160), seed=0, params=SMALL.get(name), source=src)
     assert with_s.shape == base.shape and not np.array_equal(base, with_s)
+
+
+def test_proj_wavesim_field_deterministic():
+    a = compose.render_effect("proj-wavesim-field", size=(240, 160), seed=3, params={"steps": 150})
+    b = compose.render_effect("proj-wavesim-field", size=(240, 160), seed=3, params={"steps": 150})
+    assert np.array_equal(a, b) and a.std() > 0.03
