@@ -1,58 +1,34 @@
-"""Project art: the colour rules from DESIGN.md › Project art › Colour, checked for every domain, polarity and harmony."""
-import itertools
-
-import pytest
-
-from wonhee.edit.viz import palette as pal
-
-CASES = list(itertools.product(sorted(pal.DOMAIN_HUE), ("light", "dark"), ("mono", "analogous", "complementary", "split")))
+import numpy as np
+from wonhee import art
+from wonhee.art import metrics, compose
 
 
-def _spread(hex_color: str) -> int:
-    ch = [int(hex_color[i:i + 2], 16) for i in (1, 3, 5)]
-    return max(ch) - min(ch)
+def test_registry_and_determinism():
+    assert "wave-ripple" in art.names()
+    a = compose.render_effect("wave-ripple", size=(300, 200), seed=1, params={"steps": 60, "scale": 4})
+    b = compose.render_effect("wave-ripple", size=(300, 200), seed=1, params={"steps": 60, "scale": 4})
+    c = compose.render_effect("wave-ripple", size=(300, 200), seed=2, params={"steps": 60, "scale": 4})
+    assert a.shape == (200, 300, 3) and a.dtype == np.float32
+    assert np.array_equal(a, b) and not np.array_equal(a, c)
 
 
-@pytest.mark.parametrize("domain,polarity,harmony", CASES)
-def test_roles_keep_the_lightness_rules(domain, polarity, harmony):
-    r = pal.for_domain(domain, polarity, harmony)
-    L = {k: pal.lightness(getattr(r, k)) for k in ("canvas", "structure", "edge", "accent", "ink")}
-    if polarity == "light":
-        assert .94 <= L["canvas"] <= .98
-    else:
-        assert .12 <= L["canvas"] <= .18
-    assert abs(L["structure"] - L["canvas"]) >= .25
-    assert abs(L["accent"] - L["canvas"]) >= .30
-    # edges sit closer to the canvas than the vertices they join, by 25-35% (±rounding)
-    ratio = abs(L["edge"] - L["canvas"]) / abs(L["structure"] - L["canvas"])
-    assert .62 <= ratio <= .78
-    assert r.canvas not in ("#000000", "#ffffff") and r.ink not in ("#000000", "#ffffff")
+def test_palette_roles_contrast():
+    p = art.make(40, polarity="dark")
+    from wonhee.art.palette import rgb_to_oklch
+    Lc, Ls, La = rgb_to_oklch(p.canvas)[0], rgb_to_oklch(p.structure)[0], rgb_to_oklch(p.accent)[0]
+    assert Ls - Lc >= 0.25 and La - Lc >= 0.30
 
 
-@pytest.mark.parametrize("polarity", ("light", "dark"))
-def test_canvas_is_a_tinted_neutral_and_accent_is_not(polarity):
-    r = pal.for_domain("compute", polarity)
-    assert 0 < _spread(r.canvas) <= 14  # near-neutral, but not pure grey: tinted toward the key hue
-    assert _spread(r.accent) >= 60
+def test_metrics_flag_a_focal_blob_and_pass_even_detail():
+    H, W = 400, 600
+    yy, xx = np.mgrid[0:H, 0:W]
+    blob = np.exp(-(((xx - W / 2) / 60) ** 2 + ((yy - H / 2) / 60) ** 2))[..., None].repeat(3, 2).astype(np.float32)
+    assert not metrics.analyze(blob).ok
+    rng = np.random.default_rng(0)
+    even = np.clip(0.5 + 0.4 * np.sin(xx / 7.0) * np.sin(yy / 9.0) + rng.normal(0, 0.02, (H, W)), 0, 1)[..., None].repeat(3, 2).astype(np.float32)
+    assert metrics.analyze(even).ok
 
 
-def test_editorial_stays_near_neutral():
-    assert _spread(pal.for_domain("editorial", "light").canvas) < _spread(pal.for_domain("compute", "light").canvas) + 1
-    assert _spread(pal.for_domain("editorial", "dark").structure) <= _spread(pal.for_domain("compute", "dark").structure)
-
-
-def test_gamut_clip_keeps_lightness():
-    # a very saturated blue at L .72 is outside sRGB; chroma shrinks, lightness must not move
-    assert abs(pal.lightness(pal.to_hex(.72, .35, 260)) - .72) < .02
-    assert abs(pal.lightness(pal.to_hex(.50, .05, 100)) - .50) < .01
-
-
-def test_split_tones_the_neutrals_cool_whatever_the_accent():
-    warm = pal.roles(60, "dark", "split")
-    cool = pal.roles(240, "dark", "split")
-    assert warm.canvas == cool.canvas and warm.structure == cool.structure
-
-
-def test_unknown_domain_is_refused():
-    with pytest.raises(ValueError, match="unknown art domain"):
-        pal.for_domain("vibes", "light")
+def test_recipe_layers():
+    img = compose.render_recipe({"size": [200, 140], "palette": "ember", "layers": [{"effect": "wave-ripple", "params": {"steps": 40, "scale": 4}, "opacity": 0.8}], "post": [{"op": "grain", "amount": 0.2}]})
+    assert img.shape == (140, 200, 3)
