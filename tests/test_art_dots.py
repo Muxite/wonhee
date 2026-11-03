@@ -106,3 +106,10 @@ def test_proj_euglena_bench_modes():
     for mode in ("heat", "runs", "skyline", "scatter"):
         a = compose.render_effect("proj-euglena-bench", size=(300, 200), seed=1, data=d, params={"mode": mode})
         assert a.shape == (200, 300, 3) and a.std() > 0.02 and a.min() >= 0 and a.max() <= 1
+
+def test_proj_ledger_spans_deterministic():
+    from wonhee.art import compose
+    d = {"lines": [{"words": [[4, 0], [6, 1], [3, 1], [8, 0]] * 8}]}
+    a = compose.render_effect("proj-ledger-spans", size=(300, 200), seed=1, palette="green-gold", data=d)
+    b = compose.render_effect("proj-ledger-spans", size=(300, 200), seed=1, palette="green-gold", data=d)
+    assert a.shape == (200, 300, 3) and np.allclose(a, b)

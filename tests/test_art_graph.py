@@ -107,3 +107,13 @@ def test_ring_and_structure_data_hooks():
     a = compose.render_effect("graph-ring-lanes", size=(240, 160), seed=0, data={"values": [0.9, 0.1, 0.5], "head": [0.2, 0.5, 0.8]})
     b = compose.render_effect("graph-ring-lanes", size=(240, 160), seed=0)
     assert not np.array_equal(a, b)
+
+
+def test_proj_dag_arcs_real_shape():
+    import numpy as np
+    from wonhee.art import compose
+    d = {"nodes": [{"id": "p", "group": "plan"}, {"id": "a", "group": "search"}, {"id": "b", "group": "visit", "weight": 0.4}],
+         "edges": [{"source": "p", "target": "a"}, {"source": "a", "target": "b"}]}
+    a = compose.render_effect("proj-dag-arcs", size=(300, 200), seed=2, palette="ultramarine", data=d, params={"tiles": 2})
+    b = compose.render_effect("proj-dag-arcs", size=(300, 200), seed=2, palette="ultramarine", data=d, params={"tiles": 2})
+    assert a.shape == (200, 300, 3) and np.allclose(a, b)
