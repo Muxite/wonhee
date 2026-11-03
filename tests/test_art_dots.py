@@ -98,3 +98,11 @@ def test_text_rasteriser():
     assert band.shape == (9, 50) and band[1:8].any() and not band[0].any()
     t = dk.text_matrix("Wonhee", font="ttf", rows=9)
     assert t.shape[0] == 9 and t.any()
+
+
+def test_proj_ledger_spans_deterministic():
+    from wonhee.art import compose
+    d = {"lines": [{"words": [[4, 0], [6, 1], [3, 1], [8, 0]] * 8}]}
+    a = compose.render_effect("proj-ledger-spans", size=(300, 200), seed=1, palette="green-gold", data=d)
+    b = compose.render_effect("proj-ledger-spans", size=(300, 200), seed=1, palette="green-gold", data=d)
+    assert a.shape == (200, 300, 3) and np.allclose(a, b)
