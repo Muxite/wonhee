@@ -122,3 +122,8 @@ def test_proj_nexus_sectors_runs_with_real_style_data():
     data = {"nodes": [{"id": f"n{i}", "group": i % 3} for i in range(9)], "edges": [{"source": "n0", "target": "n1"}]}
     a = compose.render_effect("proj-nexus-sectors", seed=1, size=(300, 200), palette="ember", data=data, params={"dots": 200, "spokes": 40})
     assert a.shape == (200, 300, 3) and a.std() > 0.02
+
+def test_proj_moeka_traffic():
+    a = compose.render_effect("proj-moeka-traffic", seed=1, size=(300, 200), palette="ember")
+    b = compose.render_effect("proj-moeka-traffic", seed=1, size=(300, 200), palette="ember")
+    assert a.shape == (200, 300, 3) and np.array_equal(a, b) and a.std() > 0.03 and a.min() >= 0 and a.max() <= 1
