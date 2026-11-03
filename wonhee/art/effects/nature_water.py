@@ -105,7 +105,8 @@ def plankton_ribbons(ctx):
     c = np.clip(c * (1 + fil * 0.55 * f2) + fil * 0.08 * f2 * c0.mean(), 0, 1)
     c = c ** 1.5
     dep = N.fbm(rng, sh, sw, sw * 0.35, octaves=2)
-    water = 0.05 + float(ctx.p("depth")) * 0.07 * (dep * 0.5 + 0.5) + 0.025 * f2
+    dep = np.clip(dep - dep.mean(), -1.5, 1.5)          # very large features on a tiny grid: remove the offset
+    water = 0.04 + float(ctx.p("depth")) * 0.05 * (dep * 0.4 + 0.6) + 0.02 * f2
     tt = np.clip(water + c * (0.95 - water), 0, 1)
     if mask is not None:
         tt = tt * (1 - mask) + mask * (0.2 + 0.05 * f2)

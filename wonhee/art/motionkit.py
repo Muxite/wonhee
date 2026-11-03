@@ -177,9 +177,9 @@ def effect_frames(ctx, name, size, n, t0, span, travel):
     out = []
     for i in range(n):
         t = t0 + span * (i / max(1, n - 1))
-        params = {"time": t * 6.0 * max(0.2, travel / 0.3)} if has_time else {}
+        params = {"time": t * 2.2 * min(1.6, max(0.3, travel / 0.3))} if has_time else {}
         if name == "nature-flow-wash":
-            params["time"] = t * 6.0
+            params["time"] = t * 2.2
         seed = ctx.seed if has_time else ctx.seed + i
         extra = {k: v for k, v in (ctx.p("effect_params", {}) or {}).items()}
         params.update(extra)
@@ -214,7 +214,8 @@ def sequence(ctx, max_w: int = 720) -> list[np.ndarray]:
     if scene == "orbs":
         return orbs_frames(ctx, size, max(n, 160), t0, span, travel * 2.6, int(ctx.p("bodies")))
     if scene in _SCENE_EFFECT or scene.startswith("effect:"):
-        size = (min(w, 480), max(8, int(round(min(w, 480) * H / W))))
+        size = (min(w, 400), max(8, int(round(min(w, 400) * H / W))))
+        n = min(n, 24)
     if scene in _SCENE_EFFECT:
         return effect_frames(ctx, _SCENE_EFFECT[scene], size, n, t0, span, travel)
     if scene.startswith("effect:"):
@@ -306,3 +307,10 @@ def motion_params(params: dict) -> dict:
         out.setdefault(k, v)
     out.setdefault("crop", N.SOURCE_PARAMS["crop"])
     return out
+
+
+def prefer_scene(ctx, scene: str) -> None:
+    """For effects whose look needs dense motion (slit-scan, frame differences,
+    flow trails): with scene=auto and no source, use ``scene`` instead of orbs."""
+    if str(ctx.p("scene")) == "auto" and ctx.source is None:
+        ctx.params["scene"] = scene

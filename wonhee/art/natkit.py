@@ -108,7 +108,7 @@ def noise(rng, h, w, sigma, sigma2=None, angle=0.0, normalise=True):
         y0, x0 = (d - h) // 2, (d - w) // 2
         n = n[y0:y0 + h, x0:x0 + w]
     if normalise:
-        n = n / (n.std() + 1e-9)
+        n = (n - n.mean()) / (n.std() + 1e-9)
     return np.ascontiguousarray(n, np.float32)
 
 

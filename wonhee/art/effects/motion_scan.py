@@ -34,6 +34,7 @@ def slit_scan(ctx):
     (a single column of every frame becomes one output column). The time map
     is a pure function of normalised position, so it applies unchanged to
     video. Broad structure, no fine streaks."""
+    M.prefer_scene(ctx, "plankton")
     mode = str(ctx.p("mode"))
     if mode == "slit":
         ctx.params["n_frames"] = max(int(ctx.p("n_frames")), 200)
@@ -89,6 +90,7 @@ def frame_diff(ctx):
     (a pan makes every edge a double-edge). Differs from feature-edge-glitch
     (single image). The denoise/floor/widen controls keep it clean and
     readable at 288x192."""
+    M.prefer_scene(ctx, "plankton")
     fr = M.sequence(ctx)
     n = len(fr)
     H, W = fr[0].shape[:2]
@@ -151,6 +153,7 @@ def flow_trails(ctx):
     smears left). The smear is forward and backward (symmetric shutter) with a
     tapered weight; `freeze` keeps a sharp frame under the blur. Colour is
     independent (photo or palette ramp). Runs on video unchanged."""
+    M.prefer_scene(ctx, "plankton")
     fr = M.sequence(ctx)
     n = len(fr)
     H, W = fr[0].shape[:2]
