@@ -125,3 +125,10 @@ def test_budget_1500():
     import time
     for n in ("data-heat-bleed", "data-terminal-panels", "multichan-composite"):
         t = time.time(); compose.render_effect(n, size=(1500, 1000)); assert time.time() - t < 8
+
+
+def test_data_effects_survive_tiny_sizes():
+    from wonhee.art.compose import render_effect
+    for name in ("data-cluster-matrix", "data-annotated-grow", "data-terminal-panels"):
+        img = render_effect(name, size=(96, 64), seed=0, params={"mode": "full"})
+        assert img.shape == (64, 96, 3)

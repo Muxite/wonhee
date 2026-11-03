@@ -456,6 +456,9 @@ class Overlay:
         self.d.text(xy, s, font=font(px), fill=self._c(rgb, a), anchor=anchor)
 
     def rect(self, x0, y0, x1, y1, fill=None, outline=None, w=1, a=1.0, radius=0):
+        # Tiny output sizes can give reversed extents; PIL requires x1>=x0, y1>=y0.
+        x0, x1 = min(x0, x1), max(x0, x1)
+        y0, y1 = min(y0, y1), max(y0, y1)
         kw = dict(fill=self._c(fill, a) if fill is not None else None, outline=self._c(outline, a) if outline is not None else None, width=w)
         if radius:
             self.d.rounded_rectangle([x0, y0, x1, y1], radius=radius, **kw)
@@ -471,10 +474,10 @@ class Overlay:
         for i in range(n):
             if vertical:
                 ya = y1 - (y1 - y0) * (i + 1) / n; yb = y1 - (y1 - y0) * i / n
-                self.d.rectangle([x0, ya, x1, yb], fill=self._c(ramp[i]))
+                self.d.rectangle([min(x0, x1), min(ya, yb), max(x0, x1), max(ya, yb)], fill=self._c(ramp[i]))
             else:
                 xa = x0 + (x1 - x0) * i / n; xb = x0 + (x1 - x0) * (i + 1) / n
-                self.d.rectangle([xa, y0, xb, y1], fill=self._c(ramp[i]))
+                self.d.rectangle([min(xa, xb), min(y0, y1), max(xa, xb), max(y0, y1)], fill=self._c(ramp[i]))
         self.rect(x0, y0, x1, y1, outline=ink, w=1, a=0.55)
         for k in range(ticks):
             f = k / max(1, ticks - 1)
