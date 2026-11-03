@@ -98,3 +98,11 @@ def test_text_rasteriser():
     assert band.shape == (9, 50) and band[1:8].any() and not band[0].any()
     t = dk.text_matrix("Wonhee", font="ttf", rows=9)
     assert t.shape[0] == 9 and t.any()
+
+
+def test_proj_euglena_bench_modes():
+    rng = np.random.default_rng(0)
+    d = {"scores": rng.random((38, 9, 3)).tolist(), "costs": (rng.random((38, 9, 3)) * 0.1 + 1e-4).tolist()}
+    for mode in ("heat", "runs", "skyline", "scatter"):
+        a = compose.render_effect("proj-euglena-bench", size=(300, 200), seed=1, data=d, params={"mode": mode})
+        assert a.shape == (200, 300, 3) and a.std() > 0.02 and a.min() >= 0 and a.max() <= 1
