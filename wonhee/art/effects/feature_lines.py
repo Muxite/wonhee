@@ -142,7 +142,7 @@ def ridge_lines(ctx):
 
 
 @effect("feature-line-scan", family="feature", tags=["source", "scanlines", "relief", "all-over"],
-        params=with_common({"lines": (56, "number of scan lines"), "amp": (2.2, "relief height in line pitches"),
+        params=with_common({"lines": (44, "number of scan lines"), "amp": (2.2, "relief height in line pitches"),
                             "smooth": (1.5, "tone smoothing (px at 1500 wide)")}))
 def line_scan(ctx):
     """Joy-division relief: the image is sliced into horizontal lines whose
@@ -172,10 +172,10 @@ def line_scan(ctx):
         seg_t = tv
         # draw coloured segments (per-sample colour)
         aw = (F.smoothstep(0.85, 1.0, seg_t) * 0.8)[:, None]
-        cols = P.body(0.6 + 0.4 * seg_t) * (1 - aw) + np.asarray(P.pal.accent) * aw
+        cols = P.body(0.8 + 0.2 * seg_t) * (1 - aw) + np.asarray(P.pal.accent) * aw
         for k in range(0, len(xs) - 1, 1):
             cv2.line(big, (int(pts[k, 0]), int(pts[k, 1])), (int(pts[k + 1, 0]), int(pts[k + 1, 1])), [float(c) for c in cols[k]],
-                     max(1, int(round(2.8 * s * ss))), cv2.LINE_AA)
+                     max(1, int(round(4.2 * s * ss))), cv2.LINE_AA)
     out = cv2.resize(big, (W, H), interpolation=cv2.INTER_AREA)
     return finish(P, out, 0.2, ctx.seed)
 
