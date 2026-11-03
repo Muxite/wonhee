@@ -26,9 +26,12 @@ WaveSim interference image. Both are all-over: detail everywhere, no hero spot.
 3. Deterministic in (params, seed, size, palette, source, data).
 4. Palette-driven: use `ctx.palette` roles (canvas, structure, structure2,
    accent, ramp). Changing the palette hue must give a good image.
-5. Colour discipline (OKLCH): one hue family covers most of the area;
-   contrast comes from lightness, not clashing hues; chroma bounded (rich, not
-   neon); no pure #000/#fff areas; no multi-hue full-field gradients.
+5. Colour discipline (OKLCH): contrast comes from lightness; chroma bounded
+   (rich, not neon); no pure #000/#fff areas; no muddy mid-lightness
+   multi-hue full-field gradients. A single dominant hue family is a good
+   default, but SEVERAL hue families in one image are allowed (owner,
+   2026-11-03: the sunset was one example): spectra, split complements, 3-4 hue
+   heatmaps, as long as the colours are arranged on purpose.
 6. Hooks for real material: `ctx.source` (an image), `ctx.data` (a graph,
    matrix, series, point set). Effects document what they accept.
 7. <= 8 s at 1500x1000 on CPU (numpy/scipy/cv2).
