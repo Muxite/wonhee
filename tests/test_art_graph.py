@@ -117,3 +117,8 @@ def test_proj_dag_arcs_real_shape():
     a = compose.render_effect("proj-dag-arcs", size=(300, 200), seed=2, palette="ultramarine", data=d, params={"tiles": 2})
     b = compose.render_effect("proj-dag-arcs", size=(300, 200), seed=2, palette="ultramarine", data=d, params={"tiles": 2})
     assert a.shape == (200, 300, 3) and np.allclose(a, b)
+
+def test_proj_nexus_sectors_runs_with_real_style_data():
+    data = {"nodes": [{"id": f"n{i}", "group": i % 3} for i in range(9)], "edges": [{"source": "n0", "target": "n1"}]}
+    a = compose.render_effect("proj-nexus-sectors", seed=1, size=(300, 200), palette="ember", data=data, params={"dots": 200, "spokes": 40})
+    assert a.shape == (200, 300, 3) and a.std() > 0.02
