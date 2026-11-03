@@ -107,3 +107,9 @@ def test_ring_and_structure_data_hooks():
     a = compose.render_effect("graph-ring-lanes", size=(240, 160), seed=0, data={"values": [0.9, 0.1, 0.5], "head": [0.2, 0.5, 0.8]})
     b = compose.render_effect("graph-ring-lanes", size=(240, 160), seed=0)
     assert not np.array_equal(a, b)
+
+
+def test_proj_moeka_traffic():
+    a = compose.render_effect("proj-moeka-traffic", seed=1, size=(300, 200), palette="ember")
+    b = compose.render_effect("proj-moeka-traffic", seed=1, size=(300, 200), palette="ember")
+    assert a.shape == (200, 300, 3) and np.array_equal(a, b) and a.std() > 0.03 and a.min() >= 0 and a.max() <= 1
