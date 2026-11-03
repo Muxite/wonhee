@@ -34,7 +34,7 @@ class ChromaParams(BaseModel):
     tolerance: float = Field(default=0.5, ge=0, le=1)
     softness: float = Field(default=0.5, ge=0, le=1)
     guard: str = Field(default="auto", description="auto, person or none")
-    fill: str = Field(default="cabin", description="cabin, matte or #rrggbb (used when no background is given)")
+    fill: str = Field(default="cabin", description="cabin, window, matte or #rrggbb (used when no background is given)")
     spill: float = Field(default=0.7, ge=0, le=1)
 
     @field_validator("backdrop")
@@ -54,8 +54,8 @@ class ChromaParams(BaseModel):
     @field_validator("fill")
     @classmethod
     def _fill(cls, v):
-        if v not in ("cabin", "matte") and not _HEX.match(v):
-            raise ValueError("fill must be cabin, matte or #rrggbb")
+        if v not in ("cabin", "window", "matte") and not _HEX.match(v):
+            raise ValueError("fill must be cabin, window, matte or #rrggbb")
         return v
 
 

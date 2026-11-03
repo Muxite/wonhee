@@ -160,6 +160,9 @@ class _Fill:
             from wonhee.edit import cabin
             self.cabin = cabin
             self.still = cabin.render(w, h)
+        elif fill == "window":
+            from wonhee.edit import cabin
+            self.still = cabin.render_window(w, h)
         elif fill == "matte":
             self.still = np.zeros((h, w, 3), np.uint8)
         else:

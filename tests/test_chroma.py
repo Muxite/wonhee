@@ -216,3 +216,15 @@ def test_seat_set_is_deterministic_and_sized():
     from wonhee.edit import cabin
     a, b = cabin.render_seat(270, 480), cabin.render_seat(270, 480)
     assert a.shape == (480, 270, 3) and np.array_equal(a, b)
+
+
+def test_window_fill_is_deterministic_and_keys_onto_it(tmp_path):
+    """design: chroma key spec › `fill` window."""
+    from wonhee.edit import cabin
+    a, b = cabin.render_window(270, 480), cabin.render_window(270, 480)
+    assert a.shape == (480, 270, 3) and np.array_equal(a, b)
+    src = _clip(tmp_path / "in.mp4", (60, 200, 60), audio=False)
+    rep = chroma.key_video(src, tmp_path / "o.mp4", fill="window", guard="none")
+    ok, fr = cv2.VideoCapture(str(tmp_path / "o.mp4")).read()
+    assert ok and rep["frames"] == 12
+    assert abs(int(fr[10, 10, 0]) - int(a[10, 10, 0])) < 40      # corner shows the window wall, not the green

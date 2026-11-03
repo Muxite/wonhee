@@ -25,10 +25,12 @@ find drift you can't fix now, add a row to DESIGN.md › Drift.
 | Service | `wonhee/service.py` | One function per user-facing action (`audio`, `vibe`, `shots_search`, `node_run`, `chain_run`, …). They return text |
 | Nodes | `wonhee/nodes/*.py`, registered in `nodes/registry.MODULES` | Typed steps: `Node(name, version, inputs, outputs, params, fn, doc, salt=, lane=)`. Chains wire them together. Results are cached by (node, version, inputs, params, salt) |
 | Engines | `wonhee/edit/` (pixels, audio; `edit/viz/` draws pictures from data), `wonhee/analyze/` (speech, shots, embeddings), `wonhee/muksite.py` (portfolio upload) | Plain functions on files and arrays. They know nothing about the DB |
+| Art library | `wonhee/art/` (`effects/`, `*kit.py`, `catalog.py`) | 200+ deterministic image effects, each `@effect(...)`-registered and auto-discovered, plus recipes, colour grades and the generated catalog. Not nodes. Run with `python -m wonhee.art`; see [docs/ART.md](docs/ART.md) |
+| Creative workspace | `wonhee/creative.py`, `creative_worker.py`, `stagecraft.py`, `db/repo/creative.py` | Projects, ideas, memory, inbox/outbox and deliveries for the Telegram bridge. `BRIDGE_SHAPES` is the contract moeka reads: [bridge contract](docs/specs/2026-11-03-bridge-contract.md) |
 | Store | `wonhee/db/` (`migrations/NNNN_*.sql`, `repo/`, `queries.py`) | SQLite in WAL mode. Blobs are content-addressed under `data/media/` |
 | Warm workers | `wonhee/worker.py` | Long-lived process per lane. It keeps models loaded and runs detached chains from the `job` table |
 | Profiler | `gauge/` (+ `profiling/`) | Runs any job in a container and measures CPU, RAM, VRAM and the GPU trace. See `docs/profiling/GUIDE.md` |
-| Docs | `docs/VISION.md`, `docs/DESIGN.md`, `docs/PROCESS.md` (what and why, outranks code); `docs/specs` (area designs); `docs/production/` (rules, numbers); `docs/profiling/`; `docs/plans` (disposable build plans) | Every number in them was measured on this box |
+| Docs | `docs/VISION.md`, `docs/DESIGN.md`, `docs/PROCESS.md` (what and why, outranks code); `docs/specs` (area designs); `docs/ART.md` and `docs/art/` (the art library and its generated catalog); `docs/production/` (rules, numbers); `docs/profiling/`; `docs/plans` (disposable build plans) | Every number in them was measured on this box |
 
 ## Commands
 
@@ -38,6 +40,7 @@ uv run pytest                       # default: no network, no GPU (markers `live
 uv run pytest -m gpu                # real CUDA models. Hold the GPU lock (below)
 uv run wonhee node list             # every node with its ports
 uv run wonhee worker status         # warm workers and the job queue
+uv run python -m wonhee.art list    # the art effect library (add --family physics)
 uv run gauge doctor                 # profiler prerequisites (add --mps for the MPS daemon)
 ```
 
@@ -97,4 +100,7 @@ Other agent sessions on this machine run timed GPU sweeps. Any GPU use counts, e
 | decide whether the code or the design is wrong | `docs/PROCESS.md` §2 |
 | profile something | `docs/profiling/GUIDE.md`; experiments in `profiling/sweeps/x/` (run order: `profiling/sweeps/x/round2.sh`) |
 | understand the GPU numbers | `docs/profiling/DATA_CARD.md`, `profiling/report/shared-gpu-node.html` |
+| add or change an art effect | [docs/ART.md](docs/ART.md) (rules every effect meets), then `docs/art/<family>.md`; regenerate the index with `python -m wonhee.art.catalog` |
+| change what moeka reads from wonhee | [bridge contract](docs/specs/2026-11-03-bridge-contract.md): add keys freely, but renaming or removing one bumps `CONTRACT_VERSION` |
+| key a plain wall out of a clip | [Usage › Chroma key](docs/USAGE.md#chroma-key-no-real-green-screen-needed), `wonhee/edit/chroma.py` |
 | make GitHub slop (repo card sets) as an agent | `.claude/skills/github-slop/SKILL.md` (steps: `wonhee slop pick`, write `script.json`, `wonhee slop render`) |

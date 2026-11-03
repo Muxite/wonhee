@@ -320,7 +320,7 @@ def test_resume_refuses_running_run(conn, settings):
 
 def test_go_preflight_missing_apify_token(conn, settings):
     from wonhee.pipeline.deps import Missing
-    with pytest.raises(ValueError, match="APIFY_API_KEY.*\.env.*wonhee doctor"):
+    with pytest.raises(ValueError, match=r"APIFY_API_KEY.*\.env.*wonhee doctor"):
         service.go(conn, settings, fake_deps(apify=Missing("APIFY_API_KEY")), _confirmed(conn))
     assert conn.execute("SELECT count(*) FROM project").fetchone()[0] == 0
 

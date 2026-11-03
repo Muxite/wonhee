@@ -19,7 +19,7 @@ backdrop itself and keeps the person safe where the backdrop colour appears on t
 | `tolerance` | 0.5 (0..1) | how far from the backdrop colour still counts as backdrop |
 | `softness` | 0.5 (0..1) | width of the soft edge between backdrop and subject |
 | `guard` | `auto` | `person`: the person mask protects the subject and trims specks outside it. `none`: colour only. `auto` = `person` unless the backdrop is a saturated green or blue |
-| `fill` | `cabin` | used when no `background` input is given: `cabin` (a drawn plane cabin), `#rrggbb`, or `matte` (white subject on black, for checking the key) |
+| `fill` | `cabin` | used when no `background` input is given: `cabin` (a drawn plane cabin), `window` (a drawn plane window with sky, clouds and wing, for a window-seat take), `#rrggbb`, or `matte` (white subject on black, for checking the key) |
 | `spill` | 0.7 (0..1) | edge colour clean-up: removes backdrop colour from semi-transparent edge pixels |
 
 ### Detection
@@ -61,5 +61,6 @@ Live check on real media is recorded in `docs/production/` after the owner's fir
 ## Cabin fill (`edit/cabin.py`)
 
 A drawn, deterministic one-point-perspective plane cabin (aisle, seat rows, overhead bins, windows with daylight) for
-use as the fill and for storyboards. It is a stand-in until real cabin footage exists. `render_seat` draws the close window-seat set (window, headrest,
+use as the fill and for storyboards. It is a stand-in until real cabin footage exists. `render_window` draws one big plane window with sky, clouds and a wing, static, for a window-seat take.
+`render_seat` draws the close window-seat set (window, headrest,
 overhead bin) for a seated 3/4-angle take; `render` is the wide aisle view.

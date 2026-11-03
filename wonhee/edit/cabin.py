@@ -127,3 +127,37 @@ def render_seat(w: int = 1080, h: int = 1920) -> np.ndarray:
     xx, yv = np.mgrid[0:h, 0:w].astype(np.float32)[::-1]
     v = 1 - 0.3 * (((xx - w / 2) / (w / 2)) ** 2 + ((yv - h * .5) / (h / 2)) ** 2) / 2
     return np.clip(cv2.GaussianBlur(out * v[..., None], (0, 0), 1.0), 0, 255).astype(np.uint8)
+
+
+def render_window(w: int = 1080, h: int = 1920) -> np.ndarray:
+    """One big plane window on a cabin wall: sky, soft clouds, a wing, a half-lowered shade. Static and deterministic,
+    meant as the backdrop behind a person seated at the window (the subject covers the middle and right)."""
+    from PIL import Image, ImageDraw
+    s = w / 540.0
+    X = lambda v: int(round(v * s))  # noqa: E731  (design units are a 540x960 frame)
+    yy = np.linspace(0, 1, h, dtype=np.float32)[:, None, None]
+    img = (np.array([226, 222, 214], np.float32) * (1 - yy) + np.array([188, 182, 174], np.float32) * yy) * np.ones((h, w, 3), np.float32)
+    x0, y0, x1, y1 = X(40), X(170), X(500), X(830)
+    iw, ih = x1 - x0, y1 - y0
+    sky = np.linspace([235, 190, 120], [255, 240, 215], ih, dtype=np.float32)[:, None, :] * np.ones((ih, iw, 3), np.float32)
+    cl = np.zeros((ih, iw), np.float32)
+    r = np.random.default_rng(11)
+    for _ in range(14):
+        cv2.ellipse(cl, (int(r.integers(0, iw)), int(r.integers(ih // 4, ih))), (X(int(r.integers(40, 90))), X(int(r.integers(18, 40)))),
+                    0, 0, 360, 1, -1)
+    cl = np.clip(cv2.GaussianBlur(cl, (0, 0), X(10)) * 1.4, 0, 1)
+    sky = sky * (1 - cl[..., None]) + 255.0 * cl[..., None]
+    cv2.fillPoly(sky, [np.array([(0, int(ih * .70)), (int(iw * .62), int(ih * .60)), (int(iw * .62), int(ih * .66)), (0, int(ih * .80))])],
+                 (204, 198, 196), cv2.LINE_AA)                                  # wing (BGR)
+    cv2.rectangle(sky, (0, 0), (iw, X(150)), (192, 200, 205), -1)               # half-lowered shade
+    cv2.line(sky, (0, X(150)), (iw, X(150)), (150, 156, 160), X(3), cv2.LINE_AA)
+    m = Image.new("L", (iw, ih), 0)
+    ImageDraw.Draw(m).rounded_rectangle((0, 0, iw - 1, ih - 1), X(150), fill=255)
+    ma = np.asarray(m, np.float32)[..., None] / 255.0
+    img[y0:y1, x0:x1] = img[y0:y1, x0:x1] * (1 - ma) + sky * ma
+    fr = Image.fromarray(img.astype(np.uint8)[..., ::-1])
+    ImageDraw.Draw(fr).rounded_rectangle((x0 - X(14), y0 - X(14), x1 + X(14), y1 + X(14)), X(164), outline=(176, 172, 166), width=X(18))
+    img = np.asarray(fr)[..., ::-1].astype(np.float32)
+    yv, xv = np.mgrid[0:h, 0:w].astype(np.float32)
+    v = 1 - 0.28 * (((xv - w / 2) / (w / 2)) ** 2 + ((yv - h / 2) / (h / 2)) ** 2) / 2
+    return np.clip(img * v[..., None], 0, 255).astype(np.uint8)
