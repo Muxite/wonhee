@@ -32,3 +32,13 @@ def test_metrics_flag_a_focal_blob_and_pass_even_detail():
 def test_recipe_layers():
     img = compose.render_recipe({"size": [200, 140], "palette": "ember", "layers": [{"effect": "wave-ripple", "params": {"steps": 40, "scale": 4}, "opacity": 0.8}], "post": [{"op": "grain", "amount": 0.2}]})
     assert img.shape == (140, 200, 3)
+
+
+def test_provenance_meta_flags_synthetic_data():
+    from wonhee.art import compose
+    img, meta = compose.render_effect("data-heat-bleed", size=(96, 64), seed=0, with_meta=True)
+    assert meta["synthetic"] is True and meta["family"] in ("data", "multichan")
+    _, meta2 = compose.render_effect("data-heat-bleed", size=(96, 64), seed=0, data=[[0.1, 0.9], [0.5, 0.3]], with_meta=True)
+    assert meta2["synthetic"] is False
+    _, meta3 = compose.render_effect("wave-ripple", size=(96, 64), seed=0, params={"steps": 20}, with_meta=True)
+    assert "synthetic" not in meta3

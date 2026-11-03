@@ -20,6 +20,7 @@ class Ctx:
     source: np.ndarray | None = None      # optional input image, float32 HxWx3 0..1
     data: Any = None                      # optional real data (a graph, a matrix, a series)
     explicit: frozenset = frozenset()     # param names the caller passed (even if equal to the default)
+    meta: dict = field(default_factory=dict)  # an effect may record facts about its output here (provenance)
 
     @property
     def rng(self) -> np.random.Generator:

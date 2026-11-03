@@ -21,15 +21,27 @@ def _palette(spec: Any) -> pal.Palette:
 
 
 def render_effect(name: str, *, size=(1500, 1000), seed: int = 0, palette: Any = "ember", params: dict | None = None,
-                  source: np.ndarray | None = None, data: Any = None) -> np.ndarray:
+                  source: np.ndarray | None = None, data: Any = None, with_meta: bool = False):
     """Render one effect to float32 RGB (H, W, 3) in 0..1. An effect may
     return RGB or (RGB, alpha) where alpha is (H, W)."""
     eff = get(name)
     full = {k: v[0] for k, v in eff.params.items()}
     full.update(params or {})
-    out = eff.fn(Ctx(size=tuple(size), seed=int(seed), palette=_palette(palette), params=full, source=source, data=data, explicit=frozenset(params or {})))
+    ctx = Ctx(size=tuple(size), seed=int(seed), palette=_palette(palette), params=full, source=source, data=data, explicit=frozenset(params or {}))
+    out = eff.fn(ctx)
     rgb = out[0] if isinstance(out, tuple) else out
-    return np.clip(np.asarray(rgb, np.float32), 0, 1)
+    img = np.clip(np.asarray(rgb, np.float32), 0, 1)
+    if not with_meta:
+        return img
+    # Provenance travels with the render. A data-driven effect run without data invented its values:
+    # the image is decoration, never a result. A source image is recorded so a grade/edit is traceable.
+    meta = {"effect": name, "family": eff.family, "seed": int(seed)}
+    if "data" in eff.tags or eff.family in ("data", "multichan"):
+        meta["synthetic"] = data is None
+        meta["note"] = "decorative synthetic data; not measurements or results" if data is None else "values come from the supplied data"
+    meta["has_source"] = source is not None
+    meta.update(ctx.meta)
+    return img, meta
 
 
 def _blend(base: np.ndarray, top: np.ndarray, mode: str, alpha: np.ndarray) -> np.ndarray:
