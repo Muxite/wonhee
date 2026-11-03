@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 from uuid import uuid4
 
 from wonhee.clock import now_iso
@@ -25,6 +26,23 @@ def insert(conn, table: str, **fields) -> int:
                             tuple(fields.values())).lastrowid
 
 
+# The trusted bridge watches this marker (its mtime) instead of polling by spawning a process. It is
+# touched only when something the bridge may need to act on appears: a queued, failed or uncertain
+# delivery or submission. Heartbeats and ordinary progress deliberately do not touch it.
+SIGNAL_FILE = '.bridge-signal'
+_SIGNAL_STATUSES = frozenset({'queued', 'failed', 'uncertain'})
+
+
+def signal_bridge(conn) -> None:
+    """Best effort: a missing signal only means the bridge falls back to its slow safety poll."""
+    try:
+        db = next(r[2] for r in conn.execute('PRAGMA database_list') if r[1] == 'main')
+        if db:
+            (Path(db).parent / SIGNAL_FILE).touch()
+    except (OSError, StopIteration):
+        pass
+
+
 def update(conn, table: str, record_id: int, **fields) -> None:
     if table not in _TABLES:
         raise ValueError('unknown creative record table')
@@ -35,6 +53,8 @@ def update(conn, table: str, record_id: int, **fields) -> None:
     with tx(conn):
         conn.execute(f"UPDATE {table} SET {','.join(k+'=?' for k in fields)} WHERE id=?",
                      (*fields.values(), record_id))
+    if table in {'creative_delivery', 'creative_submission'} and fields.get('status') in _SIGNAL_STATUSES:
+        signal_bridge(conn)  # after the commit, so the bridge's poll sees the change
 
 
 def project_create(conn, name: str) -> int:
@@ -118,6 +138,7 @@ def recover_deliveries(conn) -> None:
     with tx(conn):
         conn.execute("UPDATE creative_delivery SET status='uncertain',error='delivery interrupted before acknowledgement',"
                      "updated_at=? WHERE status='sending'", (now_iso(),))
+    signal_bridge(conn)
 
 
 def delivery(conn, *, ref, filename, mime, route, content='', project_id=None, submission_id=None, as_document=False) -> int:
@@ -127,6 +148,8 @@ def delivery(conn, *, ref, filename, mime, route, content='', project_id=None, s
                                (submission_id, ref)).fetchone()
             if row:
                 return row[0]
-        return insert(conn, 'creative_delivery', ref=ref, filename=filename, mime=mime,
-                      token=uuid4().hex, route_json=json.dumps(route), content=content,
-                      project_id=project_id, submission_id=submission_id, as_document=int(as_document))
+        new_id = insert(conn, 'creative_delivery', ref=ref, filename=filename, mime=mime,
+                        token=uuid4().hex, route_json=json.dumps(route), content=content,
+                        project_id=project_id, submission_id=submission_id, as_document=int(as_document))
+    signal_bridge(conn)
+    return new_id

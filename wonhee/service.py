@@ -1514,7 +1514,7 @@ from wonhee.creative import (  # noqa: E402,F401
     project_show as creative_project_show, project_status as creative_project_status, project_brief_save as creative_project_brief_save, inbox_add, inbox_list, media_info,
     idea_save, idea_list, idea_update, memory_remember, memory_query, memory_correct,
     memory_forget, memory_export, memory_reindex, make_submit, make_show, outbox_add, outbox_list,
-    delivery_show, delivery_retry, health as creative_health, post_create, post_slot_set, post_status,
+    delivery_show, delivery_retry, health as creative_health, contract, post_create, post_slot_set, post_status,
     stagecraft_schema, stagecraft_benchmarks, stagecraft_dataset, stagecraft_dataset_complete, stagecraft_list, stagecraft_build, stagecraft_submit, stagecraft_show, stagecraft_review, stagecraft_retry, stagecraft_complete,
 )
 

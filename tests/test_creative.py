@@ -513,3 +513,151 @@ def test_project_status_refuses_unknown_status_and_unknown_project(conn, setting
         creative.project_status(conn, settings, project_id=pid, status="paused")
     with pytest.raises(Exception):
         creative.project_status(conn, settings, project_id=9999, status="done")
+
+
+# --- trusted-bridge contract (moeka reads these actions and keys) -----------------------------------
+
+def test_contract_names_every_action_and_only_real_ones(conn, settings):
+    """design: Trusted bridge contract, the bridge can verify its assumptions at startup."""
+    c = creative.contract(conn, settings)
+    assert c["contract_version"] == creative.CONTRACT_VERSION
+    assert c["actions"] == sorted(creative.ACTIONS)
+    assert set(creative.BRIDGE_SHAPES) <= set(creative.ACTIONS)
+
+
+def test_bridge_shapes_match_the_real_responses(conn, settings):
+    """design: Trusted bridge contract, a renamed response key fails here, not silently in production."""
+    project = creative.project_create(conn, settings, name="Contract project")
+    delivery = _output(conn, settings)
+    creative.delivery_show(conn, settings, delivery_id=delivery["id"], transition="sending")
+    creative.delivery_show(conn, settings, delivery_id=delivery["id"], transition="failed", error="x")
+    responses = {
+        "project_create": project,
+        "project_show": creative.project_show(conn, settings, project_id=project["id"]),
+        "inbox_list": creative.inbox_list(conn, settings, project_id=project["id"]),
+        "outbox_list": creative.outbox_list(conn, settings),
+        "delivery_show": creative.delivery_show(conn, settings),
+        "delivery_retry": creative.delivery_retry(conn, settings, delivery_id=delivery["id"]),
+        "health": creative.health(conn, settings),
+        "contract": creative.contract(conn, settings),
+    }
+    for action, keys in creative.BRIDGE_SHAPES.items():
+        if action in responses:
+            missing = set(keys) - set(responses[action])
+            assert not missing, f"{action} no longer returns {sorted(missing)}"
+
+
+def test_health_surfaces_stuck_deliveries_with_age_and_route(conn, settings):
+    """design: Execution and delivery, a stuck send is visible to the owner, not only in the database."""
+    delivery = _output(conn, settings)
+    creative.delivery_show(conn, settings, delivery_id=delivery["id"], transition="sending")
+    stuck = creative.health(conn, settings)["stuck_deliveries"]
+    assert [d["id"] for d in stuck] == [delivery["id"]]
+    assert stuck[0]["status"] == "sending" and stuck[0]["route"]["chat_id"] == "owner"
+    assert stuck[0]["age_s"] is not None
+    assert creative.health(conn, settings)["sending_deliveries"] == 1
+
+
+def test_health_flags_a_stalled_running_job_but_not_a_healthy_one(conn, settings, tiny_video):
+    """design: Execution and delivery, a job that stopped moving is reported as stalled."""
+    import time
+    from wonhee.db.repo import creative as writes
+
+    healthy = _submission(conn, settings, tiny_video)
+    stalled = _submission(conn, settings, tiny_video, request_key="telegram:owner:make:2")
+    writes.update(conn, "creative_submission", healthy["id"], status="running", heartbeat_at=time.time())
+    writes.update(conn, "creative_submission", stalled["id"], status="running",
+                  heartbeat_at=time.time() - creative.STALL_RUNNING_S - 60)
+    jobs = {j["id"]: j for j in creative.health(conn, settings)["active_jobs"]}
+    assert jobs[healthy["id"]]["stalled"] is False
+    assert jobs[stalled["id"]]["stalled"] is True and jobs[stalled["id"]]["idle_s"] > creative.STALL_RUNNING_S
+    assert jobs[stalled["id"]]["route"]["chat_id"] == "owner"  # so the bridge can tell the creator
+
+
+def test_a_real_send_ack_overrides_a_recovery_guess(conn, settings):
+    """design: Execution and delivery, recovery must not make a delivered file un-ackable."""
+    from wonhee.db.repo import creative as writes
+
+    delivery = _output(conn, settings)
+    creative.delivery_show(conn, settings, delivery_id=delivery["id"], transition="sending")
+    writes.recover_deliveries(conn)  # the worker restarted while the bridge was mid-send
+    assert creative.delivery_show(conn, settings, delivery_id=delivery["id"])["status"] == "uncertain"
+    sent = creative.delivery_show(conn, settings, delivery_id=delivery["id"], transition="sent", message_ids=[42])
+    assert sent["status"] == "sent" and sent["message_ids"] == [42]
+    with pytest.raises(ValueError):  # an uncertain delivery still cannot be marked sent without ids
+        again = _output(conn, settings)
+        creative.delivery_show(conn, settings, delivery_id=again["id"], transition="sending")
+        writes.recover_deliveries(conn)
+        creative.delivery_show(conn, settings, delivery_id=again["id"], transition="sent")
+
+
+def test_contract_action_is_a_cli_choice_but_not_an_agent_tool():
+    """design: Trusted bridge contract, only the host bridge reads it; the agent never sees it."""
+    import asyncio
+
+    from wonhee.mcp_server import mcp
+
+    names = {t.name for t in asyncio.run(mcp.list_tools())}
+    assert "contract" not in names
+    assert "outbox_list" in names  # agent-facing actions are unchanged
+
+
+# --- bridge signal marker -----------------------------------------------------------------------------
+
+def _signal_file(settings):
+    return settings.home / ".bridge-signal"
+
+
+def _stamp(settings):
+    f = _signal_file(settings)
+    return f.stat().st_mtime_ns if f.exists() else None
+
+
+def test_contract_advertises_the_signal_marker(conn, settings):
+    assert creative.contract(conn, settings)["signal"] == ".bridge-signal"
+
+
+def test_marker_moves_when_a_delivery_is_queued_failed_or_retried_but_not_on_progress(conn, settings):
+    """design: Execution and delivery, the bridge learns of work without spawning a poll process."""
+    import os
+    assert _stamp(settings) is None
+    delivery = _output(conn, settings)
+    queued = _stamp(settings)
+    assert queued is not None, "a newly queued delivery must signal the bridge"
+
+    def reset():  # make the next touch distinguishable regardless of filesystem timestamp granularity
+        os.utime(_signal_file(settings), ns=(1, 1))
+        return _stamp(settings)
+
+    base = reset()
+    creative.delivery_show(conn, settings, delivery_id=delivery["id"], transition="sending")
+    assert _stamp(settings) == base, "progress and acknowledgements must not signal"
+    creative.delivery_show(conn, settings, delivery_id=delivery["id"], transition="failed", error="x")
+    assert _stamp(settings) != base, "a failed delivery needs the bridge's attention"
+    base = reset()
+    creative.delivery_retry(conn, settings, delivery_id=delivery["id"])
+    assert _stamp(settings) != base, "a retried delivery is queued again"
+    base = reset()
+    creative.delivery_show(conn, settings, delivery_id=delivery["id"], transition="sending")
+    creative.delivery_show(conn, settings, delivery_id=delivery["id"], transition="sent", message_ids=[1])
+    assert _stamp(settings) == base
+
+
+def test_marker_moves_when_a_submission_fails_and_when_recovery_marks_uncertain(conn, settings, tiny_video):
+    import os
+    from wonhee.db.repo import creative as writes
+
+    failed = _submission(conn, settings, tiny_video)
+    os.utime(_signal_file(settings), ns=(1, 1)) if _signal_file(settings).exists() else _signal_file(settings).touch()
+    os.utime(_signal_file(settings), ns=(1, 1))
+    base = _stamp(settings)
+    writes.update(conn, "creative_submission", failed["id"], status="running")
+    assert _stamp(settings) == base
+    writes.update(conn, "creative_submission", failed["id"], status="failed", error="boom")
+    assert _stamp(settings) != base
+    delivery = _output(conn, settings)
+    creative.delivery_show(conn, settings, delivery_id=delivery["id"], transition="sending")
+    os.utime(_signal_file(settings), ns=(1, 1))
+    base = _stamp(settings)
+    writes.recover_deliveries(conn)
+    assert _stamp(settings) != base

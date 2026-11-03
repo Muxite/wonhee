@@ -827,8 +827,10 @@ def delivery_show(conn, settings, *, delivery_id: int | None = None, transition:
         if delivery_id is None or transition not in {'sending', 'sent', 'failed', 'uncertain'}:
             raise ValueError('a valid delivery_id and transition are required')
         old = _get(conn, 'creative_delivery', delivery_id)
+        # 'uncertain' -> 'sent' is allowed: recovery marks every in-flight send uncertain, even one a
+        # live bridge is still completing, and a transport ack with message ids is real evidence.
         valid = {'queued': {'sending'}, 'sending': {'sent','failed','uncertain'},
-                 'failed': set(), 'uncertain': set(), 'sent': set()}
+                 'failed': set(), 'uncertain': {'sent'}, 'sent': set()}
         if transition != old['status'] and transition not in valid[old['status']]:
             raise ValueError(f"cannot move delivery from {old['status']} to {transition}")
         if transition == 'sent' and not message_ids:
@@ -862,7 +864,89 @@ def health(conn, settings) -> dict:
             'queued_submissions': conn.execute("SELECT count(*) FROM creative_submission WHERE status='queued'").fetchone()[0],
             'queued_deliveries': conn.execute("SELECT count(*) FROM creative_delivery WHERE status='queued'").fetchone()[0],
             'uncertain_deliveries': conn.execute("SELECT count(*) FROM creative_delivery WHERE status='uncertain'").fetchone()[0],
+            'sending_deliveries': conn.execute("SELECT count(*) FROM creative_delivery WHERE status='sending'").fetchone()[0],
+            'stuck_deliveries': _stuck_deliveries(conn),
+            'active_jobs': _active_jobs(conn),
             'download_url': _download_endpoint(settings) or None}
+
+
+STALL_RUNNING_S = 600     # a running submission with no heartbeat for this long is stalled
+STALL_QUEUED_S = 1800     # a queued submission nobody has claimed for this long is stalled
+
+
+def _age_seconds(iso: str | None) -> float | None:
+    from datetime import UTC, datetime
+    try:
+        return max(0.0, (datetime.now(UTC) - datetime.fromisoformat(str(iso))).total_seconds())
+    except (TypeError, ValueError):
+        return None
+
+
+def _stuck_deliveries(conn, limit: int = 10) -> list[dict]:
+    """Deliveries that need a human or an explicit retry: in flight, uncertain or failed."""
+    rows = conn.execute(
+        "SELECT id,project_id,status,filename,route_json,error,updated_at FROM creative_delivery "
+        "WHERE status IN ('sending','uncertain','failed') ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    out = []
+    for r in rows:
+        rec = _record(r)
+        rec['age_s'] = _age_seconds(r['updated_at'])
+        out.append(rec)
+    return out
+
+
+def _active_jobs(conn, limit: int = 10) -> list[dict]:
+    """Queued or running reel submissions, flagged `stalled` when nothing is moving."""
+    import time
+    now = time.time()
+    out = []
+    for r in conn.execute("SELECT id,project_id,status,phase,heartbeat_at,updated_at,created_at,route_json FROM creative_submission "
+                          "WHERE status IN ('queued','running') ORDER BY id LIMIT ?", (limit,)):
+        if r['status'] == 'running' and r['heartbeat_at']:
+            idle = now - r['heartbeat_at']
+        else:
+            idle = _age_seconds(r['updated_at']) or 0.0
+        limit_s = STALL_RUNNING_S if r['status'] == 'running' else STALL_QUEUED_S
+        out.append({'id': r['id'], 'project_id': r['project_id'], 'status': r['status'], 'phase': r['phase'],
+                    'idle_s': round(idle), 'stalled': idle > limit_s, 'route': json.loads(r['route_json'] or '{}')})
+    return out
+
+
+# The response keys the trusted bridge (moeka) reads. A wonhee test checks every entry against the real
+# responses, and moeka compares this at startup, so a rename fails loudly instead of silently dropping work.
+CONTRACT_VERSION = 1
+BRIDGE_SHAPES = {
+    'project_create': ['id', 'name'],
+    'project_select': [],
+    'project_show': ['id', 'name'],
+    'inbox_add': [],
+    'inbox_list': ['assets'],
+    'outbox_list': ['outputs'],
+    'delivery_show': ['deliveries', 'failures'],
+    'delivery_retry': ['id', 'status'],
+    'health': ['queued_submissions', 'queued_deliveries', 'uncertain_deliveries', 'sending_deliveries',
+               'stuck_deliveries', 'active_jobs'],
+    'contract': ['contract_version', 'actions', 'shapes'],
+}
+
+
+@lru_cache(maxsize=1)
+def _revision() -> str | None:
+    import subprocess
+    root = Path(__file__).resolve().parent.parent
+    try:
+        out = subprocess.run(['git', '-C', str(root), 'describe', '--always', '--dirty', '--abbrev=10'],
+                             capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() or None if out.returncode == 0 else None
+
+
+def contract(conn, settings) -> dict:
+    """What this wonhee offers the trusted bridge: version, source revision, actions and response keys."""
+    return {'contract_version': CONTRACT_VERSION, 'revision': _revision(),
+            'actions': sorted(ACTIONS), 'shapes': BRIDGE_SHAPES,
+            'signal': writes.SIGNAL_FILE}  # marker in the home dir the bridge stats instead of polling
 
 
 
@@ -985,5 +1069,5 @@ ACTIONS = {name: globals()[name] for name in (
     'project_create', 'project_select', 'project_show', 'project_status', 'project_brief_save', 'inbox_add', 'inbox_list', 'media_info',
     'idea_save', 'idea_list', 'idea_update', 'memory_remember', 'memory_query', 'memory_correct', 'memory_forget',
     'memory_export', 'memory_reindex', 'make_submit', 'make_show', 'outbox_add', 'outbox_list',
-    'delivery_show', 'delivery_retry', 'health', 'post_create', 'post_slot_set', 'post_status', 'stagecraft_schema', 'stagecraft_submit', 'stagecraft_show',
+    'delivery_show', 'delivery_retry', 'health', 'contract', 'post_create', 'post_slot_set', 'post_status', 'stagecraft_schema', 'stagecraft_submit', 'stagecraft_show',
     'stagecraft_review', 'stagecraft_retry', 'stagecraft_benchmarks', 'stagecraft_dataset', 'stagecraft_dataset_complete', 'stagecraft_list', 'stagecraft_build', 'stagecraft_complete')}

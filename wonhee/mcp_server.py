@@ -581,7 +581,7 @@ def _register_creative_tools() -> None:
                      'Use the transport source_key on retries. Does not render or start GPU analysis.',
     }
     # Delivery acknowledgements are host-only: agents can inspect/retry but cannot claim a file was sent.
-    excluded = {'delivery_show', 'media_info', 'stagecraft_complete','stagecraft_dataset_complete'}
+    excluded = {'delivery_show', 'media_info', 'stagecraft_complete','stagecraft_dataset_complete', 'contract'}
     for action, fn in ACTIONS.items():
         if action in excluded:
             continue
