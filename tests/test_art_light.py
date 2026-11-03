@@ -58,3 +58,10 @@ def test_no_second_hue_in_complement_palette():
             hs.append(h)
     hs = np.array(hs)
     assert len(hs) and (np.abs(((hs - 265 + 180) % 360) - 180) < 70).mean() > 0.9
+
+
+def test_proj_nightcall_fleet_renders():
+    from wonhee.art.registry import discover
+    discover()
+    a = compose.render_effect("proj-nightcall-fleet", size=(300, 200), seed=1, palette="hue:225:dark:analogous", params={"ships": 40, "steps": 80})
+    assert a.shape == (200, 300, 3) and a.std() > 0.02 and np.isfinite(a).all()
