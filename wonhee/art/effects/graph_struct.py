@@ -99,7 +99,7 @@ def graph_btree(ctx):
 
 # ------------------------------------------------------------------------------------------------------------------
 @effect("graph-heap", family="graph", tags=["tree", "graph", "all-over", "heap", "structure"],
-        params={"levels": (5, "tree levels (the first two are off-frame)"), "show_array": (False, "array strip of node values across the bottom edge")})
+        params={"levels": (6, "tree levels (the root is off-frame)"), "show_array": (False, "array strip of node values across the bottom edge")})
 def graph_heap(ctx):
     """Binary min-heap as a left-to-right tree: dot tone = value (heap order makes lightness rise with depth), links are S-curves; the sift-down path is the thin accent line. ctx.data: {"keys"}."""
     W, H = ctx.size; pal = ctx.palette; rng = ctx.rng
@@ -123,7 +123,7 @@ def graph_heap(ctx):
             arr[j], arr[m] = arr[m], arr[j]; j = m
     vals = arr
     cv = gk.Canvas((W, H), pal.canvas)
-    first = 2  # first drawn level index
+    first = 1  # first drawn level index (levels above are off-frame)
     vis = list(range(first, L))
     colx = {lv: W * (0.05 + 0.90 * (k / (len(vis) - 1))) for k, lv in enumerate(vis)}
     def P(i):
