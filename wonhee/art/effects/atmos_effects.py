@@ -96,20 +96,19 @@ PRESETS = {
 
 
 @effect("atmos-nocturne", family="atmos", tags=["source", "photo", "stack", "nocturnal", "mysterious", "intimate", "luminous", "candid"],
-        params=P({"preset": ("night-street", "night-street | mist | neon-rain | stage | dream | none; sets the stage amounts, a param you change from its default overrides it (use none to set every stage yourself)")},
+        params=P({"preset": ("night-street", "night-street | mist | neon-rain | stage | dream | none; sets the stage amounts, any param you pass explicitly overrides it, including 0 (use none to set every stage yourself)")},
                  COMMON, SOURCE, BLOOM, HALATION, STREAK, POOLS, HAZE, FOG, WET, SURFACE))
 def nocturne(ctx):
     """The full stack with independent dials: bloom, halation, streaks, pools, haze, fog and wet
     ground, over one shared emitter extraction. `preset` picks a starting point; any param you
-    pass explicitly wins over the preset (compare with defaults). Best on night streets, signs,
+    pass explicitly wins over the preset (even an explicit 0 or a value equal to the default). Best on night streets, signs,
     stage and window light; with no source it renders a generated night street."""
     import copy
     from ..registry import get
     ps = PRESETS.get(str(ctx.p("preset", "night-street")), PRESETS["night-street"])
-    defaults = {k: v[0] for k, v in get("atmos-nocturne").params.items()}
     p = dict(ctx.params)
     for k, v in ps.items():
-        if p.get(k) == defaults.get(k):        # not explicitly changed from the default -> preset value
+        if k not in ctx.explicit:              # a param the caller passed (even 0) beats the preset
             p[k] = v
     img = prep_source(ctx)
     from .atmos_common import atmosphere as run

@@ -115,3 +115,13 @@ def test_screen_grid_fades_at_small_pitch():
     img = np.ones((64, 64, 3), np.float32) * 0.6
     assert np.array_equal(K.screen_grid(img, 1.5), img)
     assert K.screen_grid(img, 6.0).std() > 0.03
+
+
+def test_explicit_zero_beats_preset():
+    import numpy as np
+    from wonhee.art.compose import render_effect
+    from wonhee.art.features import synthetic_source
+    src = synthetic_source((96, 64), seed=0)
+    a = render_effect("atmos-nocturne", size=(96, 64), seed=0, source=src, params={"preset": "neon-rain", "haze": 0.0, "fog": 0.0})
+    b = render_effect("atmos-nocturne", size=(96, 64), seed=0, source=src, params={"preset": "neon-rain"})
+    assert not np.array_equal(a, b)   # the explicit zeros changed the result

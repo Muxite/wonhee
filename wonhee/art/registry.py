@@ -19,6 +19,7 @@ class Ctx:
     params: dict[str, Any] = field(default_factory=dict)
     source: np.ndarray | None = None      # optional input image, float32 HxWx3 0..1
     data: Any = None                      # optional real data (a graph, a matrix, a series)
+    explicit: frozenset = frozenset()     # param names the caller passed (even if equal to the default)
 
     @property
     def rng(self) -> np.random.Generator:

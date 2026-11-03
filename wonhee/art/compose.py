@@ -27,7 +27,7 @@ def render_effect(name: str, *, size=(1500, 1000), seed: int = 0, palette: Any =
     eff = get(name)
     full = {k: v[0] for k, v in eff.params.items()}
     full.update(params or {})
-    out = eff.fn(Ctx(size=tuple(size), seed=int(seed), palette=_palette(palette), params=full, source=source, data=data))
+    out = eff.fn(Ctx(size=tuple(size), seed=int(seed), palette=_palette(palette), params=full, source=source, data=data, explicit=frozenset(params or {})))
     rgb = out[0] if isinstance(out, tuple) else out
     return np.clip(np.asarray(rgb, np.float32), 0, 1)
 
