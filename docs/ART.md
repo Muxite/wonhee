@@ -7,6 +7,16 @@ the tools to understand what you want and generate it from parameters:
 physics simulations, light painting, lightning, dot-matrix systems, graphs and
 DAGs, and filters/edits of real project images. No generative AI.
 
+**Scope broadened (owner, 2026-11-03).** The library is not only procedural
+art. Photos are welcome (people included), any media is fine as long as it is
+not *completely* AI-generated, and we want a huge range of styles, moods,
+filters, adjustments and colour grades for the site now and for video later.
+Priority for now: what the SITE needs (project cards, the photography page,
+blog covers/OG images, heroes and backgrounds, dark/light variants, small
+sizes and LQIP placeholders). Images may be shown large but must still work at
+small size. The no-focal-point rule below applies to procedural/data card art;
+a photo or a stylised single subject that fills the frame is fine.
+
 **What a card image is.** Either (a) filters and edits on some *feature of the
 real project* (an original image, a screenshot, real data), (b) a visualization
 tightly tied to the subject (WaveSim = wave physics, Euglena = its score
