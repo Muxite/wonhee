@@ -2,7 +2,7 @@
 
   list [--family F] [--tag T]            effects with params and tags
   render EFFECT --out a.png [--seed N] [--size WxH] [--palette NAME|hue:200:dark:analogous] [--params JSON] [--source img.png]
-  sheet EFFECT --out sheet.png [--seeds 0,1,2,3] [--palettes a,b]   contact sheet with labels
+  sheet EFFECT --out sheet.png [--seeds 0,1,2,3] [--palettes a,b] [--source img.png] [--params JSON]   contact sheet with labels
   check IMAGE                            no-focal-point / fill / contrast report
   recipe recipe.json --out a.png         layered recipe (see compose.render_recipe)
 """
@@ -40,6 +40,7 @@ def main(argv=None) -> int:
     r.add_argument("--palette", default="ember"); r.add_argument("--params", default="{}"); r.add_argument("--source")
     sh = sub.add_parser("sheet"); sh.add_argument("effect"); sh.add_argument("--out", required=True)
     sh.add_argument("--seeds", default="0,1,2,3"); sh.add_argument("--palettes", default="ember"); sh.add_argument("--params", default="{}")
+    sh.add_argument("--source", help="source image for source-driven effects (native aspect)")
     ck = sub.add_parser("check"); ck.add_argument("image")
     rc = sub.add_parser("recipe"); rc.add_argument("file"); rc.add_argument("--out", required=True)
     a = ap.parse_args(argv)
@@ -49,14 +50,16 @@ def main(argv=None) -> int:
                 for n in names(a.family, a.tag)]
         print(json.dumps(rows, indent=1)); return 0
     if a.cmd == "render":
-        src = compose.load(a.source, _size(a.size)) if a.source else None
+        # Native aspect: effects crop with features.fit_cover, never stretch.
+        src = compose.load(a.source) if a.source else None
         img = compose.render_effect(a.effect, size=_size(a.size), seed=a.seed, palette=_palette(a.palette), params=json.loads(a.params), source=src)
         compose.save(img, a.out); print(json.dumps(metrics.analyze(img).as_dict())); return 0
     if a.cmd == "sheet":
         tiles, labels = [], []
+        src = compose.load(a.source) if a.source else None
         for p in a.palettes.split(","):
             for sd in a.seeds.split(","):
-                img = compose.render_effect(a.effect, size=(750, 500), seed=int(sd), palette=_palette(p), params=json.loads(a.params))
+                img = compose.render_effect(a.effect, size=(750, 500), seed=int(sd), palette=_palette(p), params=json.loads(a.params), source=src)
                 rep = metrics.analyze(img)
                 tiles.append(Image.fromarray((img * 255).astype(np.uint8)))
                 labels.append(f"{a.effect} s{sd} {p}  {'ok' if rep.ok else 'FOCAL' if rep.focal_ratio > 3 or rep.center_bias > 1.6 else 'weak'}")
