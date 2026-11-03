@@ -46,6 +46,15 @@ WaveSim interference image. Both are all-over: detail everywhere, no hero spot.
    matrix, series, point set). Effects document what they accept.
 7. <= 8 s at 1500x1000 on CPU (numpy/scipy/cv2).
 
+## Families (see docs/art/INDEX.md for the generated catalog)
+
+physics, light, dots, graph, feature (edits of real images), grade (colour looks, LUT and web
+export), atmos and optics (light on real photos), micro and arch (fractured plates, architecture),
+region, layers and collage, print, swiss and dither, data and multichan (matrices, composites),
+nature, motion and contour. Project-specific effects live under `proj_*` (one set per project).
+Renders can carry provenance (`render --out a.png` writes `a.png.meta.json`: `synthetic`,
+`has_source`).
+
 ## Using it
 
 ```
