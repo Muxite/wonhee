@@ -353,7 +353,7 @@ def press(covs: Sequence[np.ndarray], inks: Sequence, size, rng, *, paper_rgb, s
         m = shift(m, rr * math.cos(ang) * (0.5 + 0.5 * k), rr * math.sin(ang) * (0.5 + 0.5 * k), rot=0.18 * math.sin(ang * 1.7) * (reg > 0) * 2, scale=1.0 + 0.0008 * (k % 2) * (reg > 0))
         if k not in plain:
             m = wear_edges(m, size, rng, wear * t)
-            m = starve(m, ph, rng, size, grain * t)
+            m = starve(m, ph, rng, size, grain * t * (1.0 if mode == "multiply" else 0.45))
         out = lay(out, m, inks[k], ops[k], mode)
     return np.clip(out, 0, 1).astype(np.float32)
 
