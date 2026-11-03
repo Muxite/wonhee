@@ -301,7 +301,8 @@ def communities(g: Graph, rng: np.random.Generator, iters: int = 12) -> np.ndarr
 
 def sbm(rng: np.random.Generator, n: int = 90, k: int = 9, p_in: float = 0.22, p_out: float = 0.006, directed: bool = False) -> Graph:
     """Stochastic block model: k clusters, dense inside, sparse between (synthetic stand-in for real data)."""
-    grp = np.sort(rng.integers(0, k, n))
+    grp = np.minimum(k - 1, (np.arange(n) * k / n + rng.normal(0, 0.12, n)).astype(int)).clip(0)
+    grp = np.sort(grp)
     pairs = []
     for i in range(n):
         for j in range(i + 1, n):
@@ -663,11 +664,17 @@ def catmull(pts: np.ndarray, n: int = 8, tension: float = 0.5) -> np.ndarray:
 # =====================================================================================================================
 
 def tone(pal, t: float) -> np.ndarray:
-    """0 = canvas, 0.5 = structure, 1 = accent (linear in sRGB between role colours; contrast = lightness)."""
+    """0 = canvas, 0.5 = structure, 1 = accent *lightness*. Below 0.5 a straight mix canvas -> structure; above 0.5 the
+    structure hue is kept and only lightness walks toward the accent's (so a blue structure never greys toward a yellow
+    accent). Contrast = lightness, one hue family."""
+    from .palette import rgb_to_oklch, oklch_to_rgb
     t = float(np.clip(t, 0, 1))
-    if t < 0.5:
+    if t <= 0.5:
         return pal.canvas + (pal.structure - pal.canvas) * (t / 0.5)
-    return pal.structure + (pal.accent - pal.structure) * ((t - 0.5) / 0.5)
+    Ls, Cs, hs = rgb_to_oklch(pal.structure)
+    La = rgb_to_oklch(pal.accent)[0]
+    u = (t - 0.5) / 0.5
+    return oklch_to_rgb(Ls + (La - Ls) * u, Cs * (1 - 0.25 * u), hs)
 
 
 def group_tone(pal, gi: int, ng: int, lo: float = 0.36, hi: float = 0.62) -> np.ndarray:

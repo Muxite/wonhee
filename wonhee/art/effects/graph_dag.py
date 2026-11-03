@@ -63,9 +63,19 @@ def swing_path(lay: gk.Layered) -> list[int]:
     return path[::-1]
 
 
+def expand_path(lay: gk.Layered, real_path) -> list[int]:
+    """Real-node path -> path through dummy waypoints (so long edges on the critical path light up whole)."""
+    chains = {(ch[0], ch[-1]): ch for ch in lay.chains}
+    out = [int(real_path[0])]
+    for a, b in zip(real_path[:-1], real_path[1:]):
+        ch = chains.get((int(a), int(b))) or (chains.get((int(b), int(a))) or [None])[::-1]
+        out += list(ch[1:]) if ch and ch[0] is not None else [int(b)]
+    return out
+
+
 def draw_dag(cv: gk.Canvas, pal, g: gk.Graph, lay: gk.Layered, px: np.ndarray, *, node="box", edge="s", node_size=1.0,
              edge_w=1.0, hot=True, hot_nodes=None, glow=0.55, casing=None, edge_alpha=1.0, node_alpha=1.0, node_tone=(0.38, 0.60),
-             edge_tone_rng=(0.30, 0.44), hot_w=1.8, aspect=1.7, node_fill_canvas=False, group_color=True, rails=None, accent_nodes=True):
+             edge_tone_rng=(0.30, 0.44), hot_w=1.8, aspect=1.7, node_fill_canvas=False, group_color=True, rails=None, accent_nodes=True, path_mode="swing", node_ring=None):
     """Draw edges, nodes and the hot path of a laid-out DAG. ``px`` (N,2) are pixel coords for real+dummy nodes."""
     W, H = cv.W, cv.H
     nl = lay.nlayers
@@ -75,7 +85,14 @@ def draw_dag(cv: gk.Canvas, pal, g: gk.Graph, lay: gk.Layered, px: np.ndarray, *
     unit = min(sy * 0.40, sx * 0.20) * node_size
     unit = max(unit, W * 0.006)
     ew = max(2.0, 0.0052 * W * edge_w)
-    path = hot_nodes if hot_nodes is not None else (swing_path(lay) if hot else [])
+    if hot_nodes is not None:
+        path = expand_path(lay, hot_nodes)
+    elif not hot:
+        path = []
+    elif path_mode == "longest":
+        path = expand_path(lay, gk.longest_path(g))
+    else:
+        path = swing_path(lay)
     hot_pairs = set(zip(path[:-1], path[1:]))
     b = gk.Batch(cv)
     hot_b = gk.Batch(cv)
@@ -131,6 +148,10 @@ def draw_dag(cv: gk.Canvas, pal, g: gk.Graph, lay: gk.Layered, px: np.ndarray, *
     return unit
 
 
+def pm(ctx):
+    return "longest" if ctx.data is not None else "swing"
+
+
 def ghost_layer(ctx, cv, W, H, rng):
     """Out-of-focus oversized graph behind the main one: depth without a second hue."""
     pal = ctx.palette
@@ -173,7 +194,7 @@ def _render(ctx, *, widths, node, edge="s", node_size=1.0, edge_w=1.0, aspect=1.
         bands(ctx, cv, g, lay, px, view)
     cas = pal.canvas if casing else None
     draw_dag(cv, pal, g, lay, px, node=node, edge=edge, node_size=node_size, edge_w=edge_w, aspect=aspect, glow=glow,
-             node_tone=node_tone, casing=cas, hot_w=hot_w, edge_tone_rng=edge_tone_rng)
+             node_tone=node_tone, casing=cas, hot_w=hot_w, edge_tone_rng=edge_tone_rng, path_mode=pm(ctx))
     return cv.out()
 
 
@@ -242,7 +263,7 @@ def _render_rails(ctx, rails_for, lanes):
     rails = rails_for(view)
     # rail membership uses the destination lane so bundles are coherent
     draw_dag(cv, pal, g, lay, px, node="square", edge="bundle", rails=lambda u, v: view[1] + (view[3] - view[1]) * ((int(lay.y[u] * lanes) % lanes) + 0.5) / lanes,
-             node_size=0.8, edge_w=1.7, edge_alpha=0.7, glow=0.5)
+             node_size=0.8, edge_w=1.7, edge_alpha=0.7, glow=0.5, path_mode=pm(ctx))
     return cv.out()
 
 
@@ -283,7 +304,7 @@ def dag_swimlane(ctx):
     view = view_for(ctx, W, H, 0.03)
     px = gk.layered_to_px(lay, view)
     _lane_bands(ctx, cv, g, lay, px, view)
-    draw_dag(cv, pal, g, lay, px, node="square", node_size=1.0, edge_w=1.1, glow=0.5, node_tone=(0.42, 0.62), casing=None)
+    draw_dag(cv, pal, g, lay, px, node="square", node_size=1.0, edge_w=1.1, glow=0.5, node_tone=(0.42, 0.62), casing=None, path_mode=pm(ctx))
     return cv.out()
 
 
@@ -304,5 +325,5 @@ def dag_tiered(ctx):
         cx = view[0] + l * sx
         gk.m_rrect(b.mask(gk.tone(pal, t)), cx - sx * 0.46, -20, cx + sx * 0.46, H + 20, 10)
     b.flush()
-    draw_dag(cv, pal, g, lay, px, node="pill", node_size=1.0, edge_w=1.2, aspect=2.0, glow=0.5, node_tone=(0.44, 0.62), casing=pal.canvas)
+    draw_dag(cv, pal, g, lay, px, node="pill", node_size=1.0, edge_w=1.2, aspect=2.0, glow=0.5, node_tone=(0.44, 0.62), casing=pal.canvas, path_mode=pm(ctx))
     return cv.out()
