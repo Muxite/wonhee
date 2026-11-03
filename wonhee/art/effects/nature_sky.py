@@ -89,13 +89,15 @@ def cloudfield(ctx):
     for li in range(n):
         frac = li / max(1, n - 1) if n > 1 else 0.5
         size = sw * float(ctx.p("size")) * (1.2 - 0.6 * frac)
-        d = _layer_density(rng, sh, sw, size, kind, ang, float(ctx.p("aniso")), float(ctx.p("warp")))
+        pad = int(sw * 0.45)
+        dpad = _layer_density(rng, sh + 2 * pad, sw + 2 * pad, size, kind, ang, float(ctx.p("aniso")), float(ctx.p("warp")))
         speed = (0.6 + 0.9 * frac) * sw * 0.05
-        if t:
-            d = _shift(d, t * speed * math.cos(ang), t * speed * math.sin(ang))
+        ox, oy = t * speed * math.cos(ang), t * speed * math.sin(ang)       # layer drift, wind direction
+        M_ = np.float32([[1, 0, -(pad - ox)], [0, 1, -(pad - oy)]])
+        d = cv2.warpAffine(dpad, M_, (sw, sh), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        thr = np.quantile(dpad[pad:-pad, pad:-pad], 1 - float(ctx.p("cover")) * (0.95 + 0.15 * (1 - frac)))
         if src is not None and k > 0:
             d = d + k * 1.6 * (N.pnorm(src[1]) - 0.5) * 2
-        thr = np.quantile(d, 1 - float(ctx.p("cover")) * (0.95 + 0.15 * (1 - frac)))
         soft = 2.0 if kind == "cumulus" else 3.2
         T = N.smooth(thr - 0.05, thr + soft, d)                    # cloud thickness, hard-ish edge, domed core
         a = N.smooth(thr - 0.05, thr + 0.45, d)                   # coverage (opacity)
