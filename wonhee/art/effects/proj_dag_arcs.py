@@ -48,7 +48,7 @@ def proj_dag_arcs(ctx):
     W, H = ctx.size
     rng = ctx.rng
     P = ctx.palette
-    g = gk.as_graph(ctx.data)
+    g = gk.as_graph(ctx.data) if ctx.data is not None else gk.random_layered(rng, [1, 4, 4, 1])
     kinds = [str(g.group_names[int(k)]) if g.group_names else "visit" for k in g.group]
     pruned = np.asarray(g.weight if g.weight is not None else np.ones(g.n)) < 0.5
     cv = gk.Canvas(ctx.size, P.canvas)
