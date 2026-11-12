@@ -88,12 +88,14 @@ Other agent sessions on this machine run timed GPU sweeps. Any GPU use counts, e
   - No new dependencies without a reason in the commit.
 - **Commits:** a short lowercase summary in the existing style (`add …`, `fix …`), one topic per commit. Run `uv run pytest` before committing.
 - **Data stays out of git.** `data/` (DB, media, models, gauge ledger and traces) is gitignored. Third-party media never goes in the repo.
+- **Post-game analysis:** anything we publish gets a PGA within 7 days of its result ([docs/postgame/](docs/postgame/README.md), rule in PROCESS §5). Add the post to the registry when it ships.
 - **Unknowns are `None`, never 0.** This holds both in gauge summaries and in node reports.
 
 ## Where to look when …
 
 | You want to … | Read |
 |---|---|
+| find an existing tool before building one (download/grab a reel, analyse, grade, key, caption, art) | [docs/TOOLS.md](docs/TOOLS.md) |
 | know what a run did, or why it failed | `wonhee show run <id>` / `wonhee chain show <id>`, then [Usage › Debugging](docs/USAGE.md#debugging-a-bad-result) |
 | decide what runs where, or how many at once | `docs/production/policies.md` |
 | pick the next thing to build | `docs/VISION.md` › Where it's going, then `docs/DESIGN.md` (rows `approved, not built`) and `docs/production/workers.md` › Build next |

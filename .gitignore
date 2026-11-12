@@ -9,3 +9,10 @@ __pycache__/
 .superpowers/
 creator.yaml
 .env
+
+# private post-game analyses and the post registry (the process docs stay public)
+docs/postgame/20*.md
+docs/postgame/REGISTRY.md
+# private strategy proposal naming other creators
+docs/production/content-strategy.md
+docs/production/projects/2026-11-10-pretending-swe-story.md

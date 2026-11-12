@@ -106,3 +106,11 @@ register has no new open row for it, and the README describes how to use it.
   (`design: photo §ladder`), so a failing test tells you which promise broke.
 - **Live findings feed the design:** when a live run disproves a rule (for example the low-key photo lifted +0.5
   stop), the design changes first and the code follows (rule 3 above).
+
+## 5. Post-game analysis (owner rule 2026-11-09)
+
+Every published post, and every project that ends in a deliverable, gets a written post-game analysis (PGA) at most
+7 days after its result. A change that ships something public is not closed until its PGA is in the registry in
+[postgame/README.md](postgame/README.md) with a due date, and it is not "done" until the PGA is written. The PGA
+records what we expected and why, the numbers, why it did or did not work, what went wrong in making it, and the
+concrete rules that follow (each written to the memory, playbook or TOOLS.md it belongs in).

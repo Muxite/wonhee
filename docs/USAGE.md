@@ -30,6 +30,17 @@ subprocesses (ffmpeg, yt-dlp) get a minimal environment with no keys.
 
 Live smoke test (spends real money, cap $0.75): `uv run pytest -m live -s`.
 
+## Grab a post by URL (download and analyse)
+
+    uv run wonhee grab --mine "https://www.instagram.com/reel/XXXX/"      # ours; --friend, or neither for others
+    uv run wonhee inspire 79                                              # tear the stored post down
+    uv run wonhee show run 548                                            # what the grab did
+
+`grab` asks Apify for metadata and metrics (paid per call, `APIFY_API_KEY`), downloads the video from the Instagram CDN
+(`yt-dlp` fallback), then analyses it: speech, shots, on-screen text, keyframe descriptions. It prints a `content` id.
+Grab a post again later to add a metric snapshot (plays, likes over time). The full map of tools is
+[TOOLS.md](TOOLS.md).
+
 ## Debugging a bad result
 1. `wonhee show run <id>`: which stage is weak/failed, and why (flag codes).
 2. `wonhee db sql "SELECT role, blob_sha256 FROM step_artifact WHERE step_id=<n>"`:
