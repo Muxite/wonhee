@@ -4,9 +4,9 @@
 
 **An AI production studio for one creator.**
 
-From “what should I post?” to something worth sharing.
+From “what should I post?” to something worth sharing, and then to what the numbers say about the next one.
 
-[The vision](docs/VISION.md) · [What’s built](docs/DESIGN.md) · [Setup & usage](docs/USAGE.md) · [The art library](docs/ART.md) · [For agents](AGENTS.md)
+[The vision](docs/VISION.md) · [What’s built](docs/DESIGN.md) · [Setup & usage](docs/USAGE.md) · [The art library](docs/ART.md) · [Tools index](docs/TOOLS.md) · [For agents](AGENTS.md)
 
 </div>
 
@@ -20,6 +20,32 @@ every handoff lands back on the same person.
 with AI assistants that can carry out the work. The goal is to give one person the support of a small
 production team, while keeping their taste and creative direction at the centre.
 
+## It works: a few numbers
+
+wonhee runs a real Instagram account (a student creator). Every post gets a written
+post-game analysis, so the studio learns from results and not only from taste.
+
+| | |
+|---|---|
+| Best reel | **1.5M+ views** and 800K+ viewers in 3 days, from a single static shot of 6.7 s with no effects |
+| Where it came from | 80% from the Reels tab, 11% Explore, under 3% from followers: strangers, not the existing audience |
+| Held attention | **60% watched to the end**, skip rate 31.7%, and shares at about 2% of views (32K) |
+| Typical reel | a few thousand views |
+| Library | 90+ reels and posts stored and analysed (speech, shots, on-screen text, look), 200+ deterministic art effects |
+
+What those posts taught the pipeline so far:
+
+- **One shot beats a busy edit.** The simplest cut won by two orders of magnitude over the same account's 10 s and 20 s
+  edits. wonhee now defaults to the minimal cut and makes effects opt-in.
+- **The premise has to land by about 2.5 s.** Likes by video second peak there, and half of a weaker post's viewers were gone
+  by 4 s.
+- **Reach and followers are different problems.** Follows stayed near 0.01% of viewers at 110K, 230K and 810K viewers alike, so
+  growth needs a deliberate follow-up, not just a bigger hit.
+- **Consistency is a pipeline problem.** The next step is a bank of finished posts and a weekly batch session, so nothing
+  depends on a daily burst of effort.
+
+The numbers come from Instagram's own insights, pasted in by the creator. Per-post analyses are kept private.
+
 ## What wonhee brings to the studio
 
 | The creative challenge | What wonhee can do today |
@@ -30,6 +56,7 @@ production team, while keeping their taste and creative direction at the centre.
 | **“I don’t have a green screen.”** | Key out a plain wall (or a real green screen) by detecting the backdrop colour, and drop yourself into any background, such as a drawn plane window or cabin. A person mask protects a white shirt on a white wall. |
 | **“These photos need to feel like they belong together.”** | Apply or develop photo looks, adjust colour, and compose posters, carousels and collages. Help placing text on a photo and judging whether the photo can carry it. |
 | **“I need a backdrop, a card or a cover.”** | The [art library](docs/ART.md): about 200 deterministic image effects (physics, light, dot-matrix, graphs, colour grades, edits of real photos) with palettes, seeds and no generative AI. |
+| **“Did it work, and what do I do next?”** | Store any public reel by URL with its metrics and analysis, take a reference apart into hook, shots, text and sound, and keep a post-game analysis for everything published ([tools index](docs/TOOLS.md)). |
 | **“The sound and subtitles need work.”** | Transcribe speech, translate subtitles, reduce noise and balance loudness. |
 | **“My work is code or data. How do I show it?”** | Turn repository structure, project history and other data into visuals and credited card sets, or record small technical demos (terminal skits, graphs, browser apps) in shared offline containers. |
 
@@ -40,7 +67,7 @@ ongoing project with its context intact.
 
 ![The intended wonhee workflow: discover what resonates, plan an original idea, bring in real footage, make the edit, check the result, and deliver it to the creator.](docs/assets/wonhee-workflow.svg)
 
-The ambition is one connected journey: **discover → plan → capture → make → check → deliver.**
+The ambition is one connected journey: **discover → plan → capture → make → check → deliver → learn.**
 A reference should help shape an original idea. A plan should guide the shoot. The footage should flow
 into an edit, and feedback should inform the next version.
 

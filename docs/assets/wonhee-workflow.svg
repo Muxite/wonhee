@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="530" viewBox="0 0 1200 530" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc">
   <title id="title">From the first idea to a post worth sharing</title>
-  <desc id="desc">The intended six-stage workflow: discover what resonates, plan your angle, capture real footage, make the edit, check the result, and deliver it to the creator. Some stages are still being connected.</desc>
-  <rect width="1200" height="530" rx="24" fill="#f4f1e9"/>
+  <desc id="desc">The workflow: discover what resonates, plan your angle, capture real footage, make the edit, check the result, and deliver it to the creator, then learn from how the post did, which feeds the next idea.</desc>
+  <rect width="1200" height="600" rx="24" fill="#f4f1e9"/>
   <g font-family="Arial, Helvetica, sans-serif">
-    <text x="42" y="49" fill="#234c3d" font-size="18" font-weight="700" letter-spacing="2">THE WORKFLOW WE’RE BUILDING TOWARD</text>
+    <text x="42" y="49" fill="#234c3d" font-size="18" font-weight="700" letter-spacing="2">THE WORKFLOW, AND THE LOOP BACK</text>
     <text x="42" y="91" fill="#20251f" font-size="31" font-weight="700">One creative journey, from idea to delivery.</text>
     <path d="M393 214H418M782 214H807M993 290V316H220V345M393 417H418M782 417H807" fill="none" stroke="#a1b197" stroke-width="3" stroke-linejoin="round"/>
     <path d="m410 208 8 6-8 6m389-12 8 6-8 6M214 337l6 8 6-8m184 74 8 6-8 6m389-12 8 6-8 6" fill="none" stroke="#a1b197" stroke-width="3" stroke-linejoin="round"/>
@@ -42,6 +42,12 @@
       <text x="844" y="380" fill="#513c2e" font-size="18" font-weight="700">06</text>
       <text x="844" y="421" fill="#20251f" font-size="30" font-weight="700">Deliver</text>
       <text x="844" y="461" fill="#513c2e" font-size="21">Put it in your hands.</text>
+    </g>
+    <g>
+      <path d="M600 488V508" fill="none" stroke="#a1b197" stroke-width="3"/>
+      <rect x="42" y="508" width="1116" height="64" rx="16" fill="#e3ebd6" stroke="#b6c99f"/>
+      <text x="66" y="547" fill="#234c3d" font-size="22" font-weight="700">07  Learn</text>
+      <text x="190" y="547" fill="#3d4d3d" font-size="21">Every post gets a post-game analysis: what we expected, what happened, what to keep. It feeds the next idea.</text>
     </g>
   </g>
 </svg>

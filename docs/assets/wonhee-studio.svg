@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="480" viewBox="0 0 1200 480" role="img" aria-labelledby="title desc">
   <title id="title">wonhee: a creative studio for one</title>
-  <desc id="desc">An editorial illustration of ideas, footage and finished edits coming together around one creator.</desc>
+  <desc id="desc">An editorial illustration of ideas, footage and finished edits coming together around one creator, with three results from a real post: over 1.5 million views, a 6.7 second single shot, and 60 percent of viewers watching to the end.</desc>
   <rect width="1200" height="480" rx="24" fill="#f4f1e9"/>
   <g font-family="Arial, Helvetica, sans-serif">
     <rect x="48" y="44" width="106" height="32" rx="16" fill="#234c3d"/>
@@ -9,11 +9,12 @@
     <text x="48" y="240" fill="#20251f" font-size="66" font-weight="700" letter-spacing="-2">for one.</text>
     <text x="50" y="303" fill="#4f5b50" font-size="24">Your ideas. Your footage. Your point of view.</text>
     <path d="M50 351H592" stroke="#c8cec0" stroke-width="2"/>
-    <text x="50" y="391" fill="#234c3d" font-size="20" font-weight="700">RESEARCH</text>
-    <text x="189" y="391" fill="#8c9a87" font-size="22">/</text>
-    <text x="215" y="391" fill="#234c3d" font-size="20" font-weight="700">DIRECTION</text>
-    <text x="356" y="391" fill="#8c9a87" font-size="22">/</text>
-    <text x="382" y="391" fill="#234c3d" font-size="20" font-weight="700">PRODUCTION</text>
+    <text x="50" y="398" fill="#234c3d" font-size="46" font-weight="700" letter-spacing="-1">1.5M+</text>
+    <text x="50" y="424" fill="#4f5b50" font-size="15">views on one reel in 3 days</text>
+    <text x="256" y="398" fill="#234c3d" font-size="46" font-weight="700" letter-spacing="-1">6.7 s</text>
+    <text x="256" y="424" fill="#4f5b50" font-size="15">one shot, no effects</text>
+    <text x="446" y="398" fill="#234c3d" font-size="46" font-weight="700" letter-spacing="-1">60%</text>
+    <text x="446" y="424" fill="#4f5b50" font-size="15">watched to the end</text>
     <g transform="translate(732 78) rotate(-8 120 160)">
       <rect x="9" y="10" width="224" height="302" rx="18" fill="#d7d9cf"/>
       <rect width="224" height="302" rx="18" fill="#fffdf8" stroke="#c8cec0" stroke-width="2"/>
